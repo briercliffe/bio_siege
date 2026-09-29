@@ -17,7 +17,11 @@ This plan has two parts.
 | Rendering | 2D, geometric placeholders (colored shapes plus simple icons) | The spec rules out complex assets. Shapes also make it faster to tell what each unit is doing. |
 | Simulation model | **Fixed-timestep, deterministic sim** (20 ticks/s) kept apart from the view layer | Combat can be tested headlessly, battles can be replayed, and the balance simulator (M5) can run thousands of fights. |
 | Target platforms | Desktop (Windows/macOS/Linux) + Web. Input stays touch-compatible. | The spec says "tap", so every interaction is a single press/click. There are no hover-only affordances. |
+| Art assets | **All in-house.** No outside models, sprites or textures are used. | See the note below. |
 | Stat data | JSON in `data/` loaded at startup, with hot reload in debug builds | Meets the spec requirement for "tweak without recompiling", and designers can iterate without restarting. |
+
+
+> **Note: art assets.** Do **not** use any outside models, sprites, textures or other art. That includes third-party marketplace assets such as the FlatPyramid Bacteriophage model. Every asset is generated in-house, from the MVP's geometric placeholders through to final production art. Outside images may serve only as a general style reference, and nothing from them may be copied, traced or imported into the project.
 
 ---
 
@@ -357,7 +361,7 @@ Phase 2 is a **single-player "Living Base"** build. The player raids AI-generate
 | Unit | Behavior | Implementation notes |
 | --- | --- | --- |
 | **Rhinovirus** ("Goblins") | Fast and weak. Targets **Mitochondria first**, then the nearest structure. | A JSON change: `priority_tags: ["resource"]` |
-| **Bacteriophage** | Wall-breaker and hijacker, as in section 9. Art direction: a "lunar lander" silhouette. | Any third-party 3D reference model needs a license review before its geometry or likeness is used. |
+| **Bacteriophage** | Wall-breaker and hijacker, as in section 9. Art direction: a "lunar lander" silhouette. | Its model is created in-house, like every other asset (see the art assets note in section 0). |
 | **Staphylococcus** | A tank that forms a Biofilm (section 9) | — |
 | **Parasite** ("Dropship") | Large and slow. It **burrows**: it is untargetable underground, ignores walls, and surfaces next to its target after a travel time. On death it **bursts into 4 spores**, which are fast, low-HP and tagged `small`. | A burrowed movement mode skips the weighted path and moves in a straight line at reduced speed. Spores come from the same object pool. |
 
