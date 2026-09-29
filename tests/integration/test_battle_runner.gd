@@ -35,6 +35,7 @@ func test_manual_step_runner_matches_headless_sim() -> void:
 func test_infection_phase_last_result_populated() -> void:
 	var session := Session.new(config)
 	var fsm := GameStateMachine.new()
+	fsm.phase = GameStateMachine.Phase.INFECTION
 	add_child_autofree(fsm)
 	var setup := Scenarios.open_field(42)
 	session.battle_setup = setup
@@ -67,6 +68,7 @@ func test_infection_phase_last_result_populated() -> void:
 	assert_true(session.last_result.has("first_destroyed_structure_type"))
 	assert_true(session.last_result.has("final_state_hash"))
 	assert_eq(session.last_result.get("final_state_hash"), phase.runner.sim.state_hash())
+	assert_eq(fsm.phase, GameStateMachine.Phase.RESULTS, "FSM should transition to RESULTS phase")
 
 
 func test_node_pool_created_count_stays_at_100() -> void:
