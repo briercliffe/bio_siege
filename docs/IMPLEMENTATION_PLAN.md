@@ -34,6 +34,7 @@ The spec leaves several numbers and rules undefined. The defaults below are **pl
 - The **outer ring of 1 tile is the deployment zone** and cannot be built on. That leaves an 18x18 buildable interior. Without this rule, walls placed on the edge could leave no valid place to deploy.
 - **The Nucleus is 2x2 and pre-placed at the grid center (tiles 9–10, 9–10).** The spec says both "player places" and "pre-placed, free". This plan resolves it as "free and auto-placed", and the player can **move** it during Synthesis. Making it movable is a stretch goal for M2.
 - All other structures are 1x1.
+- Grid size and structure footprints come from JSON. Section 1.9 explains why 20x20 was chosen and how it gets checked in playtests.
 - Structures can be sold during Synthesis for a **100% refund**. This is a sandbox, so iteration speed matters more than punishing mistakes.
 
 ### 1.2 Combat stats missing from the spec
@@ -82,6 +83,32 @@ The results screen offers three options:
 1. **Re-raid**: keep the same base and army budget, clear the army, and return to Incubation.
 2. **Edit base**: return to Synthesis with the layout intact.
 3. **New base**: reset to 1000 ATP.
+
+### 1.9 Grid size: is 20x20 big enough?
+**Comparison with Clash of Clans.**
+- The home village has a buildable area of about **44x44 tiles** inside a deploy-only border roughly 3 tiles wide, so the whole map is about 50x50.
+- Buildings cover several tiles. The Town Hall is 4x4, most defenses are 3x3, some buildings and traps are 2x2, and walls and small traps are 1x1.
+- A maxed base holds roughly 40–60 buildings plus about 250–325 wall pieces.
+- Troops can be dropped anywhere except within about 1 tile of a building, not only at the map edge.
+
+**Size measured in buildings.**
+- A Clash defense is 3 tiles wide, so its base is about **15 defenses across**.
+- The MVP's interior is **18 defenses across**: 18x18 buildable tiles with 1x1 towers.
+- In building terms, 20x20 is already slightly bigger than a Clash base.
+
+**The budget fills the grid long before the space does.**
+- 1000 ATP buys roughly 5 towers and 30 walls. That is about 40 of the 320 buildable tiles, around 12%.
+- Bases will be small clusters around the Nucleus, and attackers cross a lot of empty ground first.
+- So the realistic risk is that the grid is **too empty**, not too small.
+
+**The real limitation is granularity.**
+- In Clash a wall is a third as wide as a defense, which allows tight compartments and funnels.
+- In the MVP a wall is the same size as a tower. That gives fewer and blunter layout options.
+
+**Decision.**
+- The MVP keeps **20x20 with 1x1 structures**, which keeps pathing, ranges and balance simple.
+- The assumption is checked in playtests (section 5, question 4).
+- A finer grid of about 40x40 with multi-tile structures is planned for Phase 2 (section 11). The grid-scale hook in section 2.4 makes that mostly a data change.
 
 ---
 
@@ -175,6 +202,7 @@ Almost every Part II mechanic depends on the items below. Each one is cheap to a
 | A battle input log (seed plus timestamped deploy commands) | M5 | Replays, defense logs and server validation |
 | A per-structure `visible_to_attacker` flag | `grid_model.gd` (M1) | Dendritic Cells |
 | Feature flags in `game_rules.json` | M0 | Lets playtests A/B the stretch mechanics in section 9 |
+| Grid size, footprints and a global `grid_scale` in `game_rules.json`. Ranges, speeds and splash radii are multiplied by the scale, and nothing assumes 20x20 or 1x1. | `config.gd`, `grid_model.gd` (M0–M1) | Moving to the finer grid in Phase 2 (section 1.9) becomes a data change, not a rewrite |
 
 ---
 
@@ -225,7 +253,7 @@ Five weeks of build plus one week of buffer and playtest fixes. Each milestone e
 - **Exit:** The full Synthesis → Incubation → Infection → Results loop can be played start to finish.
 
 ### M5: Telemetry, Balance Tooling & Polish (Days 23–25)
-- `session_logger.gd` writes one JSONL file per session with these events: phase durations, structures built and sold, ATP split between base and army, army composition, the outcome, the Nucleus HP remaining, the battle length, and whether the timeout fired.
+- `session_logger.gd` writes one JSONL file per session with these events: phase durations, structures built and sold, ATP split between base and army, army composition, the outcome, the Nucleus HP remaining, the battle length, and whether the timeout fired. For the grid-size check (section 1.9) it also logs **grid occupancy** (the share of buildable tiles used), the **time until the first pathogen reaches a structure**, and the number of walls placed.
 - `tools/balance_sim.gd`: run `godot --headless -s tools/balance_sim.gd -- --base=b.json --army=a.json --runs=500` to get win rate and average time-to-kill as CSV. The designer runs this after each JSON tweak.
 - Save and load for bases and armies as **versioned** JSON, so playtesters can share layouts and the balance sim can use them. Every battle also records a battle input log (seed plus deploy commands) that can be replayed.
 - A pass on sound placeholders, a web export for playtesters, and a short "How to play" overlay.
@@ -245,6 +273,7 @@ Five weeks of build plus one week of buffer and playtest fixes. Each milestone e
 | Swarm clumping: 100 units stacked on one tile look confusing | Med | No unit collision in the MVP. Each unit gets a small deterministic visual offset, and physical collision is skipped. |
 | Spikes when many units recalculate paths after a wall breaks | Low | Per-tick recalculation budget and a shared path cache |
 | Shared ATP pool degenerates, with the player spending everything on the base | Med | This is exactly what the playtest measures. Telemetry records the base/army split. The results screen shows the split so players notice it. |
+| The 20x20 grid feels too empty (long walks before combat) or too coarse (walls as big as towers limit layouts) | Med | Grid size and footprints are data-driven. Section 5 question 4 measures it, and Phase 2 plans a finer grid (section 1.9). |
 | Scope creep toward out-of-scope features | Med | Any new feature needs a matching evaluation question from section 6 of the spec |
 
 ---
@@ -256,6 +285,7 @@ Five weeks of build plus one week of buffer and playtest fixes. Each milestone e
 | **1. "Pivot" friction** | Time spent on the transition screen, Incubation duration, how often players pick Re-raid vs Edit base, and a post-session 1–5 rating | Telemetry, plus a 3-question in-game survey on the Results screen (can be skipped) |
 | **2. Pathfinding legibility** | Before launch, the tester predicts which structure falls first, and the prediction is compared with what actually happens | Optional "Predict" tap during Incubation that is logged against the first structure destroyed. Facilitator notes. |
 | **3. Economy balance** | How ATP is split between base and army, the win rate for each split, and how often players change their base after a raid | Telemetry plus a scatter plot from the aggregated JSONL (script in `tools/`) |
+| **4. Grid size and granularity** *(added, section 1.9)* | Grid occupancy, time until first contact, walls placed, and whether testers call bases "empty", "cramped" or say walls feel "too chunky" | Telemetry plus one Results-screen survey question: "The map felt: too small / right / too big". Facilitator notes on layout complaints. |
 
 Run the playtest with ten or more sessions across three or more testers. Before playtesting starts, define what counts as a "go": for example, a median pivot rating of 3.5 or higher and a prediction accuracy of 60% or higher.
 
@@ -300,6 +330,7 @@ Several full-game systems are explicitly out of scope in the MVP spec: secondary
 | Bacteriophage hijacks towers | The MVP gives it x3 damage against defenses | **MVP stretch goal**: hijack instead of or in addition to the multiplier |
 | Staphylococcus clumps into a Biofilm | The MVP has a "Biofilm" slow tank | **Renamed in the MVP now** (same stats). Clumping is an MVP stretch goal. |
 | Parasites (dropship, spores) | A new unit | Phase 2 |
+| Finer grid (about 40x40, multi-tile structures) | The MVP uses 20x20 with 1x1 structures (section 1.9) | Phase 2, if playtest question 4 shows the grid is too coarse or empty |
 | Clans, gene transfer, Lymph Node, Pandemic Mode | Explicitly out of scope | Phases 4–5 |
 
 ## 9. MVP Stretch Mechanics (Phase 1.5)
@@ -365,6 +396,20 @@ Phase 2 is a **single-player "Living Base"** build. The player raids AI-generate
 | **Staphylococcus** | A tank that forms a Biofilm (section 9) | — |
 | **Parasite** ("Dropship") | Large and slow. It **burrows**: it is untargetable underground, ignores walls, and surfaces next to its target after a travel time. On death it **bursts into 4 spores**, which are fast, low-HP and tagged `small`. | A burrowed movement mode skips the weighted path and moves in a straight line at reduced speed. Spores come from the same object pool. |
 
+### Finer grid (about 40x40)
+Once the roster has more structure types (Mitochondria, Dendritic Cells, upgraded walls), move from the MVP's 20x20 grid to a finer, Clash-style grid. The reasoning is in section 1.9.
+
+| Entity | MVP footprint | Phase 2 footprint (proposed) |
+| --- | --- | --- |
+| Nucleus | 2x2 | 4x4 |
+| Macrophage, B-Cell, Mitochondria | 1x1 | 3x3 (Mitochondria possibly 2x2) |
+| Dendritic Cell | — | 2x2 (hidden) |
+| Mucous Membrane (wall) | 1x1 | **1x1**, so a wall is a third as wide as a tower and allows real compartments and funnels |
+
+- `grid_scale` goes from 1 to 2. Ranges, speeds and splash radii scale automatically, and the balance sim re-validates each stat.
+- The deploy zone can widen to Clash-style free deployment: anywhere outside a 1-tile buffer around buildings. That is a separate playtest decision.
+- The start budget and wall cost may need retuning so that a typical base fills a sensible share of the larger area.
+
 ## 12. Async Multiplayer (Phase 3)
 
 This is the "raid other players" layer that the MVP deliberately left out.
@@ -394,7 +439,7 @@ The estimates are rough and assume 2–3 engineers. They should be re-estimated 
 | --- | --- | --- | --- |
 | **1. MVP** | Part I | 6 weeks | Go/no-go targets from section 5 |
 | **1.5. Stretch mechanics** | Section 9, A/B-tested behind feature flags | 1–2 weeks | Each mechanic improves the legibility or fun ratings, or it is cut |
-| **2. Living Base** | Mitochondria, ATP generation, Amino Acids and upgrades, Dendritic Cells, Fever, Parasites, Mucous trap, AI bases and AI raids | 6–8 weeks | The economy loop holds attention over repeated single-player sessions |
+| **2. Living Base** | Mitochondria, ATP generation, Amino Acids and upgrades, Dendritic Cells, Fever, Parasites, Mucous trap, a finer ~40x40 grid, AI bases and AI raids | 6–8 weeks | The economy loop holds attention over repeated single-player sessions |
 | **3. Async multiplayer** | Nakama backend, accounts, snapshots, matchmaking, server validation, replays, DNA/Plasmids, Mutation Lab | 10–14 weeks | Closed alpha retention and anti-cheat validation |
 | **4. Clans** | Clans, chat, gene transfer, Lymph Node and memory cells | 8–10 weeks | Share of players in a clan; donation usage |
 | **5. Pandemic Mode** | 5a Patient Zero, then 5b Herd Immunity wars | 6–8 weeks each | — |
@@ -409,3 +454,4 @@ The estimates are rough and assume 2–3 engineers. They should be re-estimated 
 6. **Amino Acid sources:** from defending only, or from both defending and raiding (current plan)?
 7. **B-Cell analysis scope:** per tower (current plan) or per base, and should Dendritic Cells share it?
 8. **Gene-transfer traits:** is the list fixed ("Speed Buff", "Antibiotic Resistance", …), or can any unlocked Mutation Lab trait be donated?
+9. **Phase 2 grid:** is 40x40 with 3x3 towers the right target, and should deployment stay limited to the edge or become free (anywhere outside a buffer around buildings)?
