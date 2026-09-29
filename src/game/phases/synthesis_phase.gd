@@ -7,6 +7,7 @@ var fsm: GameStateMachine = null
 var grid_view: GridView = null
 var build_controller: BuildController = null
 var toast: Toast = null
+var hud_build: HudBuild = null
 
 func _resolve_nodes() -> void:
 	if grid_view == null:
@@ -15,6 +16,8 @@ func _resolve_nodes() -> void:
 		build_controller = get_node_or_null("BuildController") as BuildController
 	if toast == null:
 		toast = get_node_or_null("Toast") as Toast
+	if hud_build == null:
+		hud_build = get_node_or_null("HudBuild") as HudBuild
 
 func _ready() -> void:
 	_resolve_nodes()
@@ -39,7 +42,16 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 		if not build_controller.sold.is_connected(_on_sold):
 			build_controller.sold.connect(_on_sold)
 
+	if hud_build != null and session != null and build_controller != null:
+		hud_build.setup(session, build_controller)
+		if not hud_build.finalize_requested.is_connected(_on_finalize_requested):
+			hud_build.finalize_requested.connect(_on_finalize_requested)
+
 	_update_grid_layout()
+
+func _on_finalize_requested() -> void:
+	if fsm != null:
+		fsm.request_transition(GameStateMachine.Phase.INCUBATION)
 
 func _on_viewport_size_changed() -> void:
 	_update_grid_layout()
@@ -54,12 +66,11 @@ func _update_grid_layout() -> void:
 		else:
 			r = Rect2(0.0, 0.0, 1280.0, 720.0)
 
-	var padding: float = 20.0
 	var inset_rect: Rect2 = Rect2(
-		r.position.x + padding,
-		r.position.y + padding + 40.0,
-		maxf(r.size.x - padding * 2.0, 10.0),
-		maxf(r.size.y - padding * 2.0 - 40.0, 10.0)
+		0.0,
+		64.0,
+		maxf(r.size.x, 10.0),
+		maxf(r.size.y - 204.0, 10.0)
 	)
 	grid_view.fit_to_rect(inset_rect)
 
