@@ -32,7 +32,7 @@ anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 12.0
-offset_top = -280.0
+offset_top = -380.0
 offset_right = 162.0
 offset_bottom = -68.0
 grow_vertical = 0
@@ -67,3 +67,8 @@ text = "→ Infection"
 custom_minimum_size = Vector2(48, 48)
 layout_mode = 2
 text = "→ Results"
+
+[node name="BtnStress" type="Button" parent="Panel/VBoxContainer"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+text = "Stress test"

@@ -135,3 +135,38 @@ static func mixed(ring: Array[Vector2i] = [], seed: int = 1) -> BattleSetup:
 		units.append({"type": "staphylococcus", "cell": r[idx]})
 
 	return BattleSetup.create(structures, units, seed)
+
+
+static func stress(ring: Array[Vector2i] = [], seed: int = 1) -> BattleSetup:
+	var structures: Array = [
+		{"type": "nucleus", "origin": Vector2i(9, 9)},
+		{"type": "b_cell", "origin": Vector2i(5, 5)},
+		{"type": "b_cell", "origin": Vector2i(14, 5)},
+		{"type": "b_cell", "origin": Vector2i(5, 14)},
+		{"type": "b_cell", "origin": Vector2i(14, 14)},
+		{"type": "macrophage", "origin": Vector2i(8, 8)},
+		{"type": "macrophage", "origin": Vector2i(11, 8)},
+	]
+	for x in range(6, 14):
+		for y in range(6, 14):
+			if x == 6 or x == 13 or y == 6 or y == 13:
+				var occupied: bool = false
+				for s: Dictionary in structures:
+					var origin: Vector2i = s["origin"]
+					var fp: Vector2i = Vector2i(2, 2) if s["type"] == "nucleus" else Vector2i(1, 1)
+					if x >= origin.x and x < origin.x + fp.x and y >= origin.y and y < origin.y + fp.y:
+						occupied = true
+						break
+				if not occupied:
+					structures.append({"type": "mucous_wall", "origin": Vector2i(x, y)})
+
+	if ring.is_empty():
+		ring = ring_cells()
+	var units: Array = []
+	for i in range(100):
+		units.append({
+			"type": "rhinovirus",
+			"cell": ring[i % ring.size()]
+		})
+
+	return BattleSetup.create(structures, units, seed)

@@ -8,6 +8,7 @@ extends Control
 @onready var btn_incubation: Button = $Panel/VBoxContainer/BtnIncubation
 @onready var btn_infection: Button = $Panel/VBoxContainer/BtnInfection
 @onready var btn_results: Button = $Panel/VBoxContainer/BtnResults
+@onready var btn_stress: Button = $Panel/VBoxContainer/BtnStress
 
 var fsm: GameStateMachine = null:
 	set(val):
@@ -42,6 +43,8 @@ func _ready() -> void:
 		btn_infection.pressed.connect(_on_btn_infection_pressed)
 	if btn_results != null and not btn_results.pressed.is_connected(_on_btn_results_pressed):
 		btn_results.pressed.connect(_on_btn_results_pressed)
+	if btn_stress != null and not btn_stress.pressed.is_connected(_on_btn_stress_pressed):
+		btn_stress.pressed.connect(_on_btn_stress_pressed)
 
 	if fsm != null:
 		_update_phase_label(fsm.phase)
@@ -90,6 +93,9 @@ func _on_btn_results_pressed() -> void:
 	if fsm != null:
 		fsm.force_transition(GameStateMachine.Phase.RESULTS)
 
+func _on_btn_stress_pressed() -> void:
+	get_tree().change_scene_to_file("res://tests/perf/stress_battle.tscn")
+
 func _on_phase_changed(_from: GameStateMachine.Phase, to: GameStateMachine.Phase) -> void:
 	_update_phase_label(to)
 
@@ -123,3 +129,5 @@ func _ensure_nodes() -> void:
 		btn_infection = get_node_or_null("Panel/VBoxContainer/BtnInfection") as Button
 	if btn_results == null:
 		btn_results = get_node_or_null("Panel/VBoxContainer/BtnResults") as Button
+	if btn_stress == null:
+		btn_stress = get_node_or_null("Panel/VBoxContainer/BtnStress") as Button
