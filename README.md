@@ -22,3 +22,19 @@ tools/install_godot.sh
 tools/run_tests.sh
 ```
 `tools/run_tests.sh` imports the project headlessly and executes all GUT test suites under `res://tests`.
+
+## Balance simulator
+
+The balance simulator CLI runs batch headless battles with deploy jitter, stat overrides, parameter sweeps, and CSV output:
+
+```bash
+# 1. Run 100 battles on a built-in scenario with deploy jitter
+godot --headless --path . -s tools/balance_sim.gd -- --scenario=mixed --runs=100
+
+# 2. Run battles with stat overrides
+godot --headless --path . -s tools/balance_sim.gd -- --scenario=stress --set=pathogens.rhinovirus.hp=40 --runs=50 --jitter=3
+
+# 3. Sweep a stat across a range and export results to CSV
+godot --headless --path . -s tools/balance_sim.gd -- --scenario=short_wall --sweep=structures.mucous_wall.hp:100:500:100 --runs=20 --out=sweep_results.csv
+```
+
