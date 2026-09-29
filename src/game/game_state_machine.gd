@@ -5,6 +5,8 @@ enum Phase { NONE, SYNTHESIS, INCUBATION, INFECTION, RESULTS }
 
 signal phase_changed(from: Phase, to: Phase)
 signal config_applied(summary: Dictionary)
+## A HUD "?" button was pressed; Main shows the How to play overlay.
+signal how_to_play_requested
 
 const PHASE_SCENE_PATHS: Dictionary = {
 	Phase.SYNTHESIS: "res://src/game/phases/synthesis_phase.tscn",

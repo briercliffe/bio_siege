@@ -4,6 +4,10 @@
 
 Bio Siege is a biological reverse tower defense and base-building game where players design immune defenses in a cellular environment and attack their own base with pathogen swarms in an "Attack Your Own Base" sandbox loop. Players balance ATP resources across defense construction (Synthesis), army composition and perimeter deployment (Incubation), and deterministic combat simulation (Infection).
 
+## Play it
+
+**[Play the latest build in your browser](https://briercliffe.github.io/bio_siege/)**: no install needed. The first launch shows a short "How to play" walkthrough (reopen it any time with the "?" button), and the speaker button mutes the sound effects. The build is deployed to GitHub Pages from `main` by `.github/workflows/deploy-pages.yml`.
+
 ## How to run
 
 Ensure Godot 4.7.2 is installed (you can run `tools/install_godot.sh` on Linux / WSL to install Godot to `$HOME/.local/bin/godot`).

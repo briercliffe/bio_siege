@@ -6,6 +6,7 @@ extends Node
 @onready var fsm: GameStateMachine = $GameStateMachine
 @onready var debug_overlay: DebugOverlay = $DebugOverlay
 @onready var dev_banner: DevBanner = $DevBanner
+@onready var how_to_play: HowToPlay = $HowToPlay
 
 func _ready() -> void:
 	check_config_errors()
@@ -13,6 +14,10 @@ func _ready() -> void:
 		fsm.start()
 	if debug_overlay != null and fsm != null:
 		debug_overlay.setup(fsm)
+	if fsm != null:
+		fsm.how_to_play_requested.connect(how_to_play.open)
+	if GameData.load_errors.is_empty() and HowToPlay.should_show_on_launch():
+		how_to_play.open()
 	GameData.config_reload_failed.connect(_on_config_reload_failed)
 	GameData.config_reloaded.connect(_on_config_reloaded)
 	if fsm != null:

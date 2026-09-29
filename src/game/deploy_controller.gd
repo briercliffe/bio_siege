@@ -1,6 +1,8 @@
 class_name DeployController
 extends Node
 
+signal deployed(type_id: String, cell: Vector2i)
+
 var session: Session = null
 var grid_view: GridView = null
 var hud: HudSpawn = null
@@ -97,6 +99,14 @@ func _on_hud_recall_tool_selected(on: bool) -> void:
 func _on_hud_predict_mode_selected(on: bool) -> void:
 	predict_mode = on
 
+func _deploy_unit(type_id: String, cell: Vector2i) -> bool:
+	var ok: bool = session.army.deploy(type_id, cell)
+	if ok:
+		if SessionLogger != null and SessionLogger.has_method("log_event"):
+			SessionLogger.log_event("unit_deployed", {"type": type_id, "cell": cell})
+		deployed.emit(type_id, cell)
+	return ok
+
 func _try_deploy(cell: Vector2i) -> bool:
 	if session == null or session.grid == null or session.army == null:
 		return false
@@ -106,19 +116,13 @@ func _try_deploy(cell: Vector2i) -> bool:
 		return false
 
 	if session.army.reserve_count(type_to_deploy) > 0:
-		var ok: bool = session.army.deploy(type_to_deploy, cell)
-		if ok and SessionLogger != null and SessionLogger.has_method("log_event"):
-			SessionLogger.log_event("unit_deployed", {"type": type_to_deploy, "cell": cell})
-		return ok
+		return _deploy_unit(type_to_deploy, cell)
 
 	# Reserve == 0, auto-buy if wallet can afford
 	if session.wallet != null and session.army.buy(type_to_deploy, session.wallet):
 		if SessionLogger != null and SessionLogger.has_method("log_event"):
 			SessionLogger.log_event("unit_bought", {"type": type_to_deploy})
-		var ok: bool = session.army.deploy(type_to_deploy, cell)
-		if ok and SessionLogger != null and SessionLogger.has_method("log_event"):
-			SessionLogger.log_event("unit_deployed", {"type": type_to_deploy, "cell": cell})
-		return ok
+		return _deploy_unit(type_to_deploy, cell)
 
 	# Cannot afford
 	if toast != null:

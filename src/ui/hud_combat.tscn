@@ -1,7 +1,8 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/ui/hud_combat.gd" id="1_combat"]
 [ext_resource type="Theme" path="res://src/ui/theme_spawn.tres" id="2_theme"]
+[ext_resource type="Script" path="res://src/ui/mute_button.gd" id="9_mute"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bg"]
 bg_color = Color(0.12, 0.12, 0.12, 0.8)
@@ -108,3 +109,9 @@ custom_minimum_size = Vector2(160, 48)
 layout_mode = 2
 size_flags_vertical = 4
 text = "Intent lines: ON"
+
+[node name="BtnMute" type="Button" parent="TopBar/MarginContainer/HBoxContainer/RightBox"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+size_flags_vertical = 4
+script = ExtResource("9_mute")

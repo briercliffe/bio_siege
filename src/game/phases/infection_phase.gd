@@ -196,8 +196,10 @@ func _show_end_banner() -> void:
 	if runner != null and runner.sim != null:
 		if runner.sim.end_reason == "nucleus_destroyed":
 			banner_text = "INFECTION SUCCESSFUL"
+			Sfx.play("win")
 		else:
 			banner_text = "IMMUNE RESPONSE WINS"
+			Sfx.play("lose")
 
 	if banner_label != null:
 		banner_label.text = banner_text
@@ -229,7 +231,11 @@ func _route_event(ev: Dictionary) -> void:
 						pv.setup(p_state, p_def, tile_px, runner, vfx_pool)
 						_active_pathogens[uid] = pv
 
+		SimEvents.TOWER_FIRED:
+			Sfx.play("tower_fire")
+
 		SimEvents.STRUCTURE_DAMAGED:
+			Sfx.play("hit")
 			var sid: int = int(ev.get("structure_id", 0))
 			var amount: int = int(ev.get("amount", 0))
 			var hp: int = int(ev.get("hp", 0))
@@ -239,6 +245,7 @@ func _route_event(ev: Dictionary) -> void:
 					sv.on_damaged(amount, hp)
 
 		SimEvents.STRUCTURE_DESTROYED:
+			Sfx.play("destroy")
 			var sid: int = int(ev.get("structure_id", 0))
 			if _structure_views.has(sid):
 				var sv: StructureView = _structure_views[sid]
@@ -246,6 +253,7 @@ func _route_event(ev: Dictionary) -> void:
 					sv.on_destroyed()
 
 		SimEvents.PATHOGEN_DAMAGED:
+			Sfx.play("hit")
 			var uid: int = int(ev.get("unit_id", 0))
 			var amount: int = int(ev.get("amount", 0))
 			var hp: int = int(ev.get("hp", 0))

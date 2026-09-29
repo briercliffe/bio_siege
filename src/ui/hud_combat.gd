@@ -11,6 +11,7 @@ var nucleus_bar: ProgressBar = null
 var nucleus_label: Label = null
 var timer_label: Label = null
 var btn_intent: Button = null
+var btn_mute: MuteButton = null
 
 var timer_color: Color = Color.WHITE
 var nucleus_bar_color: Color = Color("#2ecc71")
@@ -163,6 +164,7 @@ func _ensure_nodes() -> void:
 	nucleus_label = get_node_or_null("TopBar/MarginContainer/HBoxContainer/CenterBox/NucleusContainer/NucleusLabel") as Label
 	timer_label = get_node_or_null("TopBar/MarginContainer/HBoxContainer/CenterBox/TimerLabel") as Label
 	btn_intent = get_node_or_null("TopBar/MarginContainer/HBoxContainer/RightBox/BtnIntent") as Button
+	btn_mute = get_node_or_null("TopBar/MarginContainer/HBoxContainer/RightBox/BtnMute") as MuteButton
 
 	if btn_intent != null and not btn_intent.pressed.is_connected(_on_btn_intent_pressed):
 		btn_intent.pressed.connect(_on_btn_intent_pressed)
@@ -258,3 +260,6 @@ func _build_ui_programmatically() -> void:
 	btn_intent.text = "Intent lines: ON"
 	btn_intent.pressed.connect(_on_btn_intent_pressed)
 	right_box.add_child(btn_intent)
+
+	btn_mute = MuteButton.create()
+	right_box.add_child(btn_mute)

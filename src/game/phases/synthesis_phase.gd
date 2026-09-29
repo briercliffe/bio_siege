@@ -39,6 +39,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 		build_controller.setup(session, grid_view)
 		if not build_controller.place_failed.is_connected(_on_place_failed):
 			build_controller.place_failed.connect(_on_place_failed)
+		if not build_controller.placed.is_connected(_on_placed):
+			build_controller.placed.connect(_on_placed)
 		if not build_controller.sold.is_connected(_on_sold):
 			build_controller.sold.connect(_on_sold)
 
@@ -46,6 +48,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 		hud_build.setup(session, build_controller)
 		if not hud_build.finalize_requested.is_connected(_on_finalize_requested):
 			hud_build.finalize_requested.connect(_on_finalize_requested)
+		if not hud_build.help_requested.is_connected(_on_help_requested):
+			hud_build.help_requested.connect(_on_help_requested)
 
 	_update_grid_layout()
 
@@ -122,7 +126,15 @@ func _on_place_failed(reason: int) -> void:
 	if not msg.is_empty():
 		toast.show_message(msg)
 
+func _on_help_requested() -> void:
+	if fsm != null:
+		fsm.how_to_play_requested.emit()
+
+func _on_placed(_type_id: String, _cell: Vector2i) -> void:
+	Sfx.play("place")
+
 func _on_sold(_type_id: String, refund: Dictionary, cell: Vector2i) -> void:
+	Sfx.play("sell")
 	if toast == null:
 		return
 	var atp: int = int(refund.get("atp", 0))

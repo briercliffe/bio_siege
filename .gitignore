@@ -6,3 +6,4 @@ export_credentials.cfg
 __pycache__/
 *.pyc
 
+build_info.txt

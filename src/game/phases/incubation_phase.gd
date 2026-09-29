@@ -47,9 +47,13 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 		hud_spawn.setup(session)
 		if not hud_spawn.back_requested.is_connected(_on_back_requested):
 			hud_spawn.back_requested.connect(_on_back_requested)
+		if not hud_spawn.help_requested.is_connected(_on_help_requested):
+			hud_spawn.help_requested.connect(_on_help_requested)
 
 	if deploy_controller != null and session != null and grid_view != null and hud_spawn != null:
 		deploy_controller.setup(session, grid_view, hud_spawn, toast, fsm)
+		if not deploy_controller.deployed.is_connected(_on_deployed):
+			deploy_controller.deployed.connect(_on_deployed)
 
 	_update_grid_layout()
 
@@ -70,6 +74,13 @@ func on_config_changed(_summary: Dictionary) -> void:
 	_update_grid_layout()
 	if hud_spawn != null:
 		hud_spawn.refresh_config()
+
+func _on_help_requested() -> void:
+	if fsm != null:
+		fsm.how_to_play_requested.emit()
+
+func _on_deployed(_type_id: String, _cell: Vector2i) -> void:
+	Sfx.play("deploy")
 
 func _on_back_requested() -> void:
 	if fsm != null:

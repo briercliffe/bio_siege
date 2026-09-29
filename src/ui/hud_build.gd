@@ -2,6 +2,7 @@ class_name HudBuild
 extends Control
 
 signal finalize_requested
+signal help_requested
 
 const ATP_OVER_BUDGET_COLOR: Color = Color("#e74c3c")
 const CARD_SCENE: PackedScene = preload("res://src/ui/hud_card.tscn")
@@ -17,6 +18,8 @@ var atp_label: Label = null
 var stats_label: Label = null
 var title_label: Label = null
 var btn_finalize: Button = null
+var btn_help: Button = null
+var btn_mute: MuteButton = null
 var btn_menu: Button = null
 var popup_menu: PopupMenu = null
 var import_dialog: ImportDialog = null
@@ -45,6 +48,8 @@ func _ensure_nodes() -> void:
 	stats_label = get_node_or_null("TopBar/MarginContainer/HBoxContainer/LeftBox/StatsLabel") as Label
 	title_label = get_node_or_null("TopBar/MarginContainer/HBoxContainer/TitleLabel") as Label
 	btn_finalize = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnFinalize") as Button
+	btn_help = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnHelp") as Button
+	btn_mute = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnMute") as MuteButton
 	btn_menu = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnMenu") as Button
 	popup_menu = get_node_or_null("PopupMenu") as PopupMenu
 	import_dialog = get_node_or_null("ImportDialog") as ImportDialog
@@ -137,6 +142,12 @@ func _ensure_nodes() -> void:
 	btn_finalize.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top_hbox.add_child(btn_finalize)
 
+	btn_help = HowToPlay.create_help_button()
+	top_hbox.add_child(btn_help)
+
+	btn_mute = MuteButton.create()
+	top_hbox.add_child(btn_mute)
+
 	btn_menu = Button.new()
 	btn_menu.name = "BtnMenu"
 	btn_menu.text = "⋯"
@@ -201,6 +212,8 @@ func _wire_static_nodes() -> void:
 		btn_finalize.pressed.connect(_on_finalize_button_pressed)
 	if confirmation_dialog != null and not confirmation_dialog.confirmed.is_connected(_on_confirmation_dialog_confirmed):
 		confirmation_dialog.confirmed.connect(_on_confirmation_dialog_confirmed)
+	if btn_help != null and not btn_help.pressed.is_connected(_on_btn_help_pressed):
+		btn_help.pressed.connect(_on_btn_help_pressed)
 	if btn_menu != null and not btn_menu.pressed.is_connected(_on_btn_menu_pressed):
 		btn_menu.pressed.connect(_on_btn_menu_pressed)
 	if popup_menu != null and not popup_menu.id_pressed.is_connected(_on_popup_menu_item_selected):
@@ -424,6 +437,10 @@ func _on_atp_icon_draw() -> void:
 		Vector2(w * 0.68, h * 0.05),
 	])
 	atp_icon.draw_colored_polygon(pts, Color("#f1c40f"))
+
+
+func _on_btn_help_pressed() -> void:
+	help_requested.emit()
 
 
 func _on_btn_menu_pressed() -> void:
