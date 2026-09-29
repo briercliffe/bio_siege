@@ -50,6 +50,37 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 	_update_grid_layout()
 
 func _on_finalize_requested() -> void:
+	if session != null and SessionLogger != null and SessionLogger.has_method("log_event"):
+		var atp_rem: int = session.wallet.get_amount("atp") if session.wallet != null else 0
+		var b_cost: int = session.grid.total_cost().get("atp", 0) if session.grid != null else 0
+		var counts: Dictionary = {}
+		var walls: int = 0
+		var occupied: int = 0
+		if session.grid != null:
+			for s in session.grid.structures():
+				counts[s.type_id] = int(counts.get(s.type_id, 0)) + 1
+				var sdef: StructureDef = session.config.structures.get(s.type_id) if session.config != null else null
+				if sdef != null and sdef.has_tag("wall"):
+					walls += 1
+				occupied += s.footprint.x * s.footprint.y
+		var buildable: int = 0
+		if session.grid != null:
+			for y in range(session.grid.height):
+				for x in range(session.grid.width):
+					if session.grid.is_buildable_cell(Vector2i(x, y)):
+						buildable += 1
+		var occ_pct: float = 0.0
+		if buildable > 0:
+			occ_pct = roundf(float(occupied) / float(buildable) * 1000.0) / 10.0
+
+		SessionLogger.log_event("finalize_base", {
+			"atp_remaining": atp_rem,
+			"base_cost": b_cost,
+			"counts_by_type": counts,
+			"walls_placed": walls,
+			"occupancy_pct": occ_pct
+		})
+
 	if fsm != null:
 		fsm.request_transition(GameStateMachine.Phase.INCUBATION)
 

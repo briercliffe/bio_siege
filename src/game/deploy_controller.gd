@@ -9,6 +9,7 @@ var fsm: GameStateMachine = null
 
 var selected_type: String = ""
 var recall_mode: bool = false
+var predict_mode: bool = false
 
 var _is_pressing: bool = false
 var _current_cell: Vector2i = Vector2i(-99999, -99999)
@@ -20,6 +21,8 @@ func setup(p_session: Session, p_grid_view: GridView, p_hud: HudSpawn, p_toast: 
 			hud.deploy_type_selected.disconnect(_on_hud_deploy_type_selected)
 		if hud.recall_tool_selected.is_connected(_on_hud_recall_tool_selected):
 			hud.recall_tool_selected.disconnect(_on_hud_recall_tool_selected)
+		if hud.predict_mode_selected.is_connected(_on_hud_predict_mode_selected):
+			hud.predict_mode_selected.disconnect(_on_hud_predict_mode_selected)
 		if hud.launch_requested.is_connected(_on_hud_launch_requested):
 			hud.launch_requested.disconnect(_on_hud_launch_requested)
 
@@ -43,14 +46,18 @@ func setup(p_session: Session, p_grid_view: GridView, p_hud: HudSpawn, p_toast: 
 
 	if grid_view != null and session != null:
 		grid_view.army = session.army
+		if session.prediction_structure_id > 0:
+			grid_view.predicted_structure_id = session.prediction_structure_id
 
 	if hud != null:
 		hud.deploy_type_selected.connect(_on_hud_deploy_type_selected)
 		hud.recall_tool_selected.connect(_on_hud_recall_tool_selected)
+		hud.predict_mode_selected.connect(_on_hud_predict_mode_selected)
 		hud.launch_requested.connect(_on_hud_launch_requested)
 		if not hud.selected_type_id.is_empty():
 			selected_type = hud.selected_type_id
 		recall_mode = hud.recall_active
+		predict_mode = hud.predict_active
 
 	if grid_view != null:
 		grid_view.cell_pressed.connect(_on_cell_pressed)
@@ -87,6 +94,9 @@ func _on_hud_deploy_type_selected(type_id: String) -> void:
 func _on_hud_recall_tool_selected(on: bool) -> void:
 	recall_mode = on
 
+func _on_hud_predict_mode_selected(on: bool) -> void:
+	predict_mode = on
+
 func _try_deploy(cell: Vector2i) -> bool:
 	if session == null or session.grid == null or session.army == null:
 		return false
@@ -96,11 +106,19 @@ func _try_deploy(cell: Vector2i) -> bool:
 		return false
 
 	if session.army.reserve_count(type_to_deploy) > 0:
-		return session.army.deploy(type_to_deploy, cell)
+		var ok: bool = session.army.deploy(type_to_deploy, cell)
+		if ok and SessionLogger != null and SessionLogger.has_method("log_event"):
+			SessionLogger.log_event("unit_deployed", {"type": type_to_deploy, "cell": cell})
+		return ok
 
 	# Reserve == 0, auto-buy if wallet can afford
 	if session.wallet != null and session.army.buy(type_to_deploy, session.wallet):
-		return session.army.deploy(type_to_deploy, cell)
+		if SessionLogger != null and SessionLogger.has_method("log_event"):
+			SessionLogger.log_event("unit_bought", {"type": type_to_deploy})
+		var ok: bool = session.army.deploy(type_to_deploy, cell)
+		if ok and SessionLogger != null and SessionLogger.has_method("log_event"):
+			SessionLogger.log_event("unit_deployed", {"type": type_to_deploy, "cell": cell})
+		return ok
 
 	# Cannot afford
 	if toast != null:
@@ -111,11 +129,33 @@ func _on_cell_pressed(cell: Vector2i) -> void:
 	if session == null or session.grid == null:
 		return
 
+	if predict_mode:
+		_is_pressing = false
+		if session != null and session.grid != null:
+			var sid: int = session.grid.structure_id_at(cell)
+			if sid > 0:
+				var s: GridModel.PlacedStructure = session.grid.get_structure(sid)
+				if s != null:
+					session.prediction_structure_id = sid
+					if grid_view != null:
+						grid_view.predicted_structure_id = sid
+					if SessionLogger != null and SessionLogger.has_method("log_event"):
+						SessionLogger.log_event("prediction", {
+							"structure_id": sid,
+							"structure_type": s.type_id
+						})
+					predict_mode = false
+					if hud != null:
+						hud.set_predict_mode(false)
+		return
+
 	if recall_mode:
 		_is_pressing = false
 		if session.grid.is_deploy_zone(cell):
 			if session.army != null:
-				session.army.recall_last_at(cell)
+				var recalled_type: String = session.army.recall_last_at(cell)
+				if not recalled_type.is_empty() and SessionLogger != null and SessionLogger.has_method("log_event"):
+					SessionLogger.log_event("unit_recalled", {"type": recalled_type, "cell": cell})
 		return
 
 	# In deploy mode
@@ -209,6 +249,15 @@ func _on_hud_launch_requested() -> void:
 		"unspent_atp": session.wallet.get_amount("atp") if session.wallet != null else 0,
 		"army_counts": army_counts
 	}
+
+	if SessionLogger != null and SessionLogger.has_method("log_event"):
+		SessionLogger.log_event("launch", {
+			"seed": session.seed,
+			"army_counts": army_counts,
+			"base_atp": session.last_launch.base_atp,
+			"army_atp": session.last_launch.army_atp,
+			"unspent_atp": session.last_launch.unspent_atp
+		})
 
 	# 5. fsm.request_transition(GameStateMachine.Phase.INFECTION)
 	if fsm != null:

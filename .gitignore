@@ -3,3 +3,6 @@ build/
 *.tmp
 export_credentials.cfg
 .DS_Store
+__pycache__/
+*.pyc
+

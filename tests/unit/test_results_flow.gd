@@ -306,3 +306,82 @@ func test_loop_stability_5_cycles() -> void:
 				assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
 
 		assert_true(fsm.session.wallet.get_amount("atp") >= 0)
+
+
+func test_prediction_display_in_results() -> void:
+	var session := Session.new(_config)
+	var fsm := GameStateMachine.new()
+	add_child_autoqfree(fsm)
+
+	# 1. No prediction made -> val_prediction should be invisible
+	session.prediction_structure_id = 0
+	session.last_result = {
+		"outcome": "attacker",
+		"end_reason": "nucleus_destroyed",
+		"battle_s": 45.0,
+		"first_destroyed_structure_id": 2,
+		"first_destroyed_structure_type": "macrophage"
+	}
+	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
+	var ui_none: ResultsPhase = scene.instantiate() as ResultsPhase
+	add_child_autoqfree(ui_none)
+	ui_none.setup(session, fsm)
+	assert_false(ui_none.val_prediction.visible)
+
+	# 2. Correct prediction
+	session.prediction_structure_id = 2
+	var ui_correct: ResultsPhase = scene.instantiate() as ResultsPhase
+	add_child_autoqfree(ui_correct)
+	ui_correct.setup(session, fsm)
+	assert_true(ui_correct.val_prediction.visible)
+	assert_true(ui_correct.val_prediction.text.contains("✓ correct"))
+	assert_eq(ui_correct.val_prediction.get_theme_color("font_color"), Color("#2ecc71"))
+
+	# 3. Incorrect prediction
+	session.prediction_structure_id = 1 # Predicted 1, but 2 fell first
+	var ui_wrong: ResultsPhase = scene.instantiate() as ResultsPhase
+	add_child_autoqfree(ui_wrong)
+	ui_wrong.setup(session, fsm)
+	assert_true(ui_wrong.val_prediction.visible)
+	assert_true(ui_wrong.val_prediction.text.contains("✗ it was the Macrophage"))
+	assert_eq(ui_wrong.val_prediction.get_theme_color("font_color"), Color("#e74c3c"))
+
+
+func test_survey_slot_and_submission() -> void:
+	var session := Session.new(_config)
+	var fsm := GameStateMachine.new()
+	add_child_autoqfree(fsm)
+
+	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
+	var ui: ResultsPhase = scene.instantiate() as ResultsPhase
+	add_child_autoqfree(ui)
+	ui.setup(session, fsm)
+
+	assert_not_null(ui.btn_toggle_survey)
+	assert_true(ui.btn_toggle_survey.custom_minimum_size.y >= 48.0)
+	assert_not_null(ui.survey_body)
+	assert_not_null(ui.btn_submit_survey)
+	assert_true(ui.btn_submit_survey.custom_minimum_size.y >= 48.0)
+	assert_false(ui.btn_submit_survey.disabled)
+
+	# Submit feedback
+	ui.btn_submit_survey.pressed.emit()
+	assert_true(ui.survey_submitted)
+	assert_true(ui.btn_submit_survey.disabled)
+	assert_true(ui.btn_submit_survey.text.contains("submitted"))
+
+
+func test_export_slot_button() -> void:
+	var session := Session.new(_config)
+	var fsm := GameStateMachine.new()
+	add_child_autoqfree(fsm)
+
+	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
+	var ui: ResultsPhase = scene.instantiate() as ResultsPhase
+	add_child_autoqfree(ui)
+	ui.setup(session, fsm)
+
+	assert_not_null(ui.btn_export_logs)
+	assert_true(ui.btn_export_logs.custom_minimum_size.y >= 48.0)
+	assert_eq(ui.btn_export_logs.text, "Export playtest logs")
+

@@ -60,6 +60,10 @@ func _on_btn_intent_pressed() -> void:
 		_intent_lines_fallback = not _intent_lines_fallback
 	_update_intent_button_text()
 
+	var is_on: bool = session.intent_lines_enabled if session != null else _intent_lines_fallback
+	if SessionLogger != null and SessionLogger.has_method("log_event"):
+		SessionLogger.log_event("intent_lines_toggled", {"on": is_on})
+
 
 func _update_intent_button_text() -> void:
 	if btn_intent == null:

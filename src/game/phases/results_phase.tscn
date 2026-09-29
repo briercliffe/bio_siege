@@ -162,6 +162,11 @@ layout_mode = 2
 text = "never"
 horizontal_alignment = 2
 
+[node name="ValPrediction" type="Label" parent="ScrollContainer/CenterContainer/Panel/MarginContainer/ContentBox/StatsContainer"]
+visible = false
+layout_mode = 2
+horizontal_alignment = 1
+
 [node name="HSeparator2" type="HSeparator" parent="ScrollContainer/CenterContainer/Panel/MarginContainer/ContentBox"]
 layout_mode = 2
 

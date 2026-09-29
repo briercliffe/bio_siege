@@ -13,6 +13,7 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 [autoload]
 
 GameData="*res://src/game/game_data.gd"
+SessionLogger="*res://src/telemetry/session_logger.gd"
 
 [debug]
 
