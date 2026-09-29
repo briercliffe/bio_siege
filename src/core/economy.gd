@@ -17,6 +17,14 @@ func _init(initial: Dictionary = {}) -> void:
 func get_amount(currency: String) -> int:
 	return int(_balances.get(currency, 0))
 
+## Sets a balance directly. Unlike spend(), the result may be negative
+## (used when a config reload makes the current purchases cost more than the budget).
+func set_amount(currency: String, amount: int) -> void:
+	var old_amt: int = get_amount(currency)
+	_balances[currency] = amount
+	if old_amt != amount:
+		changed.emit(currency, amount)
+
 func can_afford(cost: Dictionary) -> bool:
 	for cur: Variant in cost.keys():
 		var currency_name: String = str(cur)

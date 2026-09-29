@@ -334,6 +334,8 @@ func _on_battle_finished(sim: BattleSim) -> void:
 		}
 
 		var pred_id: int = session.prediction_structure_id if session != null else 0
+		# Kept with the result so a config applied on leaving INFECTION cannot erase it.
+		session.last_result["prediction_structure_id"] = pred_id
 		var pred_correct = null
 		if pred_id > 0:
 			pred_correct = (sim.first_destroyed_structure_id > 0 and sim.first_destroyed_structure_id == pred_id)

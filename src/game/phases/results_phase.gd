@@ -377,7 +377,7 @@ func _populate() -> void:
 	if val_first_contact != null:
 		val_first_contact.text = contact_str
 
-	var pred_id: int = session.prediction_structure_id if session != null else 0
+	var pred_id: int = int(res.get("prediction_structure_id", session.prediction_structure_id if session != null else 0))
 	if val_prediction != null:
 		if pred_id <= 0:
 			val_prediction.visible = false
@@ -463,19 +463,27 @@ func _populate() -> void:
 		legend_label.text = "Base %d · Army %d · Unspent %d" % [base_atp, army_atp, unspent_atp]
 
 	# 5. Buttons
-	var start_atp: int = 1000
-	if session != null and session.config != null:
-		start_atp = int(session.config.start_wallet.get("atp", 1000))
-
 	if btn_re_raid != null:
 		btn_re_raid.text = "Raid the same base again"
 	if btn_edit_base != null:
 		btn_edit_base.text = "Go back and change your defenses"
-	if btn_new_base != null:
-		btn_new_base.text = "Start over with %d ATP" % start_atp
+	_update_new_base_label()
 
 	_populate_survey()
 	_populate_export()
+
+
+func _update_new_base_label() -> void:
+	var start_atp: int = 1000
+	if session != null and session.config != null:
+		start_atp = int(session.config.start_wallet.get("atp", 1000))
+	if btn_new_base != null:
+		btn_new_base.text = "Start over with %d ATP" % start_atp
+
+
+## Called by GameStateMachine after a config hot reload was applied (#27).
+func on_config_changed(_summary: Dictionary) -> void:
+	_update_new_base_label()
 
 
 func get_stat(stat_name: String) -> String:

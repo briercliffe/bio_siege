@@ -3,6 +3,7 @@ extends Control
 
 signal finalize_requested
 
+const ATP_OVER_BUDGET_COLOR: Color = Color("#e74c3c")
 const CARD_SCENE: PackedScene = preload("res://src/ui/hud_card.tscn")
 const CONFIRMATION_SCENE: PackedScene = preload("res://src/ui/confirmation_popup.tscn")
 const IMPORT_DIALOG_SCENE: PackedScene = preload("res://src/ui/import_dialog.tscn")
@@ -28,6 +29,8 @@ var cards: Array[HudCard] = []
 
 var confirmation_dialog: ConfirmationPopup = null
 var _atp_tween: Tween = null
+var _atp_base_color: Color = Color.WHITE
+var _atp_base_color_captured: bool = false
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -280,6 +283,35 @@ func _populate_tray() -> void:
 	cards_container.add_child(sell_card)
 	cards.append(sell_card)
 
+## Re-reads names, costs and roles after a config hot reload (#27).
+## The tray is rebuilt only when structures were added, removed or re-ordered by cost.
+func refresh_config() -> void:
+	_ensure_nodes()
+	if session == null or session.config == null:
+		return
+	var expected_ids: Array[String] = session.config.buildable_structure_ids()
+	var current_ids: Array[String] = []
+	for c in cards:
+		if not c.is_sell:
+			current_ids.append(c.tool_id)
+	if current_ids == expected_ids:
+		for c in cards:
+			var sdef: StructureDef = session.config.structures.get(c.tool_id)
+			if not c.is_sell and sdef != null:
+				c.setup_structure(sdef)
+	else:
+		var selected_tool: String = controller.tool if controller != null else ""
+		_populate_tray()
+		if controller != null and not selected_tool.is_empty():
+			if selected_tool == "sell" or session.config.structures.has(selected_tool):
+				_on_tool_changed(selected_tool)
+			else:
+				controller.select_tool(selected_tool)
+	if session.wallet != null:
+		_update_atp_label(session.wallet.get_amount("atp"), false)
+	_update_card_affordability()
+	_update_stats_label()
+
 func get_cards() -> Array[HudCard]:
 	return cards
 
@@ -336,6 +368,10 @@ func _update_atp_label(amount: int, pulse: bool) -> void:
 	if atp_label == null:
 		return
 	atp_label.text = "ATP %d" % amount
+	if not _atp_base_color_captured:
+		_atp_base_color = atp_label.get_theme_color("font_color")
+		_atp_base_color_captured = true
+	atp_label.add_theme_color_override("font_color", ATP_OVER_BUDGET_COLOR if amount < 0 else _atp_base_color)
 	atp_label.pivot_offset = atp_label.size * 0.5
 	if pulse:
 		if _atp_tween != null and _atp_tween.is_valid():

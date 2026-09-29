@@ -49,6 +49,16 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 
 	_update_grid_layout()
 
+## Called by GameStateMachine after a config hot reload was applied (#27).
+func on_config_changed(_summary: Dictionary) -> void:
+	if session == null:
+		return
+	if grid_view != null:
+		grid_view.setup(session.grid, session.config)
+	_update_grid_layout()
+	if hud_build != null:
+		hud_build.refresh_config()
+
 func _on_finalize_requested() -> void:
 	if session != null and SessionLogger != null and SessionLogger.has_method("log_event"):
 		var atp_rem: int = session.wallet.get_amount("atp") if session.wallet != null else 0

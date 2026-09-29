@@ -36,6 +36,27 @@ func _init(config: GameConfig = null) -> void:
 		height = config.grid_height
 		deploy_ring = config.deploy_ring
 
+func set_config(config: GameConfig) -> void:
+	_config = config
+	if config != null:
+		width = config.grid_width
+		height = config.grid_height
+		deploy_ring = config.deploy_ring
+
+func remove_unknown_structures() -> int:
+	var removed: int = 0
+	if _config == null:
+		return removed
+	for s: PlacedStructure in structures():
+		if _config.structures.has(s.type_id):
+			continue
+		_structures.erase(s.id)
+		for c: Vector2i in s.cells():
+			_cell_to_id.erase(c)
+		structure_removed.emit(s)
+		removed += 1
+	return removed
+
 func in_bounds(cell: Vector2i) -> bool:
 	return cell.x >= 0 and cell.x < width and cell.y >= 0 and cell.y < height
 
