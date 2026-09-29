@@ -15,6 +15,8 @@ var nucleus_id: int = 0
 var first_contact_tick: int = -1  # tick of the first damage dealt by any pathogen
 var structures_destroyed: int = 0
 var pathogens_killed: int = 0
+var first_destroyed_structure_id: int = 0
+var first_destroyed_structure_type: String = ""
 
 var _events: Array[Dictionary] = []
 var _occupancy: Dictionary = {}  # Vector2i -> int
@@ -452,6 +454,9 @@ func _damage_structure(s: StructureState, dmg: int, unit_id: int) -> void:
 	if s.hp == 0:
 		s.alive = false
 		structures_destroyed += 1
+		if first_destroyed_structure_id == 0:
+			first_destroyed_structure_id = s.id
+			first_destroyed_structure_type = s.type_id
 		for cell: Vector2i in s.cells():
 			_occupancy.erase(cell)
 			path_service.clear_cell(cell)
