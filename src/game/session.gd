@@ -4,8 +4,7 @@ extends RefCounted
 var config: GameConfig = null
 var wallet: Wallet = null
 var grid: GridModel = null
-var army_reserve: Dictionary = {}     # pathogen id -> int count; #11 replaces this with an Army object
-var deployments: Array[Dictionary] = []   # [{"type": String, "cell": Vector2i}]; #11 replaces this too
+var army: Army = null
 var seed: int = 0
 @warning_ignore("untyped_declaration")
 var battle_setup = null      # BattleSetup, set by #12 at launch
@@ -21,3 +20,4 @@ func _init(p_config: GameConfig = null) -> void:
 		wallet = Wallet.new(config.start_wallet)
 		grid = GridModel.new(config)
 		grid.reset_with_nucleus()
+		army = Army.new(config)

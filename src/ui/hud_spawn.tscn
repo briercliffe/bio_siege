@@ -1,0 +1,104 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/ui/hud_spawn.gd" id="1_hud"]
+[ext_resource type="Theme" path="res://src/ui/theme_spawn.tres" id="2_theme"]
+
+[node name="HudSpawn" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_hud")
+
+[node name="TopBar" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 64.0
+grow_horizontal = 2
+mouse_filter = 0
+
+[node name="MarginContainer" type="MarginContainer" parent="TopBar"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 8
+
+[node name="HBoxContainer" type="HBoxContainer" parent="TopBar/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="LeftBox" type="HBoxContainer" parent="TopBar/MarginContainer/HBoxContainer"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="AtpIcon" type="Control" parent="TopBar/MarginContainer/HBoxContainer/LeftBox"]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+
+[node name="AtpLabel" type="Label" parent="TopBar/MarginContainer/HBoxContainer/LeftBox"]
+layout_mode = 2
+theme_type_variation = &"Large"
+theme_override_font_sizes/font_size = 28
+text = "ATP 1000"
+
+[node name="BtnBack" type="Button" parent="TopBar/MarginContainer/HBoxContainer/LeftBox"]
+custom_minimum_size = Vector2(140, 48)
+layout_mode = 2
+size_flags_vertical = 4
+text = "◀ Back to base"
+
+[node name="TitleLabel" type="Label" parent="TopBar/MarginContainer/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "INCUBATION: Build your army"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BtnLaunch" type="Button" parent="TopBar/MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(150, 48)
+layout_mode = 2
+size_flags_vertical = 4
+text = "Launch Attack"
+
+[node name="BottomTray" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(0, 160)
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -160.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 0
+
+[node name="MarginContainer" type="MarginContainer" parent="BottomTray"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 10
+
+[node name="ScrollContainer" type="ScrollContainer" parent="BottomTray/MarginContainer"]
+custom_minimum_size = Vector2(0, 140)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 1
+vertical_scroll_mode = 0
+
+[node name="CardsContainer" type="HBoxContainer" parent="BottomTray/MarginContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+alignment = 1
+theme_override_constants/separation = 12

@@ -92,8 +92,8 @@ func test_session_init_copies_config_values() -> void:
 	assert_not_null(session.grid)
 	assert_eq(session.grid.structure_id_at(session.grid.default_nucleus_origin()), 1)
 	assert_null(session.battle_setup)
-	assert_eq(session.army_reserve.size(), 0)
-	assert_eq(session.deployments.size(), 0)
+	assert_not_null(session.army)
+	assert_eq(session.army.total_count(), 0)
 	assert_eq(session.last_result.size(), 0)
 	assert_eq(session.prediction_structure_id, 0)
 
