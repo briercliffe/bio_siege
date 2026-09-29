@@ -197,6 +197,18 @@ func _on_hud_launch_requested() -> void:
 		session.army.deployments.duplicate(true),
 		session.seed
 	)
+	var army_counts: Dictionary = {}
+	for p_id: String in session.config.pathogen_ids():
+		var cnt: int = session.army.deployed_count(p_id)
+		if cnt > 0:
+			army_counts[p_id] = cnt
+
+	session.last_launch = {
+		"base_atp": session.grid.total_cost().get("atp", 0),
+		"army_atp": session.army.total_cost().get("atp", 0),
+		"unspent_atp": session.wallet.get_amount("atp") if session.wallet != null else 0,
+		"army_counts": army_counts
+	}
 
 	# 5. fsm.request_transition(GameStateMachine.Phase.INFECTION)
 	if fsm != null:
