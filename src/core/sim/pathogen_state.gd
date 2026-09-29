@@ -26,7 +26,7 @@ static func create(p_id: int, p_type_id: String, p_def: PathogenDef, p_cell: Vec
 	s.def = p_def
 	s.cell = p_cell
 	s.pos = FixedMath.cell_center(p_cell)
-	s.hp = p_def.max_hp if p_def != null else 0
+	s.hp = p_def.hp if p_def != null else 0
 	s.max_hp = s.hp
 	s.alive = true
 	s.state = State.SEEKING

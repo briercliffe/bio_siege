@@ -86,3 +86,24 @@ func test_projectile_state() -> void:
 	assert_eq(helper_proj.speed, 300)
 	assert_eq(helper_proj.damage, 25)
 	assert_true(helper_proj.alive)
+
+func test_create_factory_methods() -> void:
+	var s_def := StructureDef.new()
+	s_def.hp = 250
+	s_def.footprint = Vector2i(2, 2)
+	var s := StructureState.create(1, "b_cell", s_def, Vector2i(1, 1))
+	assert_eq(s.id, 1)
+	assert_eq(s.hp, 250)
+	assert_eq(s.max_hp, 250)
+	assert_eq(s.center, Vector2i(2000, 2000))
+	assert_true(s.alive)
+
+	var p_def := PathogenDef.new()
+	p_def.hp = 80
+	var p := PathogenState.create(2, "rhinovirus", p_def, Vector2i(3, 3))
+	assert_eq(p.id, 2)
+	assert_eq(p.hp, 80)
+	assert_eq(p.max_hp, 80)
+	assert_eq(p.pos, Vector2i(3500, 3500))
+	assert_true(p.alive)
+

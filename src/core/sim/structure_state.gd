@@ -21,7 +21,7 @@ static func create(p_id: int, p_type_id: String, p_def: StructureDef, p_origin: 
 	state.origin = p_origin
 	state.footprint = p_def.footprint if p_def != null else Vector2i.ONE
 	state.center = FixedMath.rect_center(state.origin, state.footprint)
-	state.hp = p_def.max_hp if p_def != null else 0
+	state.hp = p_def.hp if p_def != null else 0
 	state.max_hp = state.hp
 	state.alive = true
 	state.attack_cooldown = 0
