@@ -7,6 +7,7 @@ signal deploy_type_selected(type_id: String)
 signal recall_tool_selected(on: bool)
 signal predict_mode_selected(on: bool)
 
+const ATP_OVER_BUDGET_COLOR: Color = Color("#e74c3c")
 const CARD_SCENE: PackedScene = preload("res://src/ui/hud_spawn_card.tscn")
 const IMPORT_DIALOG_SCENE: PackedScene = preload("res://src/ui/import_dialog.tscn")
 
@@ -33,6 +34,8 @@ var selected_type_id: String = ""
 var recall_active: bool = false
 var predict_active: bool = false
 var _atp_tween: Tween = null
+var _atp_base_color: Color = Color.WHITE
+var _atp_base_color_captured: bool = false
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -251,16 +254,7 @@ func _populate_tray() -> void:
 		c.queue_free()
 	cards.clear()
 
-	var p_ids: Array[String] = session.config.pathogen_ids()
-	p_ids.sort_custom(func(a: String, b: String) -> bool:
-		var p_a: PathogenDef = session.config.pathogens.get(a)
-		var p_b: PathogenDef = session.config.pathogens.get(b)
-		var cost_a: int = int(p_a.cost.get("atp", 0)) if p_a != null else 0
-		var cost_b: int = int(p_b.cost.get("atp", 0)) if p_b != null else 0
-		if cost_a != cost_b:
-			return cost_a < cost_b
-		return a < b
-	)
+	var p_ids: Array[String] = _sorted_pathogen_ids()
 
 	for tid: String in p_ids:
 		var p_def: PathogenDef = session.config.pathogens.get(tid)
@@ -279,6 +273,46 @@ func _populate_tray() -> void:
 	recall_card.setup_recall()
 	recall_card.pressed.connect(func(): _on_card_pressed(recall_card))
 	cards.append(recall_card)
+
+func _sorted_pathogen_ids() -> Array[String]:
+	var p_ids: Array[String] = session.config.pathogen_ids()
+	p_ids.sort_custom(func(a: String, b: String) -> bool:
+		var p_a: PathogenDef = session.config.pathogens.get(a)
+		var p_b: PathogenDef = session.config.pathogens.get(b)
+		var cost_a: int = int(p_a.cost.get("atp", 0)) if p_a != null else 0
+		var cost_b: int = int(p_b.cost.get("atp", 0)) if p_b != null else 0
+		if cost_a != cost_b:
+			return cost_a < cost_b
+		return a < b
+	)
+	return p_ids
+
+## Re-reads names, costs and roles after a config hot reload (#27).
+## The tray is rebuilt only when pathogens were added, removed or re-ordered by cost.
+func refresh_config() -> void:
+	_ensure_nodes()
+	if session == null or session.config == null or cards_container == null:
+		return
+	var expected_ids: Array[String] = _sorted_pathogen_ids()
+	var current_ids: Array[String] = []
+	for c: HudSpawnCard in cards:
+		if not c.is_recall:
+			current_ids.append(c.type_id)
+	if current_ids == expected_ids:
+		for c: HudSpawnCard in cards:
+			var p_def: PathogenDef = session.config.pathogens.get(c.type_id)
+			if not c.is_recall and p_def != null:
+				c.setup_pathogen(p_def)
+	else:
+		_populate_tray()
+		if not selected_type_id.is_empty() and not session.config.pathogens.has(selected_type_id):
+			selected_type_id = ""
+			deploy_type_selected.emit("")
+		for c: HudSpawnCard in cards:
+			c.set_selected(recall_active if c.is_recall else (not selected_type_id.is_empty() and c.type_id == selected_type_id))
+	if session.wallet != null:
+		_update_atp_label(session.wallet.get_amount("atp"), false)
+	_update_army_ui()
 
 func _update_army_ui() -> void:
 	var total_army: int = session.army.total_count() if (session != null and session.army != null) else 0
@@ -360,6 +394,10 @@ func _update_atp_label(amount: int, pulse: bool) -> void:
 	if atp_label == null:
 		return
 	atp_label.text = "ATP %d" % amount
+	if not _atp_base_color_captured:
+		_atp_base_color = atp_label.get_theme_color("font_color")
+		_atp_base_color_captured = true
+	atp_label.add_theme_color_override("font_color", ATP_OVER_BUDGET_COLOR if amount < 0 else _atp_base_color)
 	atp_label.pivot_offset = atp_label.size * 0.5
 	if pulse:
 		if _atp_tween != null and _atp_tween.is_valid():

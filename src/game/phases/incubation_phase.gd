@@ -61,6 +61,16 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 		if side_switch_overlay != null:
 			side_switch_overlay.visible = false
 
+## Called by GameStateMachine after a config hot reload was applied (#27).
+func on_config_changed(_summary: Dictionary) -> void:
+	if session == null:
+		return
+	if grid_view != null:
+		grid_view.setup(session.grid, session.config, session.army)
+	_update_grid_layout()
+	if hud_spawn != null:
+		hud_spawn.refresh_config()
+
 func _on_back_requested() -> void:
 	if fsm != null:
 		fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)

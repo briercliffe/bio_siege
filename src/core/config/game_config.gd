@@ -27,6 +27,7 @@ var feature_flags: Dictionary = {}
 var structures: Dictionary = {} # String -> StructureDef
 var pathogens: Dictionary = {} # String -> PathogenDef
 var content_hash: String = ""
+var source_data: Dictionary = {} # "game_rules" / "structures" / "pathogens" -> parsed JSON root
 
 func structure_ids() -> Array[String]:
 	var ids: Array[String] = []
@@ -162,6 +163,11 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 
 	var config := GameConfig.new()
 	config.content_hash = (rules_str + structures_str + pathogens_str).sha256_text()
+	config.source_data = {
+		"game_rules": rules_data,
+		"structures": structures_data,
+		"pathogens": pathogens_data,
+	}
 
 	var grid_dict: Dictionary = rules_data.get("grid", {})
 	config.grid_width = int(grid_dict.get("width", 20))

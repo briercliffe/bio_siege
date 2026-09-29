@@ -5,6 +5,7 @@ extends Node
 @onready var error_label: RichTextLabel = $ErrorPanel/MarginContainer/VBoxContainer/ErrorLabel
 @onready var fsm: GameStateMachine = $GameStateMachine
 @onready var debug_overlay: DebugOverlay = $DebugOverlay
+@onready var dev_banner: DevBanner = $DevBanner
 
 func _ready() -> void:
 	check_config_errors()
@@ -12,6 +13,24 @@ func _ready() -> void:
 		fsm.start()
 	if debug_overlay != null and fsm != null:
 		debug_overlay.setup(fsm)
+	GameData.config_reload_failed.connect(_on_config_reload_failed)
+	GameData.config_reloaded.connect(_on_config_reloaded)
+	if fsm != null:
+		fsm.config_applied.connect(_on_config_applied)
+
+func _on_config_reload_failed(errors: PackedStringArray) -> void:
+	dev_banner.show_errors(errors)
+
+func _on_config_applied(summary: Dictionary) -> void:
+	dev_banner.show_info(str(summary.get("message", "")))
+
+# Recovers from a config that was invalid at startup: the game had no session yet.
+func _on_config_reloaded(_config: GameConfig) -> void:
+	if fsm == null or fsm.phase != GameStateMachine.Phase.NONE:
+		return
+	check_config_errors()
+	fsm.start()
+	dev_banner.show_info("Config reloaded")
 
 func check_config_errors() -> void:
 	if not GameData.load_errors.is_empty():

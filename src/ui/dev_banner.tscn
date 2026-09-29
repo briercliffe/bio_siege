@@ -1,0 +1,47 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/ui/dev_banner.gd" id="1_banner"]
+
+[node name="DevBanner" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 40.0
+grow_horizontal = 2
+mouse_filter = 2
+script = ExtResource("1_banner")
+
+[node name="Strip" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 40.0
+grow_horizontal = 2
+
+[node name="Margin" type="MarginContainer" parent="Strip"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_right = 56
+
+[node name="MessageLabel" type="Label" parent="Strip/Margin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+vertical_alignment = 1
+text_overrun_behavior = 3
+
+[node name="BtnDismiss" type="Button" parent="."]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -48.0
+offset_bottom = 48.0
+grow_horizontal = 0
+text = "✕"
+
+[node name="HideTimer" type="Timer" parent="."]
+one_shot = true

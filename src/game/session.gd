@@ -12,6 +12,7 @@ var last_result: Dictionary = {}          # filled by #20, shown by #22
 var last_launch: Dictionary = {}
 var prediction_structure_id: int = 0      # filled by #25
 var intent_lines_enabled: bool = true
+var pending_config: GameConfig = null     # hot-reloaded config queued during INFECTION (#27)
 
 func _init(p_config: GameConfig = null) -> void:
 	config = p_config
@@ -22,3 +23,89 @@ func _init(p_config: GameConfig = null) -> void:
 		grid = GridModel.new(config)
 		grid.reset_with_nucleus()
 		army = Army.new(config)
+
+## Applies a hot-reloaded config to the running session (issue #27 apply rules).
+## Must not be called mid-battle; GameStateMachine queues the config in
+## pending_config during INFECTION and applies it when that phase ends.
+func apply_new_config(new_config: GameConfig) -> Dictionary:
+	var notices: Array[String] = []
+	var summary: Dictionary = {
+		"changed_values": 0,
+		"base_reset": false,
+		"removed_structures": 0,
+		"removed_units": 0,
+		"over_budget": false,
+		"atp": 0,
+		"notices": notices,
+		"message": "",
+	}
+	pending_config = null
+	if new_config == null:
+		return summary
+
+	var old_config: GameConfig = config
+	if old_config != null:
+		summary["changed_values"] = ConfigDiff.count_changed_leaves(old_config.source_data, new_config.source_data)
+	config = new_config
+	if grid == null or wallet == null or army == null:
+		summary["message"] = _reload_message(int(summary["changed_values"]), notices)
+		return summary
+
+	var grid_changed: bool = grid.width != new_config.grid_width or grid.height != new_config.grid_height or grid.deploy_ring != new_config.deploy_ring
+	var core_changed: bool = old_config != null and old_config.core_structure_id() != new_config.core_structure_id()
+	grid.set_config(new_config)
+	army.set_config(new_config)
+
+	if grid_changed or core_changed:
+		army.refund_all(null)
+		wallet.reset(new_config.start_wallet)
+		grid.reset_with_nucleus()
+		prediction_structure_id = 0
+		summary["base_reset"] = true
+		notices.append("Grid size changed: base reset" if grid_changed else "Core structure changed: base reset")
+	else:
+		var removed_structures: int = grid.remove_unknown_structures()
+		var removed_units: int = army.remove_unknown_types()
+		summary["removed_structures"] = removed_structures
+		summary["removed_units"] = removed_units
+		if removed_structures > 0:
+			notices.append("Removed %d structures of unknown type" % removed_structures)
+		if removed_units > 0:
+			notices.append("Removed %d units of unknown type" % removed_units)
+		_recompute_wallet()
+		if _is_over_budget():
+			summary["over_budget"] = true
+			notices.append("Your base and army now cost more than your budget")
+
+	summary["atp"] = wallet.get_amount("atp")
+	summary["message"] = _reload_message(int(summary["changed_values"]), notices)
+	return summary
+
+
+## wallet = start budget - cost(layout) - cost(army), all at the current config's prices.
+func _recompute_wallet() -> void:
+	var base_cost: Dictionary = grid.total_cost()
+	var army_cost: Dictionary = army.total_cost()
+	var currencies: Dictionary = {}
+	for cur: Variant in config.start_wallet.keys():
+		currencies[str(cur)] = true
+	for cur: Variant in wallet.to_dict().keys():
+		currencies[str(cur)] = true
+	for cur: Variant in currencies.keys():
+		var currency: String = str(cur)
+		var remaining: int = int(config.start_wallet.get(currency, 0)) - int(base_cost.get(currency, 0)) - int(army_cost.get(currency, 0))
+		wallet.set_amount(currency, remaining)
+
+
+func _is_over_budget() -> bool:
+	for amount: Variant in wallet.to_dict().values():
+		if int(amount) < 0:
+			return true
+	return false
+
+
+static func _reload_message(changed_values: int, notices: Array[String]) -> String:
+	var text: String = "Config reloaded (%d value%s changed)" % [changed_values, "" if changed_values == 1 else "s"]
+	for notice: String in notices:
+		text += " · " + notice
+	return text

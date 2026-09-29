@@ -11,6 +11,25 @@ var _config: GameConfig = null
 func _init(p_config: GameConfig = null) -> void:
 	_config = p_config
 
+func set_config(p_config: GameConfig) -> void:
+	_config = p_config
+
+func remove_unknown_types() -> int:
+	var removed: int = 0
+	if _config == null:
+		return removed
+	for t: Variant in reserve.keys():
+		if not _config.pathogens.has(str(t)):
+			removed += int(reserve[t])
+			reserve.erase(t)
+	for i in range(deployments.size() - 1, -1, -1):
+		if not _config.pathogens.has(str(deployments[i].get("type", ""))):
+			deployments.remove_at(i)
+			removed += 1
+	if removed > 0:
+		changed.emit()
+	return removed
+
 func buy(type_id: String, wallet: Wallet) -> bool:
 	if _config == null or wallet == null:
 		return false

@@ -4,6 +4,7 @@ extends Node
 enum Phase { NONE, SYNTHESIS, INCUBATION, INFECTION, RESULTS }
 
 signal phase_changed(from: Phase, to: Phase)
+signal config_applied(summary: Dictionary)
 
 const PHASE_SCENE_PATHS: Dictionary = {
 	Phase.SYNTHESIS: "res://src/game/phases/synthesis_phase.tscn",
@@ -74,7 +75,25 @@ func start() -> void:
 	if session == null:
 		var cfg: GameConfig = GameData.config if GameData != null else null
 		session = Session.new(cfg)
+	if GameData != null and not GameData.config_reloaded.is_connected(on_config_reloaded):
+		GameData.config_reloaded.connect(on_config_reloaded)
 	request_transition(Phase.SYNTHESIS)
+
+## Hot reload entry point (#27). The running BattleSim keeps its own config
+## reference, so a reload during INFECTION is queued and applied when the phase ends.
+func on_config_reloaded(new_config: GameConfig) -> void:
+	if session == null or new_config == null:
+		return
+	if phase == Phase.INFECTION:
+		session.pending_config = new_config
+		return
+	_apply_config(new_config)
+
+func _apply_config(new_config: GameConfig) -> void:
+	var summary: Dictionary = session.apply_new_config(new_config)
+	if current_phase_scene != null and is_instance_valid(current_phase_scene) and current_phase_scene.has_method("on_config_changed"):
+		current_phase_scene.call("on_config_changed", summary)
+	config_applied.emit(summary)
 
 func request_transition(to: Phase) -> bool:
 	if not can_transition(phase, to):
@@ -113,6 +132,9 @@ func _apply_transition(to: Phase) -> void:
 			root.remove_child(current_phase_scene)
 		current_phase_scene.queue_free()
 		current_phase_scene = null
+
+	if previous_phase == Phase.INFECTION and to != Phase.INFECTION and session != null and session.pending_config != null:
+		_apply_config(session.pending_config)
 
 	if PHASE_SCENE_PATHS.has(to):
 		var scene_path: String = PHASE_SCENE_PATHS[to]
