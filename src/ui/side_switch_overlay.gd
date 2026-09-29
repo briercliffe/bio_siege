@@ -127,6 +127,11 @@ func dismiss(skipped: bool = false) -> void:
 		_active_tween.kill()
 
 	var duration_ms: int = Time.get_ticks_msec() - _start_time_ms
+	if SessionLogger != null and SessionLogger.has_method("log_event"):
+		SessionLogger.log_event("side_switch", {
+			"duration_ms": duration_ms,
+			"skipped": skipped
+		})
 
 	_active_tween = create_tween()
 	if _active_tween != null:

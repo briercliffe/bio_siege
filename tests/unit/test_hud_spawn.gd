@@ -363,3 +363,49 @@ func test_import_army_partial_fit() -> void:
 	assert_eq(session.army.deployments.size(), 1)
 	assert_eq(hud.last_toast_message, "Only 1 of 2 units fit your ATP")
 
+
+func test_predict_button_and_workflow() -> void:
+	var session: Session = _create_session()
+	var hud: HudSpawn = _setup_hud(session)
+
+	assert_not_null(hud.btn_predict)
+	assert_true(hud.btn_predict.custom_minimum_size.y >= 48.0)
+	assert_eq(hud.btn_predict.text, "Predict")
+
+	var gv := GridView.new()
+	add_child_autoqfree(gv)
+	gv.setup(session.grid, session.config, session.army)
+
+	var dc := DeployController.new()
+	add_child_autoqfree(dc)
+	dc.setup(session, gv, hud)
+
+	# Tap Predict button
+	hud.btn_predict.pressed.emit()
+	assert_true(hud.predict_active)
+	assert_true(dc.predict_mode)
+	assert_eq(hud.last_toast_message, "Tap the structure you think falls first")
+
+	# Tapping nucleus cell sets prediction
+	var nucleus_cell: Vector2i = session.grid.default_nucleus_origin()
+	var nucleus_id: int = session.grid.structure_id_at(nucleus_cell)
+	assert_gt(nucleus_id, 0)
+
+	gv.cell_pressed.emit(nucleus_cell)
+	assert_eq(session.prediction_structure_id, nucleus_id)
+	assert_eq(gv.predicted_structure_id, nucleus_id)
+	assert_false(hud.predict_active, "Predict mode should exit after structure tap")
+	assert_false(dc.predict_mode)
+
+	# Place another structure and test replacing prediction
+	var tower_id: int = session.grid.place("macrophage", Vector2i(5, 5), session.wallet)
+	assert_gt(tower_id, 0)
+
+	# Tap Predict again and tap macrophage cell
+	hud.btn_predict.pressed.emit()
+	assert_true(hud.predict_active)
+	gv.cell_pressed.emit(Vector2i(5, 5))
+	assert_eq(session.prediction_structure_id, tower_id)
+	assert_eq(gv.predicted_structure_id, tower_id)
+	assert_false(hud.predict_active)
+

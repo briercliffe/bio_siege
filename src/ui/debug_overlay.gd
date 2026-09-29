@@ -11,6 +11,7 @@ extends Control
 @onready var btn_stress: Button = $Panel/VBoxContainer/BtnStress
 @onready var btn_replay: Button = $Panel/VBoxContainer/BtnReplay
 @onready var replay_status_label: Label = $Panel/VBoxContainer/ReplayStatusLabel
+@onready var btn_export_logs: Button = $Panel/VBoxContainer/BtnExportLogs
 
 var fsm: GameStateMachine = null:
 	set(val):
@@ -49,6 +50,8 @@ func _ready() -> void:
 		btn_stress.pressed.connect(_on_btn_stress_pressed)
 	if btn_replay != null and not btn_replay.pressed.is_connected(_on_btn_replay_pressed):
 		btn_replay.pressed.connect(_on_btn_replay_pressed)
+	if btn_export_logs != null and not btn_export_logs.pressed.is_connected(_on_btn_export_logs_pressed):
+		btn_export_logs.pressed.connect(_on_btn_export_logs_pressed)
 
 	if fsm != null:
 		_update_phase_label(fsm.phase)
@@ -139,6 +142,11 @@ func _ensure_nodes() -> void:
 		btn_replay = get_node_or_null("Panel/VBoxContainer/BtnReplay") as Button
 	if replay_status_label == null:
 		replay_status_label = get_node_or_null("Panel/VBoxContainer/ReplayStatusLabel") as Label
+	if btn_export_logs == null:
+		btn_export_logs = get_node_or_null("Panel/VBoxContainer/BtnExportLogs") as Button
+
+func _on_btn_export_logs_pressed() -> void:
+	ResultsPhase.export_playtest_logs()
 
 
 func replay_last_battle() -> Dictionary:

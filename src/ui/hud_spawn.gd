@@ -5,6 +5,7 @@ signal launch_requested
 signal back_requested
 signal deploy_type_selected(type_id: String)
 signal recall_tool_selected(on: bool)
+signal predict_mode_selected(on: bool)
 
 const CARD_SCENE: PackedScene = preload("res://src/ui/hud_spawn_card.tscn")
 const IMPORT_DIALOG_SCENE: PackedScene = preload("res://src/ui/import_dialog.tscn")
@@ -16,6 +17,7 @@ var atp_icon: Control = null
 var atp_label: Label = null
 var btn_back: Button = null
 var title_label: Label = null
+var btn_predict: Button = null
 var btn_launch: Button = null
 var btn_menu: Button = null
 var popup_menu: PopupMenu = null
@@ -29,6 +31,7 @@ var cards: Array[HudSpawnCard] = []
 
 var selected_type_id: String = ""
 var recall_active: bool = false
+var predict_active: bool = false
 var _atp_tween: Tween = null
 
 func _init() -> void:
@@ -43,6 +46,7 @@ func _ensure_nodes() -> void:
 	atp_label = get_node_or_null("TopBar/MarginContainer/HBoxContainer/LeftBox/AtpLabel") as Label
 	btn_back = get_node_or_null("TopBar/MarginContainer/HBoxContainer/LeftBox/BtnBack") as Button
 	title_label = get_node_or_null("TopBar/MarginContainer/HBoxContainer/TitleLabel") as Label
+	btn_predict = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnPredict") as Button
 	btn_launch = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnLaunch") as Button
 	btn_menu = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnMenu") as Button
 	popup_menu = get_node_or_null("PopupMenu") as PopupMenu
@@ -124,6 +128,13 @@ func _ensure_nodes() -> void:
 	title_label.add_theme_color_override("font_color", Color("#f5e6e8"))
 	top_hbox.add_child(title_label)
 
+	btn_predict = Button.new()
+	btn_predict.name = "BtnPredict"
+	btn_predict.text = "Predict"
+	btn_predict.custom_minimum_size = Vector2(90.0, 48.0)
+	btn_predict.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top_hbox.add_child(btn_predict)
+
 	btn_launch = Button.new()
 	btn_launch.name = "BtnLaunch"
 	btn_launch.text = "Launch Attack"
@@ -189,6 +200,8 @@ func _wire_static_nodes() -> void:
 		atp_icon.draw.connect(_on_atp_icon_draw)
 	if btn_back != null and not btn_back.pressed.is_connected(_on_back_pressed):
 		btn_back.pressed.connect(_on_back_pressed)
+	if btn_predict != null and not btn_predict.pressed.is_connected(_on_predict_pressed):
+		btn_predict.pressed.connect(_on_predict_pressed)
 	if btn_launch != null and not btn_launch.pressed.is_connected(_on_launch_pressed):
 		btn_launch.pressed.connect(_on_launch_pressed)
 	if btn_menu != null and not btn_menu.pressed.is_connected(_on_btn_menu_pressed):
@@ -197,6 +210,15 @@ func _wire_static_nodes() -> void:
 		popup_menu.id_pressed.connect(_on_popup_menu_item_selected)
 	if import_dialog != null and not import_dialog.load_requested.is_connected(_on_import_load_requested):
 		import_dialog.load_requested.connect(_on_import_load_requested)
+
+func _on_predict_pressed() -> void:
+	set_predict_mode(not predict_active)
+	if predict_active:
+		_show_toast("Tap the structure you think falls first")
+
+func set_predict_mode(active: bool) -> void:
+	predict_active = active
+	predict_mode_selected.emit(predict_active)
 
 func _ready() -> void:
 	_ensure_nodes()
@@ -277,11 +299,15 @@ func _update_army_ui() -> void:
 
 func _on_card_buy_requested(type_id: String) -> void:
 	if session != null and session.army != null and session.wallet != null:
-		session.army.buy(type_id, session.wallet)
+		var ok: bool = session.army.buy(type_id, session.wallet)
+		if ok and SessionLogger != null and SessionLogger.has_method("log_event"):
+			SessionLogger.log_event("unit_bought", {"type": type_id})
 
 func _on_card_unbuy_requested(type_id: String) -> void:
 	if session != null and session.army != null and session.wallet != null:
-		session.army.unbuy(type_id, session.wallet)
+		var ok: bool = session.army.unbuy(type_id, session.wallet)
+		if ok and SessionLogger != null and SessionLogger.has_method("log_event"):
+			SessionLogger.log_event("unit_unbought", {"type": type_id})
 
 func _on_card_pressed(card: HudSpawnCard) -> void:
 	if card.is_recall:

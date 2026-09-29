@@ -13,6 +13,7 @@ var tile_px: int = 32
 var deploy_mode: bool = false: set = set_deploy_mode
 var draw_structures: bool = true: set = set_draw_structures
 var army: Army = null: set = set_army
+var predicted_structure_id: int = 0: set = set_predicted_structure_id
 
 var _has_ghost: bool = false
 var _ghost_type_id: String = ""
@@ -29,6 +30,11 @@ func set_draw_structures(val: bool) -> void:
 func set_deploy_mode(val: bool) -> void:
 	if deploy_mode != val:
 		deploy_mode = val
+		queue_redraw()
+
+func set_predicted_structure_id(val: int) -> void:
+	if predicted_structure_id != val:
+		predicted_structure_id = val
 		queue_redraw()
 
 func set_army(val: Army) -> void:
@@ -271,6 +277,25 @@ func _draw() -> void:
 						badge_center.y + str_size.y * 0.35
 					)
 					draw_string(font, text_pos, count_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
+
+	# Predicted structure marker
+	if predicted_structure_id > 0 and grid != null:
+		var s: GridModel.PlacedStructure = grid.get_structure(predicted_structure_id)
+		if s != null:
+			var s_center: Vector2 = (Vector2(s.origin) + Vector2(s.footprint) * 0.5) * float(tile_px)
+			var badge_radius: float = float(tile_px) * 0.35
+			draw_circle(s_center, badge_radius, Color("#f1c40f"))
+			draw_arc(s_center, badge_radius, 0.0, TAU, 16, Color(0.1, 0.1, 0.1, 0.8), 1.5, true)
+			var font: Font = ThemeDB.fallback_font
+			if font != null:
+				var font_size: int = max(int(badge_radius * 1.4), 10)
+				var q_text: String = "?"
+				var str_size: Vector2 = font.get_string_size(q_text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+				var text_pos := Vector2(
+					s_center.x - str_size.x * 0.5,
+					s_center.y + str_size.y * 0.35
+				)
+				draw_string(font, text_pos, q_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
 
 func _draw_deploy_cell_hatch(cell_rect: Rect2) -> void:
 	var hatch_color := Color("#b0b8c0")

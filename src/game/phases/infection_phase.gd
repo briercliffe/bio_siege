@@ -333,6 +333,17 @@ func _on_battle_finished(sim: BattleSim) -> void:
 			"final_state_hash": sim.state_hash(),
 		}
 
+		var pred_id: int = session.prediction_structure_id if session != null else 0
+		var pred_correct = null
+		if pred_id > 0:
+			pred_correct = (sim.first_destroyed_structure_id > 0 and sim.first_destroyed_structure_id == pred_id)
+
+		var battle_end_data: Dictionary = session.last_result.duplicate()
+		battle_end_data["prediction_structure_id"] = pred_id if pred_id > 0 else null
+		battle_end_data["prediction_correct"] = pred_correct
+		if SessionLogger != null and SessionLogger.has_method("log_event"):
+			SessionLogger.log_event("battle_end", battle_end_data)
+
 		_write_battle_log(sim)
 
 	if fsm != null:

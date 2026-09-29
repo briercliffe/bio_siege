@@ -64,6 +64,12 @@ text = "INCUBATION: Build your army"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="BtnPredict" type="Button" parent="TopBar/MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(90, 48)
+layout_mode = 2
+size_flags_vertical = 4
+text = "Predict"
+
 [node name="BtnLaunch" type="Button" parent="TopBar/MarginContainer/HBoxContainer"]
 custom_minimum_size = Vector2(150, 48)
 layout_mode = 2

@@ -86,9 +86,26 @@ func request_transition(to: Phase) -> bool:
 func force_transition(to: Phase) -> void:
 	_apply_transition(to)
 
+var _phase_enter_time_ms: int = 0
+
 func _apply_transition(to: Phase) -> void:
+	if phase != Phase.NONE:
+		var duration_ms: int = Time.get_ticks_msec() - _phase_enter_time_ms
+		if SessionLogger != null and SessionLogger.has_method("log_event"):
+			SessionLogger.log_event("phase_exit", {
+				"phase": get_phase_name(phase).to_lower(),
+				"duration_ms": duration_ms
+			})
+
 	previous_phase = phase
 	phase = to
+	_phase_enter_time_ms = Time.get_ticks_msec()
+
+	if to != Phase.NONE:
+		if SessionLogger != null and SessionLogger.has_method("log_event"):
+			SessionLogger.log_event("phase_enter", {
+				"phase": get_phase_name(to).to_lower()
+			})
 
 	var root: Control = _ensure_phase_root()
 	if current_phase_scene != null and is_instance_valid(current_phase_scene):

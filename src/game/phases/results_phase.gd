@@ -40,9 +40,21 @@ var btn_re_raid: Button = null
 var btn_edit_base: Button = null
 var btn_new_base: Button = null
 
-# Telemetry slots
+# Telemetry slots and controls
 var survey_slot: VBoxContainer = null
 var export_slot: VBoxContainer = null
+var val_prediction: Label = null
+
+var btn_toggle_survey: Button = null
+var survey_body: VBoxContainer = null
+var btn_submit_survey: Button = null
+var btn_export_logs: Button = null
+
+var survey_pivot: int = 3
+var survey_predictability: int = 3
+var survey_economy: int = 3
+var survey_map_feel: String = "right"
+var survey_submitted: bool = false
 
 
 func _ready() -> void:
@@ -76,6 +88,8 @@ func _resolve_nodes() -> void:
 		val_first_structure = find_child("ValFirstStructure", true, false) as Label
 	if val_first_contact == null:
 		val_first_contact = find_child("ValFirstContact", true, false) as Label
+	if val_prediction == null:
+		val_prediction = find_child("ValPrediction", true, false) as Label
 
 	if atp_bar == null:
 		atp_bar = find_child("AtpBar", true, false) as HBoxContainer
@@ -177,6 +191,12 @@ func _build_ui_fallback() -> void:
 	val_pathogens_lost = _add_stat_row(stats_container, "Pathogens lost", "0 / 0", "ValPathogensLost")
 	val_first_structure = _add_stat_row(stats_container, "First structure to fall", "none", "ValFirstStructure")
 	val_first_contact = _add_stat_row(stats_container, "Time to first contact", "never", "ValFirstContact")
+
+	val_prediction = Label.new()
+	val_prediction.name = "ValPrediction"
+	val_prediction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	val_prediction.visible = false
+	stats_container.add_child(val_prediction)
 
 	content.add_child(HSeparator.new())
 
@@ -357,6 +377,30 @@ func _populate() -> void:
 	if val_first_contact != null:
 		val_first_contact.text = contact_str
 
+	var pred_id: int = session.prediction_structure_id if session != null else 0
+	if val_prediction != null:
+		if pred_id <= 0:
+			val_prediction.visible = false
+			val_prediction.text = ""
+		else:
+			val_prediction.visible = true
+			var first_id: int = int(res.get("first_destroyed_structure_id", 0))
+			var is_correct: bool = (first_id > 0 and pred_id == first_id)
+			if is_correct:
+				val_prediction.text = "Your prediction: ✓ correct"
+				val_prediction.add_theme_color_override("font_color", Color("#2ecc71"))
+			else:
+				var first_type: String = str(res.get("first_destroyed_structure_type", ""))
+				var display_name: String = ""
+				if not first_type.is_empty() and session != null and session.config != null and session.config.structures.has(first_type):
+					display_name = session.config.structures[first_type].display_name
+				elif not first_type.is_empty():
+					display_name = first_type.capitalize()
+				else:
+					display_name = "none"
+				val_prediction.text = "Your prediction: ✗ it was the %s" % display_name
+				val_prediction.add_theme_color_override("font_color", Color("#e74c3c"))
+
 	stats = {
 		"Battle time": time_str,
 		"Nucleus HP remaining": nucleus_hp_str,
@@ -365,6 +409,8 @@ func _populate() -> void:
 		"First structure to fall": first_structure,
 		"Time to first contact": contact_str,
 	}
+	if val_prediction != null and val_prediction.visible:
+		stats["Prediction"] = val_prediction.text
 
 	# 4. ATP split bar
 	base_atp = 0
@@ -428,6 +474,9 @@ func _populate() -> void:
 	if btn_new_base != null:
 		btn_new_base.text = "Start over with %d ATP" % start_atp
 
+	_populate_survey()
+	_populate_export()
+
 
 func get_stat(stat_name: String) -> String:
 	return str(stats.get(stat_name, ""))
@@ -438,8 +487,209 @@ func get_atp_split_widths() -> Dictionary:
 
 
 func make_choice(choice: String) -> void:
+	if SessionLogger != null and SessionLogger.has_method("log_event"):
+		SessionLogger.log_event("results_choice", {"choice": choice})
 	choice_made.emit(choice)
 	apply_choice(choice, session, fsm)
+
+
+func _populate_survey() -> void:
+	if survey_slot == null:
+		return
+	for c in survey_slot.get_children():
+		c.queue_free()
+
+	survey_submitted = false
+	survey_pivot = 3
+	survey_predictability = 3
+	survey_economy = 3
+	survey_map_feel = "right"
+
+	btn_toggle_survey = Button.new()
+	btn_toggle_survey.name = "BtnToggleSurvey"
+	btn_toggle_survey.text = "Quick feedback (optional) ▼"
+	btn_toggle_survey.custom_minimum_size = Vector2(0, 48.0)
+	survey_slot.add_child(btn_toggle_survey)
+
+	survey_body = VBoxContainer.new()
+	survey_body.name = "SurveyBody"
+	survey_body.visible = false
+	survey_body.add_theme_constant_override("separation", 12)
+	survey_slot.add_child(survey_body)
+
+	btn_toggle_survey.pressed.connect(func():
+		survey_body.visible = not survey_body.visible
+		btn_toggle_survey.text = "Quick feedback (optional) ▲" if survey_body.visible else "Quick feedback (optional) ▼"
+	)
+
+	# Row 1: "How did switching from builder to attacker feel?" (1..5: "Jarring" .. "Rewarding")
+	var row1 := VBoxContainer.new()
+	row1.name = "SurveyRow1"
+	var q1_lbl := Label.new()
+	q1_lbl.text = "How did switching from builder to attacker feel?"
+	row1.add_child(q1_lbl)
+	var r1_box := HBoxContainer.new()
+	r1_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var lbl_j := Label.new()
+	lbl_j.text = "Jarring "
+	r1_box.add_child(lbl_j)
+	var bg1 := ButtonGroup.new()
+	for i in range(1, 6):
+		var b := Button.new()
+		b.text = str(i)
+		b.custom_minimum_size = Vector2(48.0, 48.0)
+		b.toggle_mode = true
+		b.button_group = bg1
+		if i == 3:
+			b.button_pressed = true
+		var val: int = i
+		b.pressed.connect(func(): survey_pivot = val)
+		r1_box.add_child(b)
+	var lbl_r := Label.new()
+	lbl_r.text = " Rewarding"
+	r1_box.add_child(lbl_r)
+	row1.add_child(r1_box)
+	survey_body.add_child(row1)
+
+	# Row 2: "Could you predict where pathogens would go?" (1..5)
+	var row2 := VBoxContainer.new()
+	row2.name = "SurveyRow2"
+	var q2_lbl := Label.new()
+	q2_lbl.text = "Could you predict where pathogens would go?"
+	row2.add_child(q2_lbl)
+	var r2_box := HBoxContainer.new()
+	r2_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var bg2 := ButtonGroup.new()
+	for i in range(1, 6):
+		var b := Button.new()
+		b.text = str(i)
+		b.custom_minimum_size = Vector2(48.0, 48.0)
+		b.toggle_mode = true
+		b.button_group = bg2
+		if i == 3:
+			b.button_pressed = true
+		var val: int = i
+		b.pressed.connect(func(): survey_predictability = val)
+		r2_box.add_child(b)
+	row2.add_child(r2_box)
+	survey_body.add_child(row2)
+
+	# Row 3: "Did sharing ATP between base and army force interesting choices?" (1..5)
+	var row3 := VBoxContainer.new()
+	row3.name = "SurveyRow3"
+	var q3_lbl := Label.new()
+	q3_lbl.text = "Did sharing ATP between base and army force interesting choices?"
+	row3.add_child(q3_lbl)
+	var r3_box := HBoxContainer.new()
+	r3_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var bg3 := ButtonGroup.new()
+	for i in range(1, 6):
+		var b := Button.new()
+		b.text = str(i)
+		b.custom_minimum_size = Vector2(48.0, 48.0)
+		b.toggle_mode = true
+		b.button_group = bg3
+		if i == 3:
+			b.button_pressed = true
+		var val: int = i
+		b.pressed.connect(func(): survey_economy = val)
+		r3_box.add_child(b)
+	row3.add_child(r3_box)
+	survey_body.add_child(row3)
+
+	# Row 4: "The map felt:" [Too small] [About right] [Too big]
+	var row4 := VBoxContainer.new()
+	row4.name = "SurveyRow4"
+	var q4_lbl := Label.new()
+	q4_lbl.text = "The map felt:"
+	row4.add_child(q4_lbl)
+	var r4_box := HBoxContainer.new()
+	r4_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	r4_box.add_theme_constant_override("separation", 8)
+	var bg4 := ButtonGroup.new()
+	var opts: Array[Dictionary] = [
+		{"label": "Too small", "val": "too_small"},
+		{"label": "About right", "val": "right"},
+		{"label": "Too big", "val": "too_big"}
+	]
+	for opt in opts:
+		var b := Button.new()
+		b.text = str(opt["label"])
+		b.custom_minimum_size = Vector2(100.0, 48.0)
+		b.toggle_mode = true
+		b.button_group = bg4
+		if str(opt["val"]) == "right":
+			b.button_pressed = true
+		var val_str: String = str(opt["val"])
+		b.pressed.connect(func(): survey_map_feel = val_str)
+		r4_box.add_child(b)
+	row4.add_child(r4_box)
+	survey_body.add_child(row4)
+
+	# Submit button
+	btn_submit_survey = Button.new()
+	btn_submit_survey.name = "BtnSubmitSurvey"
+	btn_submit_survey.text = "Submit feedback"
+	btn_submit_survey.custom_minimum_size = Vector2(0, 48.0)
+	btn_submit_survey.pressed.connect(_on_submit_survey_pressed)
+	survey_body.add_child(btn_submit_survey)
+
+
+func _on_submit_survey_pressed() -> void:
+	if survey_submitted:
+		return
+	survey_submitted = true
+	if SessionLogger != null and SessionLogger.has_method("log_event"):
+		SessionLogger.log_event("survey", {
+			"pivot": survey_pivot,
+			"predictability": survey_predictability,
+			"economy": survey_economy,
+			"map_feel": survey_map_feel
+		})
+	if btn_submit_survey != null:
+		btn_submit_survey.disabled = true
+		btn_submit_survey.text = "Feedback submitted — thank you!"
+	_disable_survey_inputs()
+
+
+func _disable_survey_inputs() -> void:
+	if survey_body == null:
+		return
+	_disable_buttons_recursive(survey_body)
+
+
+func _disable_buttons_recursive(node: Node) -> void:
+	for child in node.get_children():
+		if child is Button and child != btn_toggle_survey:
+			(child as Button).disabled = true
+		_disable_buttons_recursive(child)
+
+
+func _populate_export() -> void:
+	if export_slot == null:
+		return
+	for c in export_slot.get_children():
+		c.queue_free()
+
+	btn_export_logs = Button.new()
+	btn_export_logs.name = "BtnExportLogs"
+	btn_export_logs.text = "Export playtest logs"
+	btn_export_logs.custom_minimum_size = Vector2(0, 48.0)
+	btn_export_logs.pressed.connect(_on_export_logs_pressed)
+	export_slot.add_child(btn_export_logs)
+
+
+func _on_export_logs_pressed() -> void:
+	export_playtest_logs()
+
+
+static func export_playtest_logs() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.download_buffer(SessionLogger.all_sessions_text().to_utf8_buffer(), "bio_siege_telemetry.jsonl", "application/x-ndjson")
+	else:
+		OS.shell_open(ProjectSettings.globalize_path("user://telemetry"))
+	if SessionLogger != null and SessionLogger.has_method("log_event"):
+		SessionLogger.log_event("logs_exported", {})
 
 
 func _on_re_raid_pressed() -> void:
