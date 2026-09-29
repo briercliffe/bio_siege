@@ -143,6 +143,9 @@ These are proposals to raise as issues. None of them has been applied.
 - Input mapping through the inverse projection.
 - The floating HUD components, and the screens 01 to 04, 12 and 15 that do not exist yet.
 
+**Model and animation pipeline**
+- How the models are built in Godot and animated, and the issue breakdown, are in [`MODEL_PIPELINE_PLAN.md`](MODEL_PIPELINE_PLAN.md).
+
 **Schedule**
 - Iso view work touches M1 (grid view), M2 (deploy band) and M4 (combat view). The plan's estimates need a re-check.
 
