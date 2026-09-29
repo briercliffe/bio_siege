@@ -24,8 +24,11 @@ func _on_config_reload_failed(errors: PackedStringArray) -> void:
 func _on_config_applied(summary: Dictionary) -> void:
 	dev_banner.show_info(str(summary.get("message", "")))
 
-# Recovers from a config that was invalid at startup: the game had no session yet.
+# Clears error banners, and recovers from a config that was invalid at startup (no session yet).
 func _on_config_reloaded(_config: GameConfig) -> void:
+	# A successful reload ends an error state even when applying it is queued (INFECTION).
+	if dev_banner.kind == DevBanner.Kind.ERROR:
+		dev_banner.dismiss()
 	if fsm == null or fsm.phase != GameStateMachine.Phase.NONE:
 		return
 	check_config_errors()

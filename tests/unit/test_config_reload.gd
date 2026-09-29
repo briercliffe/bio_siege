@@ -689,6 +689,95 @@ func test_synthesis_phase_refreshes_grid_and_tray_on_config_change() -> void:
 	assert_eq(synth.hud_build.get_card("b_cell").cost_label.text, "120 ATP")
 
 
+func test_incubation_phase_refreshes_grid_and_tray_on_config_change() -> void:
+	var fsm: GameStateMachine = _make_fsm(GameStateMachine.Phase.SYNTHESIS)
+	fsm.force_transition(GameStateMachine.Phase.INCUBATION)
+	var incubation: IncubationPhase = fsm.current_phase_scene as IncubationPhase
+	assert_not_null(incubation)
+	var changed: GameConfig = _variant(func(r: Dictionary, _s: Dictionary, p: Dictionary) -> void:
+		r["grid"]["width"] = 16
+		p["rhinovirus"]["cost"]["atp"] = 5
+	)
+	fsm.on_config_reloaded(changed)
+	assert_eq(incubation.grid_view.config, changed)
+	assert_eq(incubation.grid_view.grid.width, 16)
+	assert_eq(incubation.hud_spawn.get_card("rhinovirus").cost_label.text, "5 ATP")
+
+
+func test_results_phase_refreshes_new_base_label_on_config_change() -> void:
+	var fsm: GameStateMachine = _make_fsm(GameStateMachine.Phase.INFECTION)
+	fsm.force_transition(GameStateMachine.Phase.RESULTS)
+	var results: ResultsPhase = fsm.current_phase_scene as ResultsPhase
+	assert_not_null(results)
+	assert_eq(results.btn_new_base.text, "Start over with 1000 ATP")
+	var richer: GameConfig = _variant(func(r: Dictionary, _s: Dictionary, _p: Dictionary) -> void:
+		r["start_wallet"]["atp"] = 1500
+	)
+	fsm.on_config_reloaded(richer)
+	assert_eq(results.btn_new_base.text, "Start over with 1500 ATP")
+
+
+func test_error_banner_is_cleared_by_reload_queued_during_infection() -> void:
+	var main_node: Node = (load("res://src/main.tscn") as PackedScene).instantiate()
+	add_child_autoqfree(main_node)
+	var banner: DevBanner = main_node.get_node("DevBanner") as DevBanner
+	var fsm: GameStateMachine = main_node.get_node("GameStateMachine") as GameStateMachine
+	fsm.phase = GameStateMachine.Phase.INFECTION
+
+	GameData.config_reload_failed.emit(PackedStringArray(["bad value"]))
+	assert_eq(banner.kind, DevBanner.Kind.ERROR)
+
+	var cheaper: GameConfig = _with_cost("b_cell", 120)
+	GameData.config_reloaded.emit(cheaper)
+
+	assert_ne(banner.kind, DevBanner.Kind.ERROR)
+	assert_false(banner.visible)
+	assert_eq(fsm.session.pending_config, cheaper, "the reload itself is still queued")
+
+
+func test_prediction_cleared_when_predicted_structure_is_removed() -> void:
+	var session := Session.new(_base)
+	var doomed: int = session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
+	var kept: int = session.grid.place("b_cell", Vector2i(5, 3), session.wallet)
+	var no_macrophage: GameConfig = _variant(func(_r: Dictionary, s: Dictionary, _p: Dictionary) -> void:
+		s.erase("macrophage")
+	)
+	session.prediction_structure_id = doomed
+	session.apply_new_config(no_macrophage)
+	assert_eq(session.prediction_structure_id, 0)
+
+	session.prediction_structure_id = kept
+	session.apply_new_config(_with_cost("b_cell", 120))
+	assert_eq(session.prediction_structure_id, kept, "still on the grid, so kept")
+
+
+func test_prediction_survives_to_results_when_grid_resets_on_leaving_infection() -> void:
+	var fsm := GameStateMachine.new()
+	add_child_autoqfree(fsm)
+	fsm.start()
+	fsm.request_transition(GameStateMachine.Phase.INCUBATION)
+	var nucleus_id: int = fsm.session.grid.structure_id_at(fsm.session.grid.default_nucleus_origin())
+	fsm.session.army.buy("rhinovirus", fsm.session.wallet)
+	fsm.session.prediction_structure_id = nucleus_id
+	fsm.session.battle_setup = Scenarios.open_field(42)
+	fsm.request_transition(GameStateMachine.Phase.INFECTION)
+	var infection: InfectionPhase = fsm.current_phase_scene as InfectionPhase
+	var wide: GameConfig = _variant(func(r: Dictionary, _s: Dictionary, _p: Dictionary) -> void:
+		r["grid"]["width"] = 16
+	)
+	fsm.on_config_reloaded(wide)
+
+	infection.runner.sim.run_to_end()
+	infection._on_battle_finished(infection.runner.sim)
+
+	assert_eq(fsm.phase, GameStateMachine.Phase.RESULTS)
+	assert_eq(fsm.session.config, wide)
+	assert_eq(fsm.session.prediction_structure_id, 0, "the reset base has new structure ids")
+	var results: ResultsPhase = fsm.current_phase_scene as ResultsPhase
+	assert_true(results.val_prediction.visible, "the battle's prediction is still shown")
+	assert_eq(fsm.session.last_result["prediction_structure_id"], nucleus_id)
+
+
 # -----------------------------------------------------------------------------
 # GameData watcher
 # -----------------------------------------------------------------------------

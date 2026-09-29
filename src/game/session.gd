@@ -72,6 +72,8 @@ func apply_new_config(new_config: GameConfig) -> Dictionary:
 			notices.append("Removed %d structures of unknown type" % removed_structures)
 		if removed_units > 0:
 			notices.append("Removed %d units of unknown type" % removed_units)
+		if prediction_structure_id > 0 and grid.get_structure(prediction_structure_id) == null:
+			prediction_structure_id = 0
 		_recompute_wallet()
 		if _is_over_budget():
 			summary["over_budget"] = true

@@ -377,7 +377,7 @@ func _populate() -> void:
 	if val_first_contact != null:
 		val_first_contact.text = contact_str
 
-	var pred_id: int = session.prediction_structure_id if session != null else 0
+	var pred_id: int = int(res.get("prediction_structure_id", session.prediction_structure_id if session != null else 0))
 	if val_prediction != null:
 		if pred_id <= 0:
 			val_prediction.visible = false
