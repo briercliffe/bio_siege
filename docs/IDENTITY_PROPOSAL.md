@@ -1,6 +1,6 @@
 # Bio Siege: Identity Proposal: "The Immune System Learns"
 
-**Status: proposal, not accepted (2026-09-29).** Nothing in `src/` or `data/` has been changed. If design accepts it, section 9 lists the plan sections it amends and section 7 lists the work to raise as issues.
+**Status: accepted (2026-09-29).** The numbers are starting values and will be tuned in playtests. Section 7 is tracked in epic #85 (issues #86 to #93). Every mechanic ships behind a feature flag that defaults to off, and a flag is switched on by default only after it passes the playtest gate in section 8. Section 9 lists the plan sections this amends. Nothing in `src/` or `data/` has been changed yet.
 
 This document proposes making **adaptation** the core identity of Bio Siege. Defenses learn from what attacks them, and attackers have to evolve to get past what the defense remembers. Today the game and its roadmap are close to a Clash of Clans reskin. This proposal keeps what already works and replaces the parts that copy Clash with mechanics taken from how immune systems and pathogens actually behave.
 
@@ -107,8 +107,8 @@ Decay and the repertoire cap keep memory from ratcheting upward forever. An atta
 
 Memory tracks **strains**, not unit types, so mutation is how an attacker gets around memory.
 
-- A strain is a pathogen type plus an **antigen variant**, for example `rhinovirus/A` or `rhinovirus/B`.
-- Every pathogen type has 2 to 4 variants listed in `pathogens.json` under a new `strains` array. Each variant carries a **trait with a tradeoff** that is applied through `StatusEffects` at spawn:
+- A strain is a pathogen type plus an **antigen variant**, for example `rhinovirus/wild` (the unmutated form every type has) or `rhinovirus/capsid_hardening`.
+- Every pathogen type has 2 to 4 variants besides `wild`, listed in `pathogens.json` under a new `strains` array. Each variant carries a **trait with a tradeoff**, applied to the unit's stats when it spawns:
 
 | Example variant | Upside | Downside | Biology |
 | --- | --- | --- | --- |
@@ -118,7 +118,7 @@ Memory tracks **strains**, not unit types, so mutation is how an attacker gets a
 
 - **Antigenic drift:** a strain's memory gives **50% of its level** (rounded down) against other variants of the same type. Switching variant gets past most of the memory, not all of it.
 - **Antigenic shift:** a type the base has never seen gets no cross-protection at all.
-- Variants are picked for each strain during Incubation. The Mutation Lab (plan section 10) becomes the place where **new variants are unlocked**, not the place where flat stats are raised.
+- The attacker picks one variant per pathogen type during Incubation. The Mutation Lab (plan section 10) becomes the place where **new variants are unlocked**, not the place where flat stats are raised.
 
 This replaces "Capsid Hardening: +15% HP forever" (a Clash lab upgrade) with "Capsid Hardening: a new antigen that trades speed for HP" (a choice that has a counter).
 
@@ -186,20 +186,20 @@ The existing single-battle sandbox stays as **Lab** mode: no scoring, memory can
 
 ## 7. Proposed work (Phase 1.5: Identity)
 
-These are proposals to raise as issues, one PR per issue (CLAUDE.md rule 9). Every item is behind a feature flag in `game_rules.json` so a second playtest round can A/B it (plan section 9). Items that change `data/*.json` need an issue that explicitly asks for it (CLAUDE.md rule 5).
+Each item is a GitHub issue under epic #85 (item 1 is #86, through item 8 as #93), one PR per issue (CLAUDE.md rule 9). Every item is behind a feature flag in `game_rules.json` so a second playtest round can A/B it (plan section 9). Items that change `data/*.json` need an issue that explicitly asks for it (CLAUDE.md rule 5).
 
 | # | Work | Main areas | Flag |
 | --- | --- | --- | --- |
 | 1 | Self-raid score (section 5.1) and the Results screen readout | `src/core` scoring, `results_phase`, telemetry | `raid_score` |
-| 2 | B-Cell analysis: an exposure map for each tower and strain, a multiplier, `analysis_progress` and `analysis_complete` sim events, the progress ring and badge | `structure_state.gd`, `battle_sim.gd`, `sim_events.gd`, view, `structures.json` (`analysis` block) | `bcell_analysis` |
-| 3 | Strains: a strain id on each army entry and pathogen state, variant traits applied through `StatusEffects`, a variant picker in Incubation | `army.gd`, `pathogen_state.gd`, `battle_setup.gd`, `hud_spawn`, `pathogens.json` (`strains`) | `strains` |
-| 4 | Immune memory: a memory table in the base snapshot (a `SnapshotIO` version bump with migration), a memory update after each raid, pre-seeded exposure through `BattleSetup`, the Memory panel | `snapshot_io.gd`, `session.gd`, `battle_setup.gd`, UI | `immune_memory` |
+| 2 | B-Cell analysis: an exposure map for each tower and strain, a multiplier, an `analysis_complete` sim event, the progress ring and badge | `structure_state.gd`, `battle_sim.gd`, `sim_events.gd`, view, `structures.json` (`analysis` block) | `bcell_analysis` |
+| 3 | Strains: a strain id on each army entry and pathogen state, variant traits applied to unit stats at spawn, a variant picker in Incubation | `army.gd`, `pathogen_state.gd`, `battle_setup.gd`, `hud_spawn`, `pathogens.json` (`strains`) | `strains` |
+| 4 | Immune memory: a memory table as an optional block in the base snapshot, a memory update after each raid, pre-seeded exposure through `BattleSetup`, the Memory panel | `snapshot_io.gd`, `session.gd`, `battle_setup.gd`, UI | `immune_memory` |
 | 5 | Outbreak run mode: tracking generations, the run score, and end-of-run results | `game_state_machine.gd`, `session.gd`, UI | `outbreak_mode` |
 | 6 | Biofilm (plan section 9) | `battle_sim.gd`, union-find helper in core | `biofilm` |
 | 7 | Bacteriophage hijack (plan section 9) | `battle_sim.gd`, `StatusEffects.DISABLED` | `phage_hijack` |
-| 8 | Balance sim: memory state as an input, multi-generation runs, a strain mix as a sweep dimension | `tools/balance_sim.gd` | — |
+| 8 | Balance sim: flags, strains and memory as inputs, multi-generation runs. Telemetry report: the section 8 metrics split by flag set | `tools/balance_sim.gd`, `tools/telemetry_report.py` | — |
 
-Suggested order: 1, then 2, then 3 and 4 together, then 5. Items 6 and 7 are independent and can run alongside. Item 1 is a small change and fixes the loop's missing goal even if nothing else in this document is accepted.
+Suggested order: 1, then 2, then 3 and 4 together, then 5. Items 6 and 7 are independent and can run alongside. Item 1 is a small change and fixes the loop's missing goal on its own.
 
 ---
 
@@ -219,7 +219,7 @@ If `bcell_analysis` and `immune_memory` don't beat the flag-off baseline, the id
 
 ---
 
-## 9. Amended plan sections (if accepted)
+## 9. Amended plan sections
 
 | Plan section | Change |
 | --- | --- |
