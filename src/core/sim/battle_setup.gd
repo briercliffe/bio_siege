@@ -16,6 +16,22 @@ static func create(p_structures: Array, p_units: Array, p_seed: int) -> BattleSe
 			setup.units.append((item as Dictionary).duplicate(true))
 	return setup
 
+func duplicate_setup() -> BattleSetup:
+	return create(structures, units, seed)
+
+func to_dict() -> Dictionary:
+	return {
+		"structures": structures.duplicate(true),
+		"units": units.duplicate(true),
+		"seed": seed,
+	}
+
+static func from_dict(d: Dictionary) -> BattleSetup:
+	var s: Array = d.get("structures", [])
+	var u: Array = d.get("units", [])
+	var sd: int = int(d.get("seed", 0))
+	return create(s, u, sd)
+
 func validate(config: GameConfig) -> PackedStringArray:
 	var errors: PackedStringArray = PackedStringArray()
 	if config == null:

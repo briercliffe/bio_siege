@@ -20,3 +20,12 @@ func next_int(n: int) -> int:
 
 func next_range(lo: int, hi: int) -> int:
 	return _rng.randi_range(lo, hi)
+
+func randi() -> int:
+	return _rng.randi()
+
+func randi_range(lo: int, hi: int) -> int:
+	return _rng.randi_range(lo, hi)
+
+func next_bool() -> bool:
+	return next_int(2) == 1
