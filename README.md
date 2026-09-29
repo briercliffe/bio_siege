@@ -1,5 +1,7 @@
 # Bio Siege
 
+[![CI](https://github.com/briercliffe/bio_siege/actions/workflows/ci.yml/badge.svg)](https://github.com/briercliffe/bio_siege/actions/workflows/ci.yml)
+
 Bio Siege is a biological reverse tower defense and base-building game where players design immune defenses in a cellular environment and attack their own base with pathogen swarms in an "Attack Your Own Base" sandbox loop. Players balance ATP resources across defense construction (Synthesis), army composition and perimeter deployment (Incubation), and deterministic combat simulation (Infection).
 
 ## How to run
