@@ -89,7 +89,8 @@ func test_session_init_copies_config_values() -> void:
 	assert_eq(session.intent_lines_enabled, cfg.feature_flags.get("intent_lines_default", true))
 	assert_not_null(session.wallet)
 	assert_eq(session.wallet.get_amount("atp"), 1000)
-	assert_null(session.grid)
+	assert_not_null(session.grid)
+	assert_eq(session.grid.structure_id_at(session.grid.default_nucleus_origin()), 1)
 	assert_null(session.battle_setup)
 	assert_eq(session.army_reserve.size(), 0)
 	assert_eq(session.deployments.size(), 0)
@@ -103,6 +104,7 @@ func test_session_init_copies_config_values() -> void:
 	assert_eq(custom_session.seed, 98765)
 	assert_eq(custom_session.intent_lines_enabled, false)
 	assert_not_null(custom_session.wallet)
+	assert_not_null(custom_session.grid)
 
 	# 3. Null config
 	var null_session: Session = Session.new(null)
@@ -110,6 +112,7 @@ func test_session_init_copies_config_values() -> void:
 	assert_eq(null_session.seed, 0)
 	assert_true(null_session.intent_lines_enabled)
 	assert_null(null_session.wallet)
+	assert_null(null_session.grid)
 
 func test_invalid_transition_rejected() -> void:
 	var fsm: GameStateMachine = GameStateMachine.new()
