@@ -43,6 +43,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 			build_controller.placed.connect(_on_placed)
 		if not build_controller.sold.is_connected(_on_sold):
 			build_controller.sold.connect(_on_sold)
+		if not build_controller.nucleus_moved.is_connected(_on_nucleus_moved):
+			build_controller.nucleus_moved.connect(_on_nucleus_moved)
 
 	if hud_build != null and session != null and build_controller != null:
 		hud_build.setup(session, build_controller)
@@ -131,6 +133,9 @@ func _on_help_requested() -> void:
 		fsm.how_to_play_requested.emit()
 
 func _on_placed(_type_id: String, _cell: Vector2i) -> void:
+	Sfx.play("place")
+
+func _on_nucleus_moved(_from: Vector2i, _to: Vector2i) -> void:
 	Sfx.play("place")
 
 func _on_sold(_type_id: String, refund: Dictionary, cell: Vector2i) -> void:

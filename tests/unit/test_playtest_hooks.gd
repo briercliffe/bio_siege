@@ -193,6 +193,32 @@ func test_synthesis_phase_plays_place_and_sell_sounds() -> void:
 	assert_true(_is_playing("sell"))
 
 
+func test_synthesis_phase_plays_place_sound_on_nucleus_move() -> void:
+	var cfg: GameConfig = _config()
+	cfg.feature_flags["move_nucleus"] = true
+	var session := Session.new(cfg)
+	var fsm := GameStateMachine.new()
+	add_child_autofree(fsm)
+	var phase: SynthesisPhase = (load("res://src/game/phases/synthesis_phase.tscn") as PackedScene).instantiate() as SynthesisPhase
+	add_child_autofree(phase)
+	phase.setup(session, fsm)
+	assert_true(phase.build_controller.nucleus_moved.is_connected(phase._on_nucleus_moved))
+
+	_silence()
+	phase.build_controller.select_tool("move_nucleus")
+	phase.grid_view.cell_pressed.emit(Vector2i(9, 9))
+	phase.grid_view.cell_released.emit(Vector2i(4, 4))
+	assert_eq(session.grid.get_structure(1).origin, Vector2i(4, 4))
+	assert_true(_is_playing("place"))
+
+	# A rejected drop makes no move sound.
+	_silence()
+	phase.build_controller.select_tool("move_nucleus")
+	phase.grid_view.cell_pressed.emit(Vector2i(4, 4))
+	phase.grid_view.cell_released.emit(Vector2i(0, 0))
+	assert_false(_is_playing("place"))
+
+
 func test_help_buttons_request_the_overlay_through_the_state_machine() -> void:
 	var session := Session.new(_config())
 	var fsm := GameStateMachine.new()

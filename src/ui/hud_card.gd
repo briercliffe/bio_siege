@@ -3,6 +3,7 @@ extends Button
 
 var tool_id: String = ""
 var is_sell: bool = false
+var is_move_nucleus: bool = false
 var cost_atp: int = 0
 var is_selected: bool = false
 
@@ -106,6 +107,7 @@ func setup_structure(sdef: StructureDef) -> void:
 	_ensure_nodes()
 	tool_id = sdef.id
 	is_sell = false
+	is_move_nucleus = false
 	cost_atp = int(sdef.cost.get("atp", 0))
 	shape = sdef.placeholder_shape
 	shape_color = sdef.placeholder_color
@@ -124,6 +126,7 @@ func setup_sell() -> void:
 	_ensure_nodes()
 	tool_id = "sell"
 	is_sell = true
+	is_move_nucleus = false
 	cost_atp = 0
 	shape = ""
 	shape_color = Color.WHITE
@@ -138,6 +141,29 @@ func setup_sell() -> void:
 	if icon_control != null:
 		icon_control.queue_redraw()
 
+func setup_move_nucleus(core_def: StructureDef) -> void:
+	_ensure_nodes()
+	tool_id = BuildController.TOOL_MOVE_NUCLEUS
+	is_sell = false
+	is_move_nucleus = true
+	cost_atp = 0
+	shape = core_def.placeholder_shape if core_def != null else "rounded_square"
+	shape_color = core_def.placeholder_color if core_def != null else Color.WHITE
+
+	if name_label != null:
+		name_label.text = "Move Nucleus"
+	if cost_label != null:
+		cost_label.text = "Free"
+		cost_label.add_theme_color_override("font_color", Color("#576574"))
+	if role_label != null:
+		role_label.text = ""
+	if icon_control != null:
+		icon_control.queue_redraw()
+
+## True for cards that build a structure (as opposed to the Sell and Move Nucleus tools).
+func is_structure_card() -> bool:
+	return not is_sell and not is_move_nucleus
+
 func set_selected(selected: bool) -> void:
 	is_selected = selected
 	_apply_style()
@@ -150,7 +176,7 @@ func _apply_style() -> void:
 	add_theme_stylebox_override("focus", style)
 
 func update_affordability(wallet_atp: int) -> void:
-	if not is_sell and cost_atp > wallet_atp:
+	if is_structure_card() and cost_atp > wallet_atp:
 		modulate.a = 0.4
 	else:
 		modulate.a = 1.0
@@ -164,5 +190,23 @@ func _on_icon_draw() -> void:
 		var col := Color("#e74c3c")
 		icon_control.draw_line(Vector2(pad, pad), Vector2(s.x - pad, s.y - pad), col, 3.0, true)
 		icon_control.draw_line(Vector2(s.x - pad, pad), Vector2(pad, s.y - pad), col, 3.0, true)
+	elif is_move_nucleus:
+		_draw_move_icon()
 	else:
 		PlaceholderShapes.draw_shape(icon_control, shape, Rect2(Vector2.ZERO, icon_control.size), shape_color)
+
+func _draw_move_icon() -> void:
+	var s: Vector2 = icon_control.size
+	var shape_rect := Rect2(0.0, s.y * 0.15, s.x * 0.6, s.y * 0.7)
+	PlaceholderShapes.draw_shape(icon_control, shape, shape_rect, shape_color)
+	var col := Color("#12304f")
+	var y: float = s.y * 0.5
+	var tail := Vector2(s.x * 0.62, y)
+	var tip := Vector2(s.x - 2.0, y)
+	var head: float = s.x * 0.2
+	icon_control.draw_line(tail, tip, col, 3.0, true)
+	icon_control.draw_colored_polygon(PackedVector2Array([
+		tip,
+		Vector2(tip.x - head, y - head * 0.7),
+		Vector2(tip.x - head, y + head * 0.7),
+	]), col)

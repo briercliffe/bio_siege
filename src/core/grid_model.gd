@@ -111,20 +111,9 @@ func check_place(type_id: String, origin: Vector2i, wallet: Wallet = null) -> Pl
 	if not sdef.buildable:
 		return PlaceError.NOT_BUILDABLE
 
-	for y in range(origin.y, origin.y + sdef.footprint.y):
-		for x in range(origin.x, origin.x + sdef.footprint.x):
-			if not in_bounds(Vector2i(x, y)):
-				return PlaceError.OUT_OF_BOUNDS
-
-	for y in range(origin.y, origin.y + sdef.footprint.y):
-		for x in range(origin.x, origin.x + sdef.footprint.x):
-			if is_deploy_zone(Vector2i(x, y)):
-				return PlaceError.DEPLOY_ZONE
-
-	for y in range(origin.y, origin.y + sdef.footprint.y):
-		for x in range(origin.x, origin.x + sdef.footprint.x):
-			if _cell_to_id.has(Vector2i(x, y)):
-				return PlaceError.OCCUPIED
+	var footprint_err: PlaceError = _check_footprint(sdef.footprint, origin, 0)
+	if footprint_err != PlaceError.OK:
+		return footprint_err
 
 	if wallet != null:
 		if not wallet.can_afford(sdef.cost):
@@ -133,6 +122,27 @@ func check_place(type_id: String, origin: Vector2i, wallet: Wallet = null) -> Pl
 		for cur: Variant in sdef.cost.keys():
 			if int(sdef.cost[cur]) > 0:
 				return PlaceError.INSUFFICIENT_FUNDS
+
+	return PlaceError.OK
+
+## Bounds, deploy ring and overlap checks shared by check_place and check_move.
+## Cells owned by ignore_id count as free (0 ignores nothing).
+func _check_footprint(footprint: Vector2i, origin: Vector2i, ignore_id: int) -> PlaceError:
+	for y in range(origin.y, origin.y + footprint.y):
+		for x in range(origin.x, origin.x + footprint.x):
+			if not in_bounds(Vector2i(x, y)):
+				return PlaceError.OUT_OF_BOUNDS
+
+	for y in range(origin.y, origin.y + footprint.y):
+		for x in range(origin.x, origin.x + footprint.x):
+			if is_deploy_zone(Vector2i(x, y)):
+				return PlaceError.DEPLOY_ZONE
+
+	for y in range(origin.y, origin.y + footprint.y):
+		for x in range(origin.x, origin.x + footprint.x):
+			var cell: Vector2i = Vector2i(x, y)
+			if _cell_to_id.has(cell) and int(_cell_to_id[cell]) != ignore_id:
+				return PlaceError.OCCUPIED
 
 	return PlaceError.OK
 
@@ -172,6 +182,48 @@ func sell(structure_id: int, wallet: Wallet = null) -> bool:
 		_cell_to_id.erase(c)
 	structure_removed.emit(s)
 	return true
+
+## Same validation as check_place except there is no cost check and the
+## structure's own current cells count as free. An unknown id reports UNKNOWN_TYPE.
+func check_move(structure_id: int, new_origin: Vector2i) -> PlaceError:
+	var s: PlacedStructure = _structures.get(structure_id, null)
+	if s == null:
+		return PlaceError.UNKNOWN_TYPE
+	return _check_footprint(s.footprint, new_origin, structure_id)
+
+## Moves a structure keeping its id. On success emits structure_removed(old)
+## then structure_placed(new); moving to the current origin is a silent no-op.
+func move_structure(structure_id: int, new_origin: Vector2i) -> PlaceError:
+	var err: PlaceError = check_move(structure_id, new_origin)
+	if err != PlaceError.OK:
+		return err
+	var old: PlacedStructure = _structures[structure_id]
+	if old.origin == new_origin:
+		return PlaceError.OK
+	var moved := PlacedStructure.new()
+	moved.id = old.id
+	moved.type_id = old.type_id
+	moved.origin = new_origin
+	moved.footprint = old.footprint
+	for c: Vector2i in old.cells():
+		_cell_to_id.erase(c)
+	_structures[moved.id] = moved
+	for c: Vector2i in moved.cells():
+		_cell_to_id[c] = moved.id
+	structure_removed.emit(old)
+	structure_placed.emit(moved)
+	return PlaceError.OK
+
+## The placed core structure (Nucleus), or null when there is none.
+func find_core() -> PlacedStructure:
+	for s: PlacedStructure in structures():
+		if _is_core_type(s.type_id):
+			return s
+	return null
+
+func _is_core_type(type_id: String) -> bool:
+	var sdef: StructureDef = _config.structures.get(type_id) if _config != null else null
+	return (sdef != null and sdef.has_tag("core")) or type_id == "nucleus"
 
 func default_nucleus_origin() -> Vector2i:
 	var core_id: String = _config.core_structure_id() if _config != null else "nucleus"
@@ -273,25 +325,39 @@ func to_layout() -> Array[Dictionary]:
 		})
 	return layout
 
+## Rebuilds the grid from a layout. A core entry moves the Nucleus to that
+## origin (applied first so other structures validate against its final cells).
 func load_layout(layout: Array, wallet: Wallet = null) -> PlaceError:
 	reset_with_nucleus()
+	var entries: Array[Dictionary] = []
 	for item: Variant in layout:
 		if typeof(item) != TYPE_DICTIONARY:
 			continue
 		var entry: Dictionary = item
-		var type_id: String = str(entry.get("type", ""))
 		var origin_val: Variant = entry.get("origin", Vector2i.ZERO)
 		var origin: Vector2i = Vector2i.ZERO
 		if origin_val is Vector2i:
 			origin = origin_val
 		elif origin_val is Array and (origin_val as Array).size() >= 2:
 			origin = Vector2i(int((origin_val as Array)[0]), int((origin_val as Array)[1]))
+		entries.append({"type": str(entry.get("type", "")), "origin": origin})
 
-		var sdef: StructureDef = _config.structures.get(type_id) if _config != null else null
-		var is_core: bool = (sdef != null and sdef.has_tag("core")) or (type_id == "nucleus")
-		if is_core:
+	var core_moved: bool = false
+	for entry: Dictionary in entries:
+		if not _is_core_type(str(entry["type"])) or core_moved:
 			continue
+		core_moved = true
+		var core: PlacedStructure = find_core()
+		if core != null:
+			var move_err: PlaceError = move_structure(core.id, entry["origin"])
+			if move_err != PlaceError.OK:
+				return move_err
 
+	for entry: Dictionary in entries:
+		var type_id: String = str(entry["type"])
+		if _is_core_type(type_id):
+			continue
+		var origin: Vector2i = entry["origin"]
 		var err: PlaceError = check_place(type_id, origin, wallet)
 		if err != PlaceError.OK:
 			return err
