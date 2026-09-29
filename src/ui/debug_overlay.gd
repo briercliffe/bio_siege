@@ -9,6 +9,8 @@ extends Control
 @onready var btn_infection: Button = $Panel/VBoxContainer/BtnInfection
 @onready var btn_results: Button = $Panel/VBoxContainer/BtnResults
 @onready var btn_stress: Button = $Panel/VBoxContainer/BtnStress
+@onready var btn_replay: Button = $Panel/VBoxContainer/BtnReplay
+@onready var replay_status_label: Label = $Panel/VBoxContainer/ReplayStatusLabel
 
 var fsm: GameStateMachine = null:
 	set(val):
@@ -45,6 +47,8 @@ func _ready() -> void:
 		btn_results.pressed.connect(_on_btn_results_pressed)
 	if btn_stress != null and not btn_stress.pressed.is_connected(_on_btn_stress_pressed):
 		btn_stress.pressed.connect(_on_btn_stress_pressed)
+	if btn_replay != null and not btn_replay.pressed.is_connected(_on_btn_replay_pressed):
+		btn_replay.pressed.connect(_on_btn_replay_pressed)
 
 	if fsm != null:
 		_update_phase_label(fsm.phase)
@@ -131,3 +135,81 @@ func _ensure_nodes() -> void:
 		btn_results = get_node_or_null("Panel/VBoxContainer/BtnResults") as Button
 	if btn_stress == null:
 		btn_stress = get_node_or_null("Panel/VBoxContainer/BtnStress") as Button
+	if btn_replay == null:
+		btn_replay = get_node_or_null("Panel/VBoxContainer/BtnReplay") as Button
+	if replay_status_label == null:
+		replay_status_label = get_node_or_null("Panel/VBoxContainer/ReplayStatusLabel") as Label
+
+
+func replay_last_battle() -> Dictionary:
+	_ensure_nodes()
+	var dir := DirAccess.open("user://battles")
+	if dir == null:
+		_show_replay_status(false, "No battle logs directory")
+		return {"ok": false, "error": "No battle logs directory"}
+
+	var files: Array[String] = []
+	dir.list_dir_begin()
+	var fn: String = dir.get_next()
+	while not fn.is_empty():
+		if not dir.current_is_dir() and fn.ends_with(".json"):
+			files.append(fn)
+		fn = dir.get_next()
+	dir.list_dir_end()
+
+	if files.is_empty():
+		_show_replay_status(false, "No battle logs found")
+		return {"ok": false, "error": "No battle logs found"}
+
+	files.sort_custom(func(a: String, b: String) -> bool:
+		var time_a: int = FileAccess.get_modified_time("user://battles/" + a)
+		var time_b: int = FileAccess.get_modified_time("user://battles/" + b)
+		if time_a != time_b:
+			return time_a > time_b # newest first
+		return a > b
+	)
+
+	var newest_path: String = "user://battles/" + files[0]
+	var file := FileAccess.open(newest_path, FileAccess.READ)
+	if file == null:
+		_show_replay_status(false, "Failed to read %s" % files[0])
+		return {"ok": false, "error": "Failed to read battle log"}
+	var text: String = file.get_as_text()
+	file.close()
+
+	var cfg: GameConfig = null
+	if fsm != null and fsm.session != null and fsm.session.config != null:
+		cfg = fsm.session.config
+	else:
+		var res: ConfigLoadResult = GameConfig.load_from_dir("res://data")
+		if res.is_ok():
+			cfg = res.config
+
+	var result: Dictionary = Replay.verify(text, cfg)
+	var is_match: bool = result.get("match", false)
+	var exp_h: String = str(result.get("expected_hash", ""))
+	var act_h: String = str(result.get("actual_hash", ""))
+	var exp_short: String = exp_h.substr(0, 8) if exp_h.length() >= 8 else exp_h
+	var act_short: String = act_h.substr(0, 8) if act_h.length() >= 8 else act_h
+
+	if is_match:
+		_show_replay_status(true, "✓ Match: %s" % act_short)
+	else:
+		var err_detail: String = str(result.get("error", "Mismatch"))
+		_show_replay_status(false, "✗ Mismatch (%s vs %s): %s" % [exp_short, act_short, err_detail])
+
+	return result
+
+
+func _show_replay_status(ok: bool, msg: String) -> void:
+	if replay_status_label != null:
+		replay_status_label.text = msg
+		replay_status_label.add_theme_color_override("font_color", Color("#2ecc71") if ok else Color("#e74c3c"))
+	var t: Toast = get_tree().root.find_child("Toast", true, false) as Toast if get_tree() != null else null
+	if t != null:
+		t.show_message(msg)
+
+
+func _on_btn_replay_pressed() -> void:
+	replay_last_battle()
+

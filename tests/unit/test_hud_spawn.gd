@@ -296,3 +296,70 @@ func test_incubation_phase_wiring_and_overlay_visibility() -> void:
 	assert_eq(fsm.phase, GameStateMachine.Phase.INFECTION)
 
 	await wait_process_frames(2)
+
+
+func test_menu_button_size() -> void:
+	var session: Session = _create_session()
+	var hud: HudSpawn = _setup_hud(session)
+	assert_not_null(hud.btn_menu)
+	assert_true(hud.btn_menu.custom_minimum_size.x >= 48.0)
+	assert_true(hud.btn_menu.custom_minimum_size.y >= 48.0)
+
+
+func test_export_army() -> void:
+	var session: Session = _create_session()
+	var hud: HudSpawn = _setup_hud(session)
+
+	session.army.buy("rhinovirus", session.wallet)
+	session.army.deploy("rhinovirus", Vector2i(0, 5))
+
+	var json_str: String = hud.export_army()
+	assert_gt(json_str.length(), 0)
+
+	var parsed: Dictionary = SnapshotIO.parse_army(json_str, session.config)
+	assert_true(parsed["ok"])
+	assert_eq(hud.last_toast_message, "Army copied to clipboard")
+
+
+func test_import_army_success() -> void:
+	var session: Session = _create_session()
+	var hud: HudSpawn = _setup_hud(session)
+
+	var army_dict := {
+		"format": "bio_siege.army",
+		"version": 1,
+		"units": [
+			{"type": "rhinovirus", "cell": [0, 0]},
+			{"type": "rhinovirus", "cell": [1, 0]},
+		],
+	}
+	var json_str: String = SnapshotIO.to_json(army_dict)
+	var ok: bool = hud.import_army(json_str)
+	assert_true(ok)
+	assert_eq(session.army.deployments.size(), 2)
+	assert_eq(hud.last_toast_message, "Army loaded")
+
+
+func test_import_army_partial_fit() -> void:
+	var session: Session = _create_session()
+	var hud: HudSpawn = _setup_hud(session)
+
+	# Reduce wallet to 15 ATP
+	session.wallet.spend({"atp": 985})
+	assert_eq(session.wallet.get_amount("atp"), 15)
+
+	# 2 rhinovirus cost 20 ATP > 15 ATP
+	var army_dict := {
+		"format": "bio_siege.army",
+		"version": 1,
+		"units": [
+			{"type": "rhinovirus", "cell": [0, 0]},
+			{"type": "rhinovirus", "cell": [1, 0]},
+		],
+	}
+	var json_str: String = SnapshotIO.to_json(army_dict)
+	var ok: bool = hud.import_army(json_str)
+	assert_true(ok)
+	assert_eq(session.army.deployments.size(), 1)
+	assert_eq(hud.last_toast_message, "Only 1 of 2 units fit your ATP")
+

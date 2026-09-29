@@ -333,8 +333,61 @@ func _on_battle_finished(sim: BattleSim) -> void:
 			"final_state_hash": sim.state_hash(),
 		}
 
+		_write_battle_log(sim)
+
 	if fsm != null:
 		fsm.request_transition(GameStateMachine.Phase.RESULTS)
+
+
+func _write_battle_log(sim: BattleSim) -> void:
+	if session == null or session.config == null or session.battle_setup == null or sim == null:
+		return
+
+	var log_dict: Dictionary = SnapshotIO.battle_to_dict(session.config, session.battle_setup, sim)
+	var json_str: String = SnapshotIO.to_json(log_dict)
+
+	if not DirAccess.dir_exists_absolute("user://battles"):
+		DirAccess.make_dir_recursive_absolute("user://battles")
+
+	var unix_time: int = int(Time.get_unix_time_from_system())
+	var seed_val: int = session.battle_setup.seed
+	var file_path: String = "user://battles/battle_%d_%d.json" % [unix_time, seed_val]
+	var file := FileAccess.open(file_path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(json_str)
+		file.close()
+
+	_rotate_battle_logs()
+
+
+func _rotate_battle_logs() -> void:
+	var dir := DirAccess.open("user://battles")
+	if dir == null:
+		return
+
+	var files: Array[String] = []
+	dir.list_dir_begin()
+	var fn: String = dir.get_next()
+	while not fn.is_empty():
+		if not dir.current_is_dir() and fn.ends_with(".json"):
+			files.append(fn)
+		fn = dir.get_next()
+	dir.list_dir_end()
+
+	if files.size() <= 50:
+		return
+
+	files.sort_custom(func(a: String, b: String) -> bool:
+		var time_a: int = FileAccess.get_modified_time("user://battles/" + a)
+		var time_b: int = FileAccess.get_modified_time("user://battles/" + b)
+		if time_a != time_b:
+			return time_a < time_b
+		return a < b
+	)
+
+	while files.size() > 50:
+		var oldest: String = files.pop_front()
+		dir.remove(oldest)
 
 
 func _on_viewport_size_changed() -> void:

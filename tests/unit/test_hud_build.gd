@@ -275,3 +275,78 @@ func test_touch_buttons_minimum_sizes() -> void:
 	assert_true(hud.confirmation_dialog.get_ok_button().custom_minimum_size.y >= 48.0)
 	assert_true(hud.confirmation_dialog.get_cancel_button().custom_minimum_size.x >= 48.0)
 	assert_true(hud.confirmation_dialog.get_cancel_button().custom_minimum_size.y >= 48.0)
+
+	# Menu button
+	assert_not_null(hud.btn_menu)
+	assert_true(hud.btn_menu.custom_minimum_size.x >= 48.0)
+	assert_true(hud.btn_menu.custom_minimum_size.y >= 48.0)
+
+
+func test_export_base() -> void:
+	var session: Session = _create_session()
+	var ctx: Dictionary = _setup_hud(session)
+	var hud: HudBuild = ctx["hud"]
+
+	session.grid.place("mucous_wall", Vector2i(2, 2), session.wallet)
+	var exported_json: String = hud.export_base()
+	assert_gt(exported_json.length(), 0)
+
+	var parsed: Dictionary = SnapshotIO.parse_base(exported_json, session.config)
+	assert_true(parsed["ok"])
+	assert_eq(hud.last_toast_message, "Base copied to clipboard")
+
+
+func test_import_base_valid() -> void:
+	var session: Session = _create_session()
+	var ctx: Dictionary = _setup_hud(session)
+	var hud: HudBuild = ctx["hud"]
+
+	var base_dict := {
+		"format": "bio_siege.base",
+		"version": 1,
+		"grid": {"width": 20, "height": 20},
+		"structures": [
+			{"type": "nucleus", "origin": [9, 9]},
+			{"type": "mucous_wall", "origin": [3, 3]},
+		],
+	}
+	var json_str: String = SnapshotIO.to_json(base_dict)
+	var ok: bool = hud.import_base(json_str)
+	assert_true(ok)
+	assert_eq(session.grid.structure_id_at(Vector2i(3, 3)) > 0, true)
+	assert_eq(hud.last_toast_message, "Base loaded")
+
+
+func test_import_base_overbudget() -> void:
+	var session: Session = _create_session()
+	var ctx: Dictionary = _setup_hud(session)
+	var hud: HudBuild = ctx["hud"]
+
+	var structures: Array = [
+		{"type": "nucleus", "origin": [9, 9]},
+	]
+	# 12 macrophages * 100 ATP = 1200 ATP > 1000 ATP
+	for i in range(12):
+		structures.append({"type": "macrophage", "origin": [2, 2 + i]})
+
+	var base_dict := {
+		"format": "bio_siege.base",
+		"version": 1,
+		"grid": {"width": 20, "height": 20},
+		"structures": structures,
+	}
+	var json_str: String = SnapshotIO.to_json(base_dict)
+	var ok: bool = hud.import_base(json_str)
+	assert_false(ok)
+	assert_true("budget" in hud.import_dialog.error_label.text)
+
+
+func test_import_base_invalid_json() -> void:
+	var session: Session = _create_session()
+	var ctx: Dictionary = _setup_hud(session)
+	var hud: HudBuild = ctx["hud"]
+
+	var ok: bool = hud.import_base("not a valid json")
+	assert_false(ok)
+	assert_true(hud.import_dialog.error_label.visible)
+

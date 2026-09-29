@@ -7,6 +7,7 @@ signal deploy_type_selected(type_id: String)
 signal recall_tool_selected(on: bool)
 
 const CARD_SCENE: PackedScene = preload("res://src/ui/hud_spawn_card.tscn")
+const IMPORT_DIALOG_SCENE: PackedScene = preload("res://src/ui/import_dialog.tscn")
 
 var session: Session = null
 
@@ -16,6 +17,10 @@ var atp_label: Label = null
 var btn_back: Button = null
 var title_label: Label = null
 var btn_launch: Button = null
+var btn_menu: Button = null
+var popup_menu: PopupMenu = null
+var import_dialog: ImportDialog = null
+var last_toast_message: String = ""
 
 var bottom_tray: PanelContainer = null
 var scroll_container: ScrollContainer = null
@@ -39,12 +44,25 @@ func _ensure_nodes() -> void:
 	btn_back = get_node_or_null("TopBar/MarginContainer/HBoxContainer/LeftBox/BtnBack") as Button
 	title_label = get_node_or_null("TopBar/MarginContainer/HBoxContainer/TitleLabel") as Label
 	btn_launch = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnLaunch") as Button
+	btn_menu = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnMenu") as Button
+	popup_menu = get_node_or_null("PopupMenu") as PopupMenu
+	import_dialog = get_node_or_null("ImportDialog") as ImportDialog
 
 	bottom_tray = get_node_or_null("BottomTray") as PanelContainer
 	scroll_container = get_node_or_null("BottomTray/MarginContainer/ScrollContainer") as ScrollContainer
 	cards_container = get_node_or_null("BottomTray/MarginContainer/ScrollContainer/CardsContainer") as HBoxContainer
 
 	if top_bar != null:
+		if popup_menu == null:
+			popup_menu = PopupMenu.new()
+			popup_menu.name = "PopupMenu"
+			popup_menu.add_item("Export army", 0)
+			popup_menu.add_item("Import army", 1)
+			add_child(popup_menu)
+		if import_dialog == null:
+			import_dialog = IMPORT_DIALOG_SCENE.instantiate() as ImportDialog
+			import_dialog.name = "ImportDialog"
+			add_child(import_dialog)
 		_wire_static_nodes()
 		return
 
@@ -113,6 +131,13 @@ func _ensure_nodes() -> void:
 	btn_launch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top_hbox.add_child(btn_launch)
 
+	btn_menu = Button.new()
+	btn_menu.name = "BtnMenu"
+	btn_menu.text = "⋯"
+	btn_menu.custom_minimum_size = Vector2(48.0, 48.0)
+	btn_menu.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top_hbox.add_child(btn_menu)
+
 	bottom_tray = PanelContainer.new()
 	bottom_tray.name = "BottomTray"
 	bottom_tray.custom_minimum_size = Vector2(0.0, 160.0)
@@ -147,6 +172,16 @@ func _ensure_nodes() -> void:
 	cards_container.alignment = BoxContainer.ALIGNMENT_CENTER
 	scroll_container.add_child(cards_container)
 
+	popup_menu = PopupMenu.new()
+	popup_menu.name = "PopupMenu"
+	popup_menu.add_item("Export army", 0)
+	popup_menu.add_item("Import army", 1)
+	add_child(popup_menu)
+
+	import_dialog = ImportDialog.new()
+	import_dialog.name = "ImportDialog"
+	add_child(import_dialog)
+
 	_wire_static_nodes()
 
 func _wire_static_nodes() -> void:
@@ -156,6 +191,12 @@ func _wire_static_nodes() -> void:
 		btn_back.pressed.connect(_on_back_pressed)
 	if btn_launch != null and not btn_launch.pressed.is_connected(_on_launch_pressed):
 		btn_launch.pressed.connect(_on_launch_pressed)
+	if btn_menu != null and not btn_menu.pressed.is_connected(_on_btn_menu_pressed):
+		btn_menu.pressed.connect(_on_btn_menu_pressed)
+	if popup_menu != null and not popup_menu.id_pressed.is_connected(_on_popup_menu_item_selected):
+		popup_menu.id_pressed.connect(_on_popup_menu_item_selected)
+	if import_dialog != null and not import_dialog.load_requested.is_connected(_on_import_load_requested):
+		import_dialog.load_requested.connect(_on_import_load_requested)
 
 func _ready() -> void:
 	_ensure_nodes()
@@ -330,3 +371,99 @@ func get_recall_card() -> HudSpawnCard:
 		if c.is_recall:
 			return c
 	return null
+
+
+func _on_btn_menu_pressed() -> void:
+	if popup_menu != null:
+		var pos: Vector2 = btn_menu.global_position + Vector2(0.0, btn_menu.size.y) if btn_menu != null else Vector2.ZERO
+		popup_menu.popup(Rect2i(Vector2i(pos), Vector2i(140, 0)))
+
+
+func _on_popup_menu_item_selected(id: int) -> void:
+	match id:
+		0:
+			export_army()
+		1:
+			open_import_dialog()
+
+
+func open_import_dialog() -> void:
+	if import_dialog != null:
+		import_dialog.open("Import Army")
+
+
+func export_army() -> String:
+	if session == null or session.army == null:
+		return ""
+	var army_dict: Dictionary = SnapshotIO.army_to_dict(session.army.deployments)
+	var json_str: String = SnapshotIO.to_json(army_dict)
+	DisplayServer.clipboard_set(json_str)
+	_show_toast("Army copied to clipboard")
+
+	if not DirAccess.dir_exists_absolute("user://armies"):
+		DirAccess.make_dir_recursive_absolute("user://armies")
+	var unix_time: int = int(Time.get_unix_time_from_system())
+	var file_path: String = "user://armies/army_%d.json" % unix_time
+	var file := FileAccess.open(file_path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(json_str)
+		file.close()
+	return json_str
+
+
+func import_army(json_text: String) -> bool:
+	if session == null or session.config == null or session.army == null or session.wallet == null:
+		return false
+	var res: Dictionary = SnapshotIO.parse_army(json_text, session.config)
+	if not res.get("ok", false):
+		var err_msg: String = str(res.get("error", "Failed to parse army"))
+		if import_dialog != null:
+			import_dialog.set_error(err_msg)
+		return false
+
+	if import_dialog != null:
+		import_dialog.close()
+
+	session.army.refund_all(session.wallet)
+	var units: Array = res.get("units", [])
+	var total_units: int = units.size()
+	var deployed_count: int = 0
+	for item: Variant in units:
+		if item is Dictionary:
+			var tid: String = str(item.get("type", ""))
+			var cell_val: Variant = item.get("cell", Vector2i.ZERO)
+			var cell: Vector2i = Vector2i.ZERO
+			if cell_val is Vector2i:
+				cell = cell_val
+			elif cell_val is Array and (cell_val as Array).size() >= 2:
+				cell = Vector2i(int((cell_val as Array)[0]), int((cell_val as Array)[1]))
+
+			if not session.army.buy(tid, session.wallet):
+				break
+			if not session.army.deploy(tid, cell):
+				session.army.unbuy(tid, session.wallet)
+				break
+			deployed_count += 1
+
+	if deployed_count < total_units:
+		_show_toast("Only %d of %d units fit your ATP" % [deployed_count, total_units])
+	else:
+		_show_toast("Army loaded")
+	return true
+
+
+func _on_import_load_requested(text: String) -> void:
+	import_army(text)
+
+
+func _show_toast(msg: String) -> void:
+	last_toast_message = msg
+	var t: Toast = get_node_or_null("../Toast") as Toast
+	if t == null:
+		t = get_node_or_null("Toast") as Toast
+	if t == null:
+		t = Toast.new()
+		t.name = "Toast"
+		add_child(t)
+	t.show_message(msg)
+
