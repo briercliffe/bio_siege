@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Infection paused</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>body{margin:0;font-family:'Open Sans',system-ui,sans-serif}</style>
+</helmet>
+<div style="position:relative;width:1280px;height:720px;overflow:hidden;background:#240a10;color:#f5e6e8;font-family:'Open Sans',system-ui,sans-serif">
+  <div style="position:absolute;left:0;top:0"><dc-import name="Ambient" theme="night" hint-size="1280px,720px"></dc-import></div>
+  <div style="position:absolute;left:327px;top:120px"><dc-import name="Field" scene="combat" theme="night" tile="14" hint-size="627px,399px"></dc-import></div>
+
+  <div style="position:absolute;left:0;top:0;width:1280px;height:720px;background:rgba(10,3,5,0.72)"></div>
+  <div style="position:absolute;left:440px;top:110px;width:400px;box-sizing:border-box;background:#2a0b10;border:2px solid rgba(255,255,255,0.12);border-radius:36px;padding:34px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 60px rgba(0,0,0,0.6)">
+    <div style="font-size:12px;font-weight:700;letter-spacing:0.16em;color:#d3aab0">BATTLE PAUSED</div>
+    <div style="font-size:32px;font-weight:800;line-height:1.1;margin-bottom:8px">Take a breath</div>
+    <a href="Combat.dc.html" style="box-sizing:border-box;height:62px;border-radius:31px;background:linear-gradient(180deg,#48e595,#2ecc71);color:#0a2414;box-shadow:0 8px 20px rgba(46,204,113,0.35);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;text-decoration:none">Resume</a>
+    <a href="SpawnReady.dc.html" style="box-sizing:border-box;height:56px;border-radius:28px;border:2px solid rgba(255,255,255,0.16);background:rgba(255,255,255,0.05);color:#f5e6e8;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:600;text-decoration:none">Restart raid</a>
+    <a href="Settings.dc.html" style="box-sizing:border-box;height:56px;border-radius:28px;border:2px solid rgba(255,255,255,0.16);background:rgba(255,255,255,0.05);color:#f5e6e8;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:600;text-decoration:none">Settings</a>
+    <a href="Main.dc.html" style="box-sizing:border-box;height:56px;border-radius:28px;border:2px solid #ff8a7e;background:transparent;color:#ff8a7e;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;text-decoration:none">Quit to menu</a>
+    <div style="font-size:14px;line-height:1.45;color:#d3aab0;margin-top:4px">Restarting returns you to Incubation with the same base and army budget.</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

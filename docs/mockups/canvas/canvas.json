@@ -1,0 +1,237 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Ambient.dc.html": {
+      "h": 720,
+      "title": "Shared: ambient background",
+      "w": 1280,
+      "x": 2640,
+      "y": 4320
+    },
+    "BuildEmpty.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "05 Synthesis: new base",
+      "w": 1280,
+      "x": 0,
+      "y": 1080
+    },
+    "BuildPlacing.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "06 Synthesis: placing",
+      "w": 1280,
+      "x": 1360,
+      "y": 1080
+    },
+    "Combat.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "11 Infection: battle",
+      "w": 1280,
+      "x": 0,
+      "y": 3240
+    },
+    "ConfigError.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "15 Data error",
+      "w": 1280,
+      "x": 0,
+      "y": 4320
+    },
+    "Defeat.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "14 Results: defense held",
+      "w": 1280,
+      "x": 4080,
+      "y": 3240
+    },
+    "Field.dc.html": {
+      "h": 399,
+      "title": "Shared: battlefield island",
+      "w": 627,
+      "x": 2000,
+      "y": 4320
+    },
+    "FinalizeConfirm.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "07 Synthesis: finalize?",
+      "w": 1280,
+      "x": 2720,
+      "y": 1080
+    },
+    "HowToPlay.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "02 How to play",
+      "w": 1280,
+      "x": 1360,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "01 Title",
+      "w": 1280,
+      "x": 0,
+      "y": 0
+    },
+    "Models.dc.html": {
+      "h": 1400,
+      "title": "Model sheet",
+      "w": 1500,
+      "x": 4000,
+      "y": 4320
+    },
+    "Pause.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "12 Infection: paused",
+      "w": 1280,
+      "x": 1360,
+      "y": 3240
+    },
+    "SavedLayouts.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "03 Saved bases and armies",
+      "w": 1280,
+      "x": 2720,
+      "y": 0
+    },
+    "Settings.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "04 Settings",
+      "w": 1280,
+      "x": 4080,
+      "y": 0
+    },
+    "SpawnBuying.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "09 Incubation: empty army",
+      "w": 1280,
+      "x": 1360,
+      "y": 2160
+    },
+    "SpawnReady.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "10 Incubation: deploying",
+      "w": 1280,
+      "x": 2720,
+      "y": 2160
+    },
+    "SwitchSides.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "08 Switching sides",
+      "w": 1280,
+      "x": 0,
+      "y": 2160
+    },
+    "Victory.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "13 Results: Nucleus destroyed",
+      "w": 1280,
+      "x": 2720,
+      "y": 3240
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-09-29T12:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "s_later": {
+      "fill": "orange",
+      "maxH": 420,
+      "size": 24,
+      "text": "Not designed yet (post-MVP, plan sections 10 to 13)\n\nBase upgrades with Amino Acids\nMutation Lab (DNA and Plasmids)\nRaid target picker for AI bases\nMitochondria and ATP storage\nClan hub and gene transfer\nPandemic Mode war room",
+      "w": 520,
+      "x": 1360,
+      "y": 4320
+    },
+    "s_locked": {
+      "fill": "green",
+      "maxH": 250,
+      "size": 24,
+      "text": "LOCKED FOR THE MVP (v1, 2026-09-29)\n\nIsometric view, 40x40 grid, final screen set and models.\nSpec: docs/MVP_UI_SPEC.md in the repo.\nChanges from here go through that spec.",
+      "w": 620,
+      "x": 0,
+      "y": -620
+    },
+    "t_incub": {
+      "kind": "title1",
+      "maxW": 4000,
+      "text": "Phase 2: Incubation (build and deploy the army)",
+      "w": 240,
+      "x": 0,
+      "y": 1900
+    },
+    "t_infect": {
+      "kind": "title1",
+      "maxW": 5360,
+      "text": "Phases 3 and 4: Infection and Results",
+      "w": 240,
+      "x": 0,
+      "y": 2980
+    },
+    "t_menus": {
+      "kind": "title1",
+      "maxW": 5360,
+      "text": "Start and menus",
+      "w": 240,
+      "x": 0,
+      "y": -260
+    },
+    "t_synth": {
+      "kind": "title1",
+      "maxW": 4000,
+      "text": "Phase 1: Synthesis (build the defense)",
+      "w": 240,
+      "x": 0,
+      "y": 820
+    },
+    "t_system": {
+      "kind": "title1",
+      "maxW": 5500,
+      "text": "System and shared parts",
+      "w": 240,
+      "x": 0,
+      "y": 4060
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "HowToPlay.dc.html",
+    "SavedLayouts.dc.html",
+    "Settings.dc.html",
+    "BuildEmpty.dc.html",
+    "BuildPlacing.dc.html",
+    "FinalizeConfirm.dc.html",
+    "SwitchSides.dc.html",
+    "SpawnBuying.dc.html",
+    "SpawnReady.dc.html",
+    "Combat.dc.html",
+    "Pause.dc.html",
+    "Victory.dc.html",
+    "Defeat.dc.html",
+    "ConfigError.dc.html",
+    "Field.dc.html",
+    "Ambient.dc.html",
+    "Models.dc.html"
+  ],
+  "pages": [],
+  "title": "Bio Siege Screens"
+}

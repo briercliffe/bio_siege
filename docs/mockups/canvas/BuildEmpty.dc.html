@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Synthesis new base</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>body{margin:0;font-family:'Open Sans',system-ui,sans-serif}</style>
+</helmet>
+<div style="position:relative;width:1280px;height:720px;overflow:hidden;background:#d8e9f7;color:#12304f;font-family:'Open Sans',system-ui,sans-serif">
+  <div style="position:absolute;left:0;top:0"><dc-import name="Ambient" theme="day" hint-size="1280px,720px"></dc-import></div>
+  <div style="position:absolute;left:327px;top:120px"><dc-import name="Field" scene="build-empty" theme="day" tile="14" hint-size="627px,399px"></dc-import></div>
+
+  <div style="position:absolute;left:20px;top:14px;height:52px;box-sizing:border-box;padding:0 20px;border-radius:26px;background:rgba(255,255,255,0.9);border:2px solid #ffffff;box-shadow:0 8px 22px rgba(18,48,79,0.16);display:flex;align-items:center;gap:10px">
+    <div style="width:24px;height:24px;background:linear-gradient(160deg,#ffe680,#f1c40f);clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)"></div>
+    <div style="font-size:24px;font-weight:800">1000</div><div style="font-size:14px;font-weight:700;color:#576574">ATP</div>
+  </div>
+  <div style="position:absolute;left:470px;top:10px;width:340px;height:56px;box-sizing:border-box;border-radius:28px;background:rgba(255,255,255,0.9);border:2px solid #ffffff;box-shadow:0 8px 22px rgba(18,48,79,0.16);display:flex;flex-direction:column;align-items:center;justify-content:center">
+    <div style="font-size:12px;font-weight:700;letter-spacing:0.14em;color:#1e5aa8">PHASE 1 · SYNTHESIS</div>
+    <div style="font-size:17px;font-weight:700">Build your defense</div>
+  </div>
+  <a href="Main.dc.html" aria-label="Menu" style="position:absolute;right:196px;top:12px;box-sizing:border-box;width:52px;height:52px;border-radius:26px;background:rgba(255,255,255,0.9);border:2px solid #ffffff;box-shadow:0 8px 22px rgba(18,48,79,0.16);display:flex;align-items:center;justify-content:center;text-decoration:none">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#12304f" stroke-width="2.6" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </a>
+  <a href="BuildPlacing.dc.html" style="position:absolute;right:20px;top:12px;box-sizing:border-box;height:52px;width:164px;border-radius:26px;background:linear-gradient(180deg,#3a7bd0,#1e5aa8);color:#ffffff;box-shadow:0 8px 18px rgba(30,90,168,0.4);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;text-decoration:none">Finalize Base</a>
+
+  <div style="position:absolute;left:20px;top:96px;width:300px;box-sizing:border-box;border-radius:28px;background:rgba(255,255,255,0.9);border:2px solid #ffffff;box-shadow:0 10px 28px rgba(18,48,79,0.18);padding:22px;display:flex;flex-direction:column;gap:14px">
+    <div style="font-size:12px;font-weight:700;letter-spacing:0.14em;color:#576574">GETTING STARTED</div>
+    <div style="font-size:24px;font-weight:800;line-height:1.15">Protect the Nucleus.</div>
+    <div style="font-size:15px;line-height:1.5;color:#576574">You will attack this base yourself next, so build something you would struggle to break.</div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:12px;align-items:center"><div style="flex:none;width:30px;height:30px;border-radius:50%;background:#1e5aa8;color:#ffffff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center">1</div><div style="font-size:15px;line-height:1.35">Pick a structure below.</div></div>
+      <div style="display:flex;gap:12px;align-items:center"><div style="flex:none;width:30px;height:30px;border-radius:50%;background:#1e5aa8;color:#ffffff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center">2</div><div style="font-size:15px;line-height:1.35">Tap the island to place it.</div></div>
+      <div style="display:flex;gap:12px;align-items:center"><div style="flex:none;width:30px;height:30px;border-radius:50%;background:#1e5aa8;color:#ffffff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center">3</div><div style="font-size:15px;line-height:1.35">Use Sell to take any piece back for a full refund.</div></div>
+    </div>
+  </div>
+
+  <div style="position:absolute;right:20px;top:96px;width:300px;box-sizing:border-box;border-radius:28px;background:rgba(255,255,255,0.9);border:2px solid #ffffff;box-shadow:0 10px 28px rgba(18,48,79,0.18);padding:20px;display:flex;flex-direction:column;gap:14px">
+    <div style="font-size:12px;font-weight:700;letter-spacing:0.14em;color:#576574">BASE STATUS</div>
+    <div>
+      <div style="display:flex;justify-content:space-between;font-size:15px;margin-bottom:8px"><span>Spent <b>0</b></span><span style="color:#576574">of 1000 ATP</span></div>
+      <div style="height:14px;border-radius:7px;background:#dbe9f6"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:#576574"><span style="flex:none;width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#d9b8e8,#8e44ad 60%,#5a2874)"></span>The Nucleus is free. Destroy it to win.</div>
+    <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:#576574"><span style="flex:none;width:22px;height:22px;border-radius:8px;background:rgba(30,90,168,0.1);border:2px dashed rgba(30,90,168,0.45);box-sizing:border-box"></span>The outer band is the deploy zone.</div>
+    <div style="font-size:14px;color:#576574">Tiles used <b style="color:#12304f">16 of 1296</b></div>
+  </div>
+
+  <div style="position:absolute;left:226px;top:632px;display:flex;gap:12px">
+    <div style="box-sizing:border-box;width:214px;height:72px;border-radius:24px;border:2px solid #ffffff;background:rgba(255,255,255,0.9);box-shadow:0 8px 20px rgba(18,48,79,0.16);display:flex;align-items:center;gap:12px;padding:0 14px">
+      <div style="flex:none;width:34px;height:14px;border-radius:7px;background:#dccf9f;box-shadow:0 0 0 2px #7d6f48"></div>
+      <div><div style="font-size:16px;font-weight:700">Mucous Wall</div><div style="font-size:14px;font-weight:800;color:#1e5aa8">5 ATP</div></div>
+    </div>
+    <div style="box-sizing:border-box;width:214px;height:72px;border-radius:24px;border:2px solid #ffffff;background:rgba(255,255,255,0.9);box-shadow:0 8px 20px rgba(18,48,79,0.16);display:flex;align-items:center;gap:12px;padding:0 14px">
+      <div style="flex:none;width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 35% 28%,#b4d8fb,#2e86de 55%,#18508f)"></div>
+      <div><div style="font-size:16px;font-weight:700">Macrophage</div><div style="font-size:14px;font-weight:800;color:#1e5aa8">100 ATP</div></div>
+    </div>
+    <div style="box-sizing:border-box;width:214px;height:72px;border-radius:24px;border:2px solid #ffffff;background:rgba(255,255,255,0.9);box-shadow:0 8px 20px rgba(18,48,79,0.16);display:flex;align-items:center;gap:12px;padding:0 14px">
+      <div style="flex:none;width:34px;height:34px;background:linear-gradient(165deg,#d9f9ff,#48dbfb 48%,#1391b8);clip-path:polygon(50% 0,100% 92%,0 92%)"></div>
+      <div><div style="font-size:16px;font-weight:700">B-Cell</div><div style="font-size:14px;font-weight:800;color:#1e5aa8">150 ATP</div></div>
+    </div>
+    <div style="box-sizing:border-box;width:150px;height:72px;border-radius:24px;border:2px dashed #8fa3b8;background:rgba(255,255,255,0.55);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#576574">
+      <div style="font-size:16px;font-weight:700">Sell</div><div style="font-size:12px">Nothing to sell</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

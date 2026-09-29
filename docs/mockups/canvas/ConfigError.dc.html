@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Game data error</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>body{margin:0;font-family:'Open Sans',system-ui,sans-serif}</style>
+</helmet>
+<div style="position:relative;width:1280px;height:720px;overflow:hidden;background:#d8e9f7;color:#12304f;font-family:'Open Sans',system-ui,sans-serif">
+  <div style="position:absolute;left:0;top:0"><dc-import name="Ambient" theme="day" hint-size="1280px,720px"></dc-import></div>
+
+  <div style="position:absolute;left:290px;top:80px;width:700px;box-sizing:border-box;border-radius:40px;background:rgba(255,255,255,0.95);border:2px solid #ffffff;box-shadow:0 16px 44px rgba(18,48,79,0.25);padding:36px;display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="flex:none;width:60px;height:60px;border-radius:50%;background:#fde3df;display:flex;align-items:center;justify-content:center">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#b3261e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/></svg>
+      </div>
+      <div><div style="font-size:12px;font-weight:700;letter-spacing:0.16em;color:#b3261e">DATA ERROR</div><div style="font-size:30px;font-weight:800;line-height:1.1">Game data could not load</div></div>
+    </div>
+    <div style="font-size:16px;line-height:1.5;color:#576574">Bio Siege never guesses at missing stats. Fix the values below, then reload.</div>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="border-radius:22px;background:#fdf1ef;padding:14px 18px">
+        <div style="display:inline-block;height:26px;line-height:26px;padding:0 12px;border-radius:13px;background:#ffffff;font-size:13px;font-weight:700;color:#b3261e">structures.json · mucous_wall</div>
+        <div style="font-size:15px;line-height:1.4;margin-top:6px">cost.atp must be a positive number, found -5.</div>
+      </div>
+      <div style="border-radius:22px;background:#fdf1ef;padding:14px 18px">
+        <div style="display:inline-block;height:26px;line-height:26px;padding:0 12px;border-radius:13px;background:#ffffff;font-size:13px;font-weight:700;color:#b3261e">pathogens.json · bacteriophage</div>
+        <div style="font-size:15px;line-height:1.4;margin-top:6px">targeting.priority_tags contains unknown tag "defence". Known tags: defense, wall, core, virus, bacteria, small.</div>
+      </div>
+      <div style="border-radius:22px;background:#fdf1ef;padding:14px 18px">
+        <div style="display:inline-block;height:26px;line-height:26px;padding:0 12px;border-radius:13px;background:#ffffff;font-size:13px;font-weight:700;color:#b3261e">game_rules.json</div>
+        <div style="font-size:15px;line-height:1.4;margin-top:6px">grid.width is missing.</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:12px;margin-top:6px">
+      <button style="flex:1;height:58px;border-radius:29px;border:2px solid #c5d9ed;background:#ffffff;color:#12304f;font-size:17px;font-weight:700">Copy report</button>
+      <a href="Main.dc.html" style="box-sizing:border-box;flex:1;height:58px;border-radius:29px;background:linear-gradient(180deg,#3a7bd0,#1e5aa8);color:#ffffff;box-shadow:0 8px 18px rgba(30,90,168,0.4);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;text-decoration:none">Reload data</a>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

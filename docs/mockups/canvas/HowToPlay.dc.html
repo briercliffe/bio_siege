@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>How to play</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>body{margin:0;font-family:'Open Sans',system-ui,sans-serif}</style>
+</helmet>
+<div style="position:relative;width:1280px;height:720px;overflow:hidden;background:#d8e9f7;color:#12304f;font-family:'Open Sans',system-ui,sans-serif">
+  <div style="position:absolute;left:0;top:0"><dc-import name="Ambient" theme="day" hint-size="1280px,720px"></dc-import></div>
+
+  <a href="Main.dc.html" style="position:absolute;left:32px;top:28px;box-sizing:border-box;height:52px;padding:0 24px 0 16px;border-radius:26px;background:rgba(255,255,255,0.9);border:2px solid #ffffff;box-shadow:0 8px 22px rgba(18,48,79,0.16);color:#12304f;display:flex;align-items:center;gap:8px;font-size:16px;font-weight:700;text-decoration:none">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#12304f" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Back
+  </a>
+  <div style="position:absolute;left:0;top:26px;width:1280px;text-align:center">
+    <div style="font-size:12px;font-weight:700;letter-spacing:0.16em;color:#1e5aa8">ONE LOOP, FOUR STEPS</div>
+    <h1 style="margin:2px 0 0;font-size:40px;font-weight:800">How to play</h1>
+  </div>
+
+  <div style="position:absolute;left:48px;top:112px;width:1184px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px">
+    <div style="box-sizing:border-box;border-radius:36px;background:rgba(255,255,255,0.92);border:2px solid #ffffff;box-shadow:0 12px 30px rgba(18,48,79,0.18);padding:20px;display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center">
+      <div style="align-self:flex-start;height:30px;padding:0 14px;border-radius:15px;background:#1e5aa8;color:#ffffff;font-size:13px;font-weight:800;display:flex;align-items:center">1 · SYNTHESIS</div>
+      <dc-import name="Field" scene="build-full" theme="day" tile="5" hint-size="224px,143px"></dc-import>
+      <div style="font-size:21px;font-weight:800">Build</div>
+      <div style="font-size:15px;line-height:1.45;color:#576574">Spend ATP on walls, Macrophages and B-Cells around your Nucleus. Sell anything for a full refund.</div>
+    </div>
+    <div style="box-sizing:border-box;border-radius:36px;background:rgba(255,255,255,0.92);border:2px solid #ffffff;box-shadow:0 12px 30px rgba(18,48,79,0.18);padding:20px;display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center">
+      <div style="align-self:flex-start;height:30px;padding:0 14px;border-radius:15px;background:#178a4b;color:#ffffff;font-size:13px;font-weight:800;display:flex;align-items:center">2 · INCUBATION</div>
+      <dc-import name="Field" scene="spawn-ready" theme="night" tile="5" hint-size="224px,143px"></dc-import>
+      <div style="font-size:21px;font-weight:800">Deploy</div>
+      <div style="font-size:15px;line-height:1.45;color:#576574">Switch sides. Buy pathogens with the ATP you kept, then tap the glowing band to send them in.</div>
+    </div>
+    <div style="box-sizing:border-box;border-radius:36px;background:rgba(255,255,255,0.92);border:2px solid #ffffff;box-shadow:0 12px 30px rgba(18,48,79,0.18);padding:20px;display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center">
+      <div style="align-self:flex-start;height:30px;padding:0 14px;border-radius:15px;background:#178a4b;color:#ffffff;font-size:13px;font-weight:800;display:flex;align-items:center">3 · INFECTION</div>
+      <dc-import name="Field" scene="combat" theme="night" tile="5" hint-size="224px,143px"></dc-import>
+      <div style="font-size:21px;font-weight:800">Siege</div>
+      <div style="font-size:15px;line-height:1.45;color:#576574">Launch and watch the battle play out. Destroy the Nucleus to win. You have three minutes.</div>
+    </div>
+    <div style="box-sizing:border-box;border-radius:36px;background:rgba(255,255,255,0.92);border:2px solid #ffffff;box-shadow:0 12px 30px rgba(18,48,79,0.18);padding:20px;display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center">
+      <div style="align-self:flex-start;height:30px;padding:0 14px;border-radius:15px;background:#576574;color:#ffffff;font-size:13px;font-weight:800;display:flex;align-items:center">4 · RESULTS</div>
+      <dc-import name="Field" scene="victory-final" theme="night" tile="5" hint-size="224px,143px"></dc-import>
+      <div style="font-size:21px;font-weight:800">Iterate</div>
+      <div style="font-size:15px;line-height:1.45;color:#576574">Re-raid the same base, edit your defenses or start over. ATP spent on defense is missing from your army.</div>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:48px;top:560px;width:1184px;display:flex;gap:16px;align-items:stretch">
+    <div style="flex:1;border-radius:28px;background:rgba(255,255,255,0.85);padding:14px 20px;font-size:14px;line-height:1.45;color:#3f5670"><b style="color:#12304f">Walls block paths.</b> Pathogens walk around when the detour is short and break through when it is long.</div>
+    <div style="flex:1;border-radius:28px;background:rgba(255,255,255,0.85);padding:14px 20px;font-size:14px;line-height:1.45;color:#3f5670"><b style="color:#12304f">Bacteriophages hit defenses hard.</b> Triple damage against Macrophages and B-Cells.</div>
+    <div style="flex:1;border-radius:28px;background:rgba(255,255,255,0.85);padding:14px 20px;font-size:14px;line-height:1.45;color:#3f5670"><b style="color:#12304f">Out of time means the defense wins.</b> The timer stops the battle at 3:00.</div>
+  </div>
+  <a href="BuildEmpty.dc.html" style="position:absolute;left:520px;top:640px;box-sizing:border-box;width:240px;height:60px;border-radius:30px;background:linear-gradient(180deg,#3a7bd0,#1e5aa8);color:#ffffff;box-shadow:0 10px 22px rgba(30,90,168,0.4);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;text-decoration:none">Start building</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

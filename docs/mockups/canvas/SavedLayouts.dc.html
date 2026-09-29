@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Saved bases and armies</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>body{margin:0;font-family:'Open Sans',system-ui,sans-serif}</style>
+</helmet>
+<div style="position:relative;width:1280px;height:720px;overflow:hidden;background:#d8e9f7;color:#12304f;font-family:'Open Sans',system-ui,sans-serif">
+  <div style="position:absolute;left:0;top:0"><dc-import name="Ambient" theme="day" hint-size="1280px,720px"></dc-import></div>
+
+  <a href="Main.dc.html" style="position:absolute;left:32px;top:28px;box-sizing:border-box;height:52px;padding:0 24px 0 16px;border-radius:26px;background:rgba(255,255,255,0.9);border:2px solid #ffffff;box-shadow:0 8px 22px rgba(18,48,79,0.16);color:#12304f;display:flex;align-items:center;gap:8px;font-size:16px;font-weight:700;text-decoration:none">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#12304f" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Back
+  </a>
+  <div style="position:absolute;left:0;top:26px;width:1280px;text-align:center">
+    <div style="font-size:12px;font-weight:700;letter-spacing:0.16em;color:#1e5aa8">YOUR LIBRARY</div>
+    <h1 style="margin:2px 0 0;font-size:40px;font-weight:800">Saved bases and armies</h1>
+  </div>
+  <a href="BuildEmpty.dc.html" style="position:absolute;right:32px;top:28px;box-sizing:border-box;height:52px;padding:0 24px;border-radius:26px;background:rgba(255,255,255,0.9);border:2px solid #ffffff;box-shadow:0 8px 22px rgba(18,48,79,0.16);color:#12304f;display:flex;align-items:center;font-size:16px;font-weight:700;text-decoration:none">Import file</a>
+
+  <!-- tabs -->
+  <div style="position:absolute;left:490px;top:112px;width:300px;height:56px;box-sizing:border-box;border-radius:28px;background:rgba(255,255,255,0.75);padding:4px;display:flex;gap:4px">
+    <button onClick="{{showBases}}" style="flex:1;border:0;border-radius:24px;font-size:16px;font-weight:700;background:{{basesBg}};color:{{basesFg}}">Bases</button>
+    <button onClick="{{showArmies}}" style="flex:1;border:0;border-radius:24px;font-size:16px;font-weight:700;background:{{armiesBg}};color:{{armiesFg}}">Armies</button>
+  </div>
+
+  <sc-if value="{{isBases}}" hint-placeholder-val="{{ true }}">
+  <div style="position:absolute;left:48px;top:196px;width:1184px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px">
+    <div style="box-sizing:border-box;border-radius:34px;background:rgba(255,255,255,0.92);border:2px solid #ffffff;box-shadow:0 12px 30px rgba(18,48,79,0.18);padding:18px;display:flex;flex-direction:column;gap:12px;align-items:center">
+      <dc-import name="Field" scene="build-full" theme="day" tile="4" hint-size="179px,114px"></dc-import>
+      <div style="align-self:stretch"><div style="font-size:19px;font-weight:800">Ring fort</div><div style="font-size:14px;color:#576574">760 ATP · 52 walls, 4 towers</div><div style="font-size:13px;color:#576574;margin-top:2px">Saved today</div></div>
+      <div style="align-self:stretch;display:flex;gap:8px"><a href="BuildPlacing.dc.html" style="box-sizing:border-box;flex:1;height:48px;border-radius:24px;background:#1e5aa8;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;text-decoration:none">Load</a><button style="width:64px;height:48px;border-radius:24px;border:2px solid #c5d9ed;background:#ffffff;color:#12304f;font-size:14px;font-weight:700">Share</button><button aria-label="Delete Ring fort" style="width:48px;height:48px;border-radius:24px;border:2px solid #f3c6c0;background:#ffffff;color:#b3261e;font-size:14px;font-weight:700">Del</button></div>
+    </div>
+    <div style="box-sizing:border-box;border-radius:34px;background:rgba(255,255,255,0.92);border:2px solid #ffffff;box-shadow:0 12px 30px rgba(18,48,79,0.18);padding:18px;display:flex;flex-direction:column;gap:12px;align-items:center">
+      <dc-import name="Field" scene="layout-b" theme="day" tile="4" hint-size="179px,114px"></dc-import>
+      <div style="align-self:stretch"><div style="font-size:19px;font-weight:800">Sniper cluster</div><div style="font-size:14px;color:#576574">910 ATP · 22 walls, 6 towers</div><div style="font-size:13px;color:#576574;margin-top:2px">Saved yesterday</div></div>
+      <div style="align-self:stretch;display:flex;gap:8px"><a href="BuildPlacing.dc.html" style="box-sizing:border-box;flex:1;height:48px;border-radius:24px;background:#1e5aa8;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;text-decoration:none">Load</a><button style="width:64px;height:48px;border-radius:24px;border:2px solid #c5d9ed;background:#ffffff;color:#12304f;font-size:14px;font-weight:700">Share</button><button aria-label="Delete Sniper cluster" style="width:48px;height:48px;border-radius:24px;border:2px solid #f3c6c0;background:#ffffff;color:#b3261e;font-size:14px;font-weight:700">Del</button></div>
+    </div>
+    <div style="box-sizing:border-box;border-radius:34px;background:rgba(255,255,255,0.92);border:2px solid #ffffff;box-shadow:0 12px 30px rgba(18,48,79,0.18);padding:18px;display:flex;flex-direction:column;gap:12px;align-items:center">
+      <dc-import name="Field" scene="layout-c" theme="day" tile="4" hint-size="179px,114px"></dc-import>
+      <div style="align-self:stretch"><div style="font-size:19px;font-weight:800">Double ring</div><div style="font-size:14px;color:#576574">780 ATP · 136 walls, 1 tower</div><div style="font-size:13px;color:#576574;margin-top:2px">Saved 3 days ago</div></div>
+      <div style="align-self:stretch;display:flex;gap:8px"><a href="BuildPlacing.dc.html" style="box-sizing:border-box;flex:1;height:48px;border-radius:24px;background:#1e5aa8;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;text-decoration:none">Load</a><button style="width:64px;height:48px;border-radius:24px;border:2px solid #c5d9ed;background:#ffffff;color:#12304f;font-size:14px;font-weight:700">Share</button><button aria-label="Delete Double ring" style="width:48px;height:48px;border-radius:24px;border:2px solid #f3c6c0;background:#ffffff;color:#b3261e;font-size:14px;font-weight:700">Del</button></div>
+    </div>
+    <a href="BuildEmpty.dc.html" style="box-sizing:border-box;border-radius:34px;border:3px dashed #8fa3b8;background:rgba(255,255,255,0.45);padding:18px;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;text-decoration:none;color:#3f5670;text-align:center">
+      <div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.8);display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1e5aa8" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+      <div style="font-size:18px;font-weight:800;color:#12304f">Empty slot</div>
+      <div style="font-size:14px;line-height:1.4">Build a base, then save it from the menu.</div>
+    </a>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{isArmies}}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;left:48px;top:196px;width:1184px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px">
+    <div style="box-sizing:border-box;border-radius:34px;background:rgba(255,255,255,0.92);border:2px solid #ffffff;box-shadow:0 12px 30px rgba(18,48,79,0.18);padding:18px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:19px;font-weight:800">Swarm</div>
+      <div style="font-size:14px;color:#576574">240 ATP · 21 units</div>
+      <div style="display:flex;flex-direction:column;gap:8px;min-height:150px">
+        <div style="display:flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:20px;background:#eaf3fb;font-size:15px"><span style="width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#c4f7db,#2ecc71 55%,#178a4b)"></span><b>20</b> Rhinovirus</div>
+        <div style="display:flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:20px;background:#eaf3fb;font-size:15px"><span style="width:16px;height:16px;background:linear-gradient(170deg,#f8b878,#e67e22 55%,#b0600f);clip-path:polygon(28% 6%,72% 6%,88% 46%,72% 58%,92% 94%,80% 94%,60% 66%,40% 66%,20% 94%,8% 94%,28% 58%,12% 46%)"></span><b>1</b> Bacteriophage</div>
+      </div>
+      <div style="display:flex;gap:8px"><a href="SpawnReady.dc.html" style="box-sizing:border-box;flex:1;height:48px;border-radius:24px;background:#1e5aa8;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;text-decoration:none">Load</a><button style="width:64px;height:48px;border-radius:24px;border:2px solid #c5d9ed;background:#ffffff;color:#12304f;font-size:14px;font-weight:700">Share</button><button aria-label="Delete Swarm" style="width:48px;height:48px;border-radius:24px;border:2px solid #f3c6c0;background:#ffffff;color:#b3261e;font-size:14px;font-weight:700">Del</button></div>
+    </div>
+    <div style="box-sizing:border-box;border-radius:34px;background:rgba(255,255,255,0.92);border:2px solid #ffffff;box-shadow:0 12px 30px rgba(18,48,79,0.18);padding:18px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:19px;font-weight:800">Breakers</div>
+      <div style="font-size:14px;color:#576574">240 ATP · 6 units</div>
+      <div style="display:flex;flex-direction:column;gap:8px;min-height:150px">
+        <div style="display:flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:20px;background:#eaf3fb;font-size:15px"><span style="width:16px;height:16px;background:linear-gradient(170deg,#f8b878,#e67e22 55%,#b0600f);clip-path:polygon(28% 6%,72% 6%,88% 46%,72% 58%,92% 94%,80% 94%,60% 66%,40% 66%,20% 94%,8% 94%,28% 58%,12% 46%)"></span><b>6</b> Bacteriophage</div>
+      </div>
+      <div style="display:flex;gap:8px"><a href="SpawnReady.dc.html" style="box-sizing:border-box;flex:1;height:48px;border-radius:24px;background:#1e5aa8;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;text-decoration:none">Load</a><button style="width:64px;height:48px;border-radius:24px;border:2px solid #c5d9ed;background:#ffffff;color:#12304f;font-size:14px;font-weight:700">Share</button><button aria-label="Delete Breakers" style="width:48px;height:48px;border-radius:24px;border:2px solid #f3c6c0;background:#ffffff;color:#b3261e;font-size:14px;font-weight:700">Del</button></div>
+    </div>
+    <div style="box-sizing:border-box;border-radius:34px;background:rgba(255,255,255,0.92);border:2px solid #ffffff;box-shadow:0 12px 30px rgba(18,48,79,0.18);padding:18px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:19px;font-weight:800">Tank push</div>
+      <div style="font-size:14px;color:#576574">240 ATP · 6 units</div>
+      <div style="display:flex;flex-direction:column;gap:8px;min-height:150px">
+        <div style="display:flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:20px;background:#eaf3fb;font-size:15px"><span style="width:16px;height:16px;background:radial-gradient(circle at 32% 34%,#f1c40f 0 24%,transparent 25%),radial-gradient(circle at 68% 34%,#f1c40f 0 24%,transparent 25%),radial-gradient(circle at 50% 70%,#f1c40f 0 28%,transparent 29%)"></span><b>2</b> Staphylococcus</div>
+        <div style="display:flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:20px;background:#eaf3fb;font-size:15px"><span style="width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#c4f7db,#2ecc71 55%,#178a4b)"></span><b>4</b> Rhinovirus</div>
+      </div>
+      <div style="display:flex;gap:8px"><a href="SpawnReady.dc.html" style="box-sizing:border-box;flex:1;height:48px;border-radius:24px;background:#1e5aa8;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;text-decoration:none">Load</a><button style="width:64px;height:48px;border-radius:24px;border:2px solid #c5d9ed;background:#ffffff;color:#12304f;font-size:14px;font-weight:700">Share</button><button aria-label="Delete Tank push" style="width:48px;height:48px;border-radius:24px;border:2px solid #f3c6c0;background:#ffffff;color:#b3261e;font-size:14px;font-weight:700">Del</button></div>
+    </div>
+    <a href="SpawnBuying.dc.html" style="box-sizing:border-box;border-radius:34px;border:3px dashed #8fa3b8;background:rgba(255,255,255,0.45);padding:18px;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;text-decoration:none;color:#3f5670;text-align:center">
+      <div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.8);display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1e5aa8" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+      <div style="font-size:18px;font-weight:800;color:#12304f">Empty slot</div>
+      <div style="font-size:14px;line-height:1.4">Buy an army, then save it from the menu.</div>
+    </a>
+  </div>
+  </sc-if>
+
+  <div style="position:absolute;left:0;top:660px;width:1280px;text-align:center;font-size:14px;color:#3f5670">Shared files are versioned JSON, so friends and the balance tools can load them.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'bases' };
+  }
+  renderVals() {
+    const bases = this.state.tab !== 'armies';
+    return {
+      isBases: bases,
+      isArmies: !bases,
+      basesBg: bases ? '#1e5aa8' : 'transparent',
+      basesFg: bases ? '#ffffff' : '#12304f',
+      armiesBg: bases ? 'transparent' : '#1e5aa8',
+      armiesFg: bases ? '#12304f' : '#ffffff',
+      showBases: () => this.setState({ tab: 'bases' }),
+      showArmies: () => this.setState({ tab: 'armies' })
+    };
+  }
+}
+</script>
+</body>
+</html>

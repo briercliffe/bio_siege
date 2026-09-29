@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bio Siege title</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>body{margin:0;font-family:'Open Sans',system-ui,sans-serif}</style>
+</helmet>
+<div style="position:relative;width:1280px;height:720px;overflow:hidden;background:#d8e9f7;color:#12304f;font-family:'Open Sans',system-ui,sans-serif">
+  <div style="position:absolute;left:0;top:0"><dc-import name="Ambient" theme="day" w="700" h="720" hint-size="700px,720px"></dc-import></div>
+  <div style="position:absolute;left:600px;top:0;width:680px;height:720px;background:#240a10;border-radius:120px 0 0 120px;overflow:hidden">
+    <div style="position:absolute;left:0;top:0"><dc-import name="Ambient" theme="night" w="680" h="720" hint-size="680px,720px"></dc-import></div>
+  </div>
+  <div style="position:absolute;left:671px;top:190px"><dc-import name="Field" scene="combat" theme="night" tile="12" hint-size="538px,342px"></dc-import></div>
+
+  <div style="position:absolute;left:80px;top:80px;width:480px;display:flex;flex-direction:column;gap:12px">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+      <div style="width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 35% 28%,#b4d8fb,#2e86de 55%,#18508f)"></div>
+      <div style="width:30px;height:30px;background:linear-gradient(165deg,#d9f9ff,#48dbfb 48%,#1391b8);clip-path:polygon(50% 0,100% 92%,0 92%)"></div>
+      <div style="width:30px;height:30px;border-radius:48% 52% 46% 54% / 52% 46% 54% 48%;background:radial-gradient(circle at 35% 30%,#d9b8e8,#8e44ad 55%,#5a2874)"></div>
+      <div style="width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#c4f7db,#2ecc71 55%,#178a4b)"></div>
+      <div style="width:30px;height:30px;background:linear-gradient(170deg,#f8b878,#e67e22 55%,#b0600f);clip-path:polygon(28% 6%,72% 6%,88% 46%,72% 58%,92% 94%,80% 94%,60% 66%,40% 66%,20% 94%,8% 94%,28% 58%,12% 46%)"></div>
+    </div>
+    <div style="font-size:13px;font-weight:700;letter-spacing:0.16em;color:#576574">BIOLOGICAL REVERSE TOWER DEFENSE</div>
+    <h1 style="margin:0;font-size:104px;line-height:0.92;font-weight:800;letter-spacing:-0.02em;color:#12304f">BIO<br>SIEGE</h1>
+    <p style="margin:10px 0 22px;font-size:20px;line-height:1.4;color:#3f5670;max-width:420px">Build the immune defense. Then breed the pathogens that break it.</p>
+
+    <a href="BuildEmpty.dc.html" style="box-sizing:border-box;height:68px;width:380px;border-radius:34px;background:linear-gradient(180deg,#3a7bd0,#1e5aa8);color:#ffffff;box-shadow:0 10px 22px rgba(30,90,168,0.4);display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:800;text-decoration:none">Play</a>
+    <a href="SavedLayouts.dc.html" style="box-sizing:border-box;height:56px;width:380px;border-radius:28px;background:rgba(255,255,255,0.9);border:2px solid #ffffff;box-shadow:0 8px 18px rgba(18,48,79,0.14);color:#12304f;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;text-decoration:none">Saved bases and armies</a>
+    <div style="display:flex;gap:12px;width:380px">
+      <a href="HowToPlay.dc.html" style="box-sizing:border-box;height:56px;flex-grow:1;border-radius:28px;background:rgba(255,255,255,0.9);border:2px solid #ffffff;box-shadow:0 8px 18px rgba(18,48,79,0.14);color:#12304f;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;text-decoration:none">How to play</a>
+      <a href="Settings.dc.html" style="box-sizing:border-box;height:56px;flex-grow:1;border-radius:28px;background:rgba(255,255,255,0.9);border:2px solid #ffffff;box-shadow:0 8px 18px rgba(18,48,79,0.14);color:#12304f;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;text-decoration:none">Settings</a>
+    </div>
+  </div>
+  <div style="position:absolute;left:80px;bottom:30px;font-size:14px;color:#576574">Playtest build 0.1</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

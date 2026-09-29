@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ambient background</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div style="position:relative;overflow:hidden;width:{{w}}px;height:{{h}}px;background:{{bg}}">
+  <sc-for list="{{cells}}" as="c" hint-placeholder-count="12">
+    <div style="position:absolute;{{c.s}}"></div>
+  </sc-for>
+  <div style="position:absolute;left:0;top:0;width:{{w}}px;height:{{h}}px;background:{{vignette}}"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"day","options":["day","night"]},"w":{"editor":"int","default":1280},"h":{"editor":"int","default":720},"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const night = (this.props.theme || 'day') === 'night';
+    const w = parseInt(this.props.w || 1280, 10), h = parseInt(this.props.h || 720, 10);
+    let seed = 5;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    const cells = [];
+    const n = Math.max(6, Math.round(w / 90));
+    for (let i = 0; i < n; i++) {
+      const s = 40 + rnd() * 150;
+      const x = rnd() * w, y = rnd() * h;
+      const fill = night ? 'rgba(120,35,50,.22)' : 'rgba(255,255,255,.45)';
+      const ring = night ? 'rgba(255,255,255,.05)' : 'rgba(140,185,225,.55)';
+      cells.push({ s: 'left:' + Math.round(x - s / 2) + 'px;top:' + Math.round(y - s / 2) + 'px;width:' + Math.round(s) + 'px;height:' + Math.round(s) + 'px;border-radius:50%;background:' + fill + ';box-shadow:inset 0 0 0 3px ' + ring });
+      cells.push({ s: 'left:' + Math.round(x - s * 0.15) + 'px;top:' + Math.round(y - s * 0.15) + 'px;width:' + Math.round(s * 0.3) + 'px;height:' + Math.round(s * 0.3) + 'px;border-radius:50%;background:' + ring });
+    }
+    return {
+      w: w, h: h,
+      bg: night ? 'radial-gradient(ellipse at 50% 45%,#3d141c 0,#240a10 55%,#14050a 100%)' : 'radial-gradient(ellipse at 50% 45%,#f4faff 0,#d8e9f7 55%,#b5d2ea 100%)',
+      vignette: night ? 'radial-gradient(ellipse at 50% 50%,transparent 55%,rgba(0,0,0,.45) 100%)' : 'radial-gradient(ellipse at 50% 50%,transparent 60%,rgba(40,90,150,.18) 100%)',
+      cells: cells
+    };
+  }
+}
+</script>
+</body>
+</html>

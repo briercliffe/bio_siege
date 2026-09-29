@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Infection battle in progress</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>body{margin:0;font-family:'Open Sans',system-ui,sans-serif}</style>
+</helmet>
+<div style="position:relative;width:1280px;height:720px;overflow:hidden;background:#240a10;color:#f5e6e8;font-family:'Open Sans',system-ui,sans-serif">
+  <div style="position:absolute;left:0;top:0"><dc-import name="Ambient" theme="night" hint-size="1280px,720px"></dc-import></div>
+  <div style="position:absolute;left:327px;top:120px"><dc-import name="Field" scene="combat" theme="night" tile="14" hint-size="627px,399px"></dc-import></div>
+
+  <!-- top HUD -->
+  <a href="Pause.dc.html" aria-label="Pause" style="position:absolute;left:20px;top:12px;box-sizing:border-box;width:52px;height:52px;border-radius:26px;background:rgba(42,11,16,0.9);border:2px solid rgba(255,255,255,0.14);box-shadow:0 8px 22px rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;text-decoration:none">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f5e6e8" stroke-width="3" stroke-linecap="round"><path d="M8 5v14M16 5v14"/></svg>
+  </a>
+  <div style="position:absolute;left:84px;top:14px;height:48px;box-sizing:border-box;padding:0 20px;border-radius:24px;background:rgba(42,11,16,0.9);border:2px solid rgba(255,255,255,0.1);box-shadow:0 8px 22px rgba(0,0,0,0.45);display:flex;flex-direction:column;justify-content:center">
+    <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;color:#2ecc71">PHASE 3 · INFECTION</div>
+    <div style="font-size:15px;font-weight:700">Siege in progress</div>
+  </div>
+  <div style="position:absolute;left:530px;top:10px;width:220px;height:56px;box-sizing:border-box;border-radius:28px;background:rgba(42,11,16,0.9);border:2px solid rgba(255,255,255,0.1);box-shadow:0 8px 22px rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;gap:10px">
+    <span style="font-size:14px;color:#d3aab0">Time left</span><span style="font-size:28px;font-weight:800">1:48</span>
+  </div>
+  <div style="position:absolute;right:20px;top:14px;height:52px;box-sizing:border-box;padding:0 22px;border-radius:26px;background:rgba(42,11,16,0.9);border:2px solid rgba(255,255,255,0.1);box-shadow:0 8px 22px rgba(0,0,0,0.45);display:flex;align-items:center;gap:10px">
+    <span style="font-size:14px;color:#d3aab0">Alive</span><span style="font-size:26px;font-weight:800">6</span><span style="font-size:15px;color:#d3aab0">of 8</span>
+  </div>
+
+  <!-- view options -->
+  <div style="position:absolute;left:20px;top:96px;width:300px;box-sizing:border-box;border-radius:28px;background:rgba(42,11,16,0.9);border:2px solid rgba(255,255,255,0.1);box-shadow:0 10px 28px rgba(0,0,0,0.45);padding:20px;display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:center;gap:14px;min-height:56px">
+      <div style="flex:none;width:56px;height:32px;border-radius:16px;background:#2ecc71;position:relative"><div style="position:absolute;right:4px;top:4px;width:24px;height:24px;border-radius:50%;background:#0a2414"></div></div>
+      <div><div style="font-size:16px;font-weight:700">Intent lines</div><div style="font-size:14px;color:#d3aab0">Each pathogen to its target</div></div>
+    </div>
+    <div style="font-size:12px;font-weight:700;letter-spacing:0.14em;color:#d3aab0">READING THE BATTLE</div>
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:14px;line-height:1.35">
+      <div style="display:flex;gap:12px;align-items:center"><span style="flex:none;width:28px;height:0;border-top:2px dashed rgba(255,255,255,0.7)"></span>Line: who a unit is heading for</div>
+      <div style="display:flex;gap:12px;align-items:center"><span style="flex:none;width:28px;height:12px;border-radius:6px;background:#dccf9f;box-shadow:0 0 0 2px #7d6f48"></span>Cracks: a wall is being broken</div>
+      <div style="display:flex;gap:12px;align-items:center"><span style="flex:none;width:28px;height:6px;border-radius:3px;background:linear-gradient(90deg,#f5b041 50%,rgba(0,0,0,0.6) 50%)"></span>Bar: health of a damaged unit</div>
+      <div style="display:flex;gap:12px;align-items:center"><span style="flex:none;width:28px;display:flex;justify-content:center"><span style="width:10px;height:10px;border-radius:50%;background:#e8fcff;box-shadow:0 0 8px #48dbfb"></span></span>Glow: an antibody in flight</div>
+    </div>
+  </div>
+
+  <!-- army + defense -->
+  <div style="position:absolute;right:20px;top:96px;width:300px;box-sizing:border-box;border-radius:28px;background:rgba(42,11,16,0.9);border:2px solid rgba(255,255,255,0.1);box-shadow:0 10px 28px rgba(0,0,0,0.45);padding:20px;display:flex;flex-direction:column;gap:12px">
+    <div style="font-size:12px;font-weight:700;letter-spacing:0.14em;color:#d3aab0">ARMY</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:12px;height:44px;padding:0 16px;border-radius:22px;background:rgba(255,255,255,0.07);font-size:15px"><span style="flex:none;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#c4f7db,#2ecc71 55%,#178a4b)"></span><span style="flex:1">Rhinovirus</span><b>4</b><span style="color:#d3aab0">of 5</span></div>
+      <div style="display:flex;align-items:center;gap:12px;height:44px;padding:0 16px;border-radius:22px;background:rgba(255,255,255,0.07);font-size:15px"><span style="flex:none;width:18px;height:18px;background:linear-gradient(170deg,#f8b878,#e67e22 55%,#b0600f);clip-path:polygon(28% 6%,72% 6%,88% 46%,72% 58%,92% 94%,80% 94%,60% 66%,40% 66%,20% 94%,8% 94%,28% 58%,12% 46%)"></span><span style="flex:1">Bacteriophage</span><b>1</b><span style="color:#d3aab0">of 2</span></div>
+      <div style="display:flex;align-items:center;gap:12px;height:44px;padding:0 16px;border-radius:22px;background:rgba(255,255,255,0.07);font-size:15px"><span style="flex:none;width:18px;height:18px;background:radial-gradient(circle at 32% 34%,#f1c40f 0 24%,transparent 25%),radial-gradient(circle at 68% 34%,#f1c40f 0 24%,transparent 25%),radial-gradient(circle at 50% 70%,#f1c40f 0 28%,transparent 29%)"></span><span style="flex:1">Staphylococcus</span><b>1</b><span style="color:#d3aab0">of 1</span></div>
+    </div>
+    <div style="font-size:12px;font-weight:700;letter-spacing:0.14em;color:#d3aab0;margin-top:6px">DEFENSE</div>
+    <div style="display:flex;gap:8px">
+      <div style="flex:1;border-radius:18px;background:rgba(255,255,255,0.07);padding:10px 14px"><div style="font-size:12px;color:#d3aab0">Walls</div><div style="font-size:18px;font-weight:800">50 <span style="font-size:13px;font-weight:600;color:#d3aab0">of 52</span></div></div>
+      <div style="flex:1;border-radius:18px;background:rgba(255,255,255,0.07);padding:10px 14px"><div style="font-size:12px;color:#d3aab0">Towers</div><div style="font-size:18px;font-weight:800">3 <span style="font-size:13px;font-weight:600;color:#d3aab0">of 4</span></div></div>
+    </div>
+  </div>
+
+  <!-- Nucleus health -->
+  <div style="position:absolute;left:226px;top:632px;width:828px;height:72px;box-sizing:border-box;border-radius:36px;background:rgba(42,11,16,0.92);border:2px solid rgba(255,255,255,0.1);box-shadow:0 8px 22px rgba(0,0,0,0.45);display:flex;align-items:center;gap:16px;padding:0 28px 0 18px">
+    <div style="flex:none;width:44px;height:44px;border-radius:48% 52% 46% 54% / 52% 46% 54% 48%;background:radial-gradient(circle at 35% 30%,#d9b8e8,#8e44ad 55%,#5a2874)"></div>
+    <div style="flex:none;font-size:18px;font-weight:700">Nucleus</div>
+    <div style="flex:1;height:22px;border-radius:11px;background:rgba(0,0,0,0.4);overflow:hidden"><div style="width:67%;height:22px;border-radius:11px;background:linear-gradient(90deg,#c39bd3,#9b59b6)"></div></div>
+    <div style="flex:none;font-size:22px;font-weight:800">1340<span style="font-size:15px;font-weight:600;color:#d3aab0"> / 2000</span></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
