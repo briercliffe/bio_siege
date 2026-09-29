@@ -66,6 +66,9 @@ func core_structure_id() -> String:
 			return s.id
 	return ""
 
+func move_nucleus_enabled() -> bool:
+	return bool(feature_flags.get("move_nucleus", false))
+
 static func load_from_dir(dir_path: String) -> ConfigLoadResult:
 	var result := ConfigLoadResult.new()
 	var base: String = dir_path

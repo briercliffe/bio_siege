@@ -133,6 +133,9 @@ func _on_help_requested() -> void:
 func _on_placed(_type_id: String, _cell: Vector2i) -> void:
 	Sfx.play("place")
 
+func _on_nucleus_moved(_from: Vector2i, _to: Vector2i) -> void:
+	Sfx.play("place")
+
 func _on_sold(_type_id: String, refund: Dictionary, cell: Vector2i) -> void:
 	Sfx.play("sell")
 	if toast == null:

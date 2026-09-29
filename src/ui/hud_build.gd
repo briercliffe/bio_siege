@@ -296,6 +296,20 @@ func _populate_tray() -> void:
 	cards_container.add_child(sell_card)
 	cards.append(sell_card)
 
+	if session.config.move_nucleus_enabled():
+		var move_card: HudCard = null
+		if CARD_SCENE != null:
+			move_card = CARD_SCENE.instantiate() as HudCard
+		if move_card == null:
+			move_card = HudCard.new()
+		move_card.setup_move_nucleus(session.config.structures.get(session.config.core_structure_id()))
+		move_card.pressed.connect(func() -> void:
+			if controller != null:
+				controller.select_tool(BuildController.TOOL_MOVE_NUCLEUS)
+		)
+		cards_container.add_child(move_card)
+		cards.append(move_card)
+
 ## Re-reads names, costs and roles after a config hot reload (#27).
 ## The tray is rebuilt only when structures were added, removed or re-ordered by cost.
 func refresh_config() -> void:
@@ -304,19 +318,22 @@ func refresh_config() -> void:
 		return
 	var expected_ids: Array[String] = session.config.buildable_structure_ids()
 	var current_ids: Array[String] = []
+	var has_move_card: bool = false
 	for c in cards:
-		if not c.is_sell:
+		if c.is_structure_card():
 			current_ids.append(c.tool_id)
-	if current_ids == expected_ids:
+		elif c.is_move_nucleus:
+			has_move_card = true
+	if current_ids == expected_ids and has_move_card == session.config.move_nucleus_enabled():
 		for c in cards:
 			var sdef: StructureDef = session.config.structures.get(c.tool_id)
-			if not c.is_sell and sdef != null:
+			if c.is_structure_card() and sdef != null:
 				c.setup_structure(sdef)
 	else:
 		var selected_tool: String = controller.tool if controller != null else ""
 		_populate_tray()
 		if controller != null and not selected_tool.is_empty():
-			if selected_tool == "sell" or session.config.structures.has(selected_tool):
+			if selected_tool == "sell" or session.config.structures.has(selected_tool) or (selected_tool == BuildController.TOOL_MOVE_NUCLEUS and session.config.move_nucleus_enabled()):
 				_on_tool_changed(selected_tool)
 			else:
 				controller.select_tool(selected_tool)
