@@ -1,0 +1,110 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/ui/hud_combat.gd" id="1_combat"]
+[ext_resource type="Theme" path="res://src/ui/theme_spawn.tres" id="2_theme"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bg"]
+bg_color = Color(0.12, 0.12, 0.12, 0.8)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_fill"]
+bg_color = Color(0.180392, 0.8, 0.443137, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="HudCombat" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_combat")
+
+[node name="TopBar" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 64.0
+grow_horizontal = 2
+mouse_filter = 0
+
+[node name="MarginContainer" type="MarginContainer" parent="TopBar"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 8
+
+[node name="HBoxContainer" type="HBoxContainer" parent="TopBar/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="LeftBox" type="HBoxContainer" parent="TopBar/MarginContainer/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PathogensLabel" type="Label" parent="TopBar/MarginContainer/HBoxContainer/LeftBox"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 18
+text = "Pathogens 0 / 0"
+vertical_alignment = 1
+
+[node name="CenterBox" type="VBoxContainer" parent="TopBar/MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(320, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+alignment = 1
+theme_override_constants/separation = 2
+
+[node name="NucleusContainer" type="MarginContainer" parent="TopBar/MarginContainer/HBoxContainer/CenterBox"]
+custom_minimum_size = Vector2(320, 20)
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="NucleusBar" type="ProgressBar" parent="TopBar/MarginContainer/HBoxContainer/CenterBox/NucleusContainer"]
+custom_minimum_size = Vector2(320, 20)
+layout_mode = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_fill")
+max_value = 2000.0
+value = 2000.0
+show_percentage = false
+
+[node name="NucleusLabel" type="Label" parent="TopBar/MarginContainer/HBoxContainer/CenterBox/NucleusContainer"]
+custom_minimum_size = Vector2(320, 20)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+text = "NUCLEUS 2000 / 2000"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TimerLabel" type="Label" parent="TopBar/MarginContainer/HBoxContainer/CenterBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "3:00"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="RightBox" type="HBoxContainer" parent="TopBar/MarginContainer/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+alignment = 2
+
+[node name="BtnIntent" type="Button" parent="TopBar/MarginContainer/HBoxContainer/RightBox"]
+custom_minimum_size = Vector2(160, 48)
+layout_mode = 2
+size_flags_vertical = 4
+text = "Intent lines: ON"

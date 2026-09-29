@@ -6,12 +6,15 @@ const ProjectileViewScene: PackedScene = preload("res://src/view/projectile_view
 const DeathVfxScene: PackedScene = preload("res://src/view/death_vfx.tscn")
 const StructureViewScene: PackedScene = preload("res://src/view/structure_view.tscn")
 const GridViewScene: PackedScene = preload("res://src/view/grid_view.tscn")
+const HudCombatScene: PackedScene = preload("res://src/ui/hud_combat.tscn")
 
 var session: Session = null
 var fsm: GameStateMachine = null
 
 var grid_view: GridView = null
 var runner: BattleRunner = null
+var hud_combat: HudCombat = null
+var intent_lines_view: IntentLinesView = null
 
 var entity_container: Node2D = null
 var structures_container: Node2D = null
@@ -35,6 +38,8 @@ var _banner_shown: bool = false
 func _resolve_nodes() -> void:
 	if grid_view == null:
 		grid_view = get_node_or_null("GridView") as GridView
+	if hud_combat == null:
+		hud_combat = get_node_or_null("HudCombat") as HudCombat
 	if banner_panel == null:
 		banner_panel = get_node_or_null("BannerPanel") as Control
 	if banner_panel != null and banner_label == null:
@@ -58,6 +63,10 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 	_banner_shown = false
 
 	_resolve_nodes()
+
+	if hud_combat == null:
+		hud_combat = HudCombatScene.instantiate() as HudCombat
+		add_child(hud_combat)
 
 	if banner_panel != null:
 		banner_panel.visible = false
@@ -88,6 +97,12 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 		runner.start(cfg, b_setup)
 		_init_structure_views()
 		_dispatch_events()
+
+	if intent_lines_view != null:
+		intent_lines_view.setup(session, runner, _active_pathogens, _structure_views)
+	if hud_combat != null:
+		hud_combat.setup(session, runner)
+
 	_update_grid_layout()
 
 
@@ -103,6 +118,11 @@ func _init_entity_containers() -> void:
 	structures_container = Node2D.new()
 	structures_container.name = "StructuresContainer"
 	entity_container.add_child(structures_container)
+
+	intent_lines_view = IntentLinesView.new()
+	intent_lines_view.name = "IntentLinesView"
+	entity_container.add_child(intent_lines_view)
+	intent_lines_view.setup(session, runner, _active_pathogens, _structure_views)
 
 	pathogens_container = Node2D.new()
 	pathogens_container.name = "PathogensContainer"
@@ -146,6 +166,18 @@ func _on_runner_ticked() -> void:
 	for jv: ProjectileView in _active_projectiles.values():
 		if is_instance_valid(jv):
 			jv.on_ticked()
+
+	if runner != null and runner.sim != null:
+		var breached_ids: Dictionary = {}
+		for p: PathogenState in runner.sim.pathogens:
+			if p != null and p.alive and p.blocker_id != 0:
+				breached_ids[p.blocker_id] = true
+		for sv: StructureView in _structure_views.values():
+			if is_instance_valid(sv):
+				sv.set_breached(breached_ids.has(sv.structure_id))
+
+	if hud_combat != null:
+		hud_combat.update_display()
 
 
 func _process(_delta: float) -> void:
@@ -323,6 +355,6 @@ func _update_grid_layout() -> void:
 		0.0,
 		64.0,
 		maxf(r.size.x, 10.0),
-		maxf(r.size.y - 128.0, 10.0)
+		maxf(r.size.y - 64.0, 10.0)
 	)
 	grid_view.fit_to_rect(inset_rect)
