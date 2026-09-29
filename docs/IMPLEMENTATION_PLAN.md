@@ -1,6 +1,11 @@
-# Bio Siege MVP: Implementation Plan
+# Bio Siege: Implementation Plan
 
-This plan builds the "Attack Your Own Base" sandbox from the MVP spec. It covers engine choice, architecture, the design gaps the spec leaves open, a milestone schedule for a 5-week build (with a 1-week buffer, so 6 weeks at most), and how the evaluation metrics get measured.
+This plan has two parts.
+
+- **Part I (sections 0–7): the MVP.** It builds the "Attack Your Own Base" sandbox from the MVP spec. It covers engine choice, architecture, the design gaps the spec leaves open, a milestone schedule for a 5-week build (with a 1-week buffer, so 6 weeks at most), and how the evaluation metrics get measured. The MVP scope is unchanged from the spec.
+- **Part II (sections 8–15): the full game.** It covers the dual economy, the extended immune defenses and pathogen roster, and clan play. It shows how each system conflicts with or extends the MVP and stages it into post-MVP phases. Every phase is gated on the MVP's playtest results.
+
+# Part I: MVP
 
 ---
 
@@ -35,7 +40,7 @@ The spec does not give damage, attack rate or range for pathogens, or attack rat
 | --- | --- | --- | --- | --- | --- |
 | Rhinovirus | 2.5 ("Fast") | 6 | 0.5 s | melee (adjacent) | 12 DPS |
 | Bacteriophage | 1.5 ("Med") | 20 | 1.0 s | melee | **x3 vs Macrophage/B-Cell** (anti-defense) |
-| Biofilm | 0.75 ("Slow") | 25 | 1.5 s | melee | ~17 DPS, soaks tower fire |
+| Staphylococcus | 0.75 ("Slow") | 25 | 1.5 s | melee | ~17 DPS, soaks tower fire. This is the spec's "Biofilm" slot, renamed to match the full-game roster (see section 8). |
 | Macrophage | — | 40 AoE | 1.0 s | 2 tiles | Splash radius 1 tile around the target |
 | B-Cell | — | 75 | 1.2 s | 6 tiles | Projectile at 10 tiles/s. Hit is guaranteed (homing). |
 
@@ -89,7 +94,8 @@ bio_siege/
 │   ├── core/                  # Pure logic: RefCounted, no Nodes, headless-testable
 │   │   ├── config.gd          # JSON loader + schema validation + hot reload
 │   │   ├── grid_model.gd      # 20x20 TileState enum, occupancy, placement rules
-│   │   ├── economy.gd         # ATP pool, purchase/refund
+│   │   ├── economy.gd         # Multi-currency wallet (MVP uses ATP only), purchase/refund
+│   │   ├── status_effects.gd  # Generic timed modifiers: slow, root, disable, buffs, damage multipliers
 │   │   ├── path_service.gd    # AStarGrid2D wrapper, weights, grid_version, path cache
 │   │   ├── targeting.gd       # Deterministic target selection (pathogens + towers)
 │   │   ├── sim/
@@ -151,6 +157,21 @@ When the config loads, it is validated against the schema: required keys, positi
 - `NodePool` pre-warms **100 pathogen views**, which covers the worst case of 1000 ATP / 10 = 100 Rhinoviruses, plus **64 projectile views** and **64 hit VFX**.
 - The sim uses flat arrays of state objects that are reused between battles, so it allocates nothing per tick.
 
+### 2.4 Built for the full game
+Almost every Part II mechanic depends on the items below. Each one is cheap to add during the MVP and expensive to retrofit later, so all of them are in the MVP milestones.
+
+| Hook | Where | Why (Part II dependency) |
+| --- | --- | --- |
+| The wallet is a `currency → amount` map, not a single int | `economy.gd` (M1) | Amino Acids and DNA/Plasmids (section 10) |
+| A generic status-effect system for timed modifiers | `status_effects.gd` (M3) | Mucous slow/trap, Bacteriophage hijack, B-Cell analysis, Dendritic buff, Fever, gene-transfer traits |
+| Entity **tags** (`virus`, `bacteria`, `defense`, `resource`, `small`, `hidden`), with targeting priorities and damage multipliers keyed by tag | JSON + `targeting.gd` (M3) | Rhinovirus → Mitochondria becomes a JSON change, not a code change |
+| A `levels` array per entity in the JSON (the MVP ships only level 1) | `config.gd` (M0) | Amino Acid upgrades |
+| **Integer / fixed-point sim math**, with positions stored in milli-tiles | `core/sim` (M3) | Cross-platform determinism, so a server can re-simulate and validate raids (section 12) |
+| Versioned JSON snapshots of bases and armies | M5 | Becomes the async multiplayer base format |
+| A battle input log (seed plus timestamped deploy commands) | M5 | Replays, defense logs and server validation |
+| A per-structure `visible_to_attacker` flag | `grid_model.gd` (M1) | Dendritic Cells |
+| Feature flags in `game_rules.json` | M0 | Lets playtests A/B the stretch mechanics in section 9 |
+
 ---
 
 ## 3. Milestones
@@ -180,7 +201,8 @@ Five weeks of build plus one week of buffer and playtest fixes. Each milestone e
 
 ### M3: Battle Simulation Core (Days 11–17) *(highest-risk milestone)*
 - `path_service.gd`: `AStarGrid2D` with weighted structure tiles, `grid_version`, a path cache and recalculation budgeted across ticks.
-- `targeting.gd`: every rule in section 1.3, with unit tests for each tie-break and fallback case.
+- `targeting.gd`: every rule in section 1.3, driven by tags, with unit tests for each tie-break and fallback case.
+- `status_effects.gd` and integer/fixed-point math, as listed in section 2.4.
 - `battle_sim.gd`: the fixed tick loop. The pathogen state machine is `Seeking → Moving → Attacking(target|blocker) → Dead`. Towers acquire targets and fire on a cooldown. The Macrophage has AoE, and the B-Cell fires homing projectiles.
 - Win/loss and timeout from section 1.6.
 - **Integration tests** (headless, fixed seed):
@@ -201,7 +223,7 @@ Five weeks of build plus one week of buffer and playtest fixes. Each milestone e
 ### M5: Telemetry, Balance Tooling & Polish (Days 23–25)
 - `session_logger.gd` writes one JSONL file per session with these events: phase durations, structures built and sold, ATP split between base and army, army composition, the outcome, the Nucleus HP remaining, the battle length, and whether the timeout fired.
 - `tools/balance_sim.gd`: run `godot --headless -s tools/balance_sim.gd -- --base=b.json --army=a.json --runs=500` to get win rate and average time-to-kill as CSV. The designer runs this after each JSON tweak.
-- Save and load for bases and armies as JSON, so playtesters can share layouts and the balance sim can use them.
+- Save and load for bases and armies as **versioned** JSON, so playtesters can share layouts and the balance sim can use them. Every battle also records a battle input log (seed plus deploy commands) that can be replayed.
 - A pass on sound placeholders, a web export for playtesters, and a short "How to play" overlay.
 - **Exit:** A web build is deployed to testers and telemetry is being captured.
 
@@ -253,3 +275,133 @@ Run the playtest with ten or more sessions across three or more testers. Before 
 3. Should destroyed-but-free structures be refunded between re-raids? The current plan rebuilds the base at full HP for free on Re-raid.
 4. Should the Bacteriophage's anti-defense role come from a damage multiplier (current plan), from targeting only, or from both?
 5. Is 3 minutes the right safety timeout, or should a timeout count as a draw instead of a Defender win?
+
+---
+
+# Part II: Full Game Vision & Post-MVP Roadmap
+
+## 8. How the Full Vision Fits the MVP
+
+Several full-game systems are explicitly out of scope in the MVP spec: secondary currencies, mutation, clans and gene transfer. Others change the behavior of entities the MVP already has. The table shows how each item is handled.
+
+| Full-game item | Relationship to the MVP spec | Handling |
+| --- | --- | --- |
+| Mitochondria + ATP generation | The MVP has a fixed pool of 1000 ATP | Phase 2 |
+| Amino Acids, DNA/Plasmids | Explicitly out of scope | Amino Acids in Phase 2, DNA/Plasmids in Phase 3 |
+| Mucous Membrane slow + trap | The MVP wall only blocks paths | The slow is an **MVP stretch goal** (section 9). The trap is Phase 2, because nothing in the MVP roster is a "weak bacterium". |
+| B-Cell 10 s "analysis" → 3x damage | Not in the spec | **MVP stretch goal**. It is a pure sim rule. |
+| Dendritic Cells (hidden traps) | Hidden information means nothing when you built the base yourself | Built in Phase 2 against AI bases. They only matter fully in Phase 3. |
+| Fever (global spell) | The defender is AI-controlled during a raid, so nobody is there to press a "panic button" | Phase 2, as an **auto-triggered** defense (section 11) |
+| Rhinovirus targets Mitochondria first | The MVP has no Mitochondria | The MVP keeps "nearest structure". In Phase 2 the tag priority changes in JSON. |
+| Bacteriophage hijacks towers | The MVP gives it x3 damage against defenses | **MVP stretch goal**: hijack instead of or in addition to the multiplier |
+| Staphylococcus clumps into a Biofilm | The MVP has a "Biofilm" slow tank | **Renamed in the MVP now** (same stats). Clumping is an MVP stretch goal. |
+| Parasites (dropship, spores) | A new unit | Phase 2 |
+| Clans, gene transfer, Lymph Node, Pandemic Mode | Explicitly out of scope | Phases 4–5 |
+
+## 9. MVP Stretch Mechanics (Phase 1.5)
+
+Each mechanic below is a sim-only rule behind a feature flag. None of them needs new systems beyond the hooks in section 2.4. They are built only if M0–M5 finish early. Otherwise they become a 1–2 week Phase 1.5, and a second playtest round compares each one against the flag switched off.
+
+**B-Cell analysis.**
+- Each B-Cell tracks how long it has spent attacking each pathogen *type*, cumulatively.
+- After 10 s on a type, that B-Cell deals **3x damage to that type** for the rest of the battle.
+- The analysis belongs to the individual tower. Dendritic Cells in Phase 2 could share it between towers.
+- The view shows a progress ring on the tower and an icon for each analyzed type.
+- *Balance flag:* 75 × 3 = 225, which one-shots every unit except Staphylococcus. The base damage probably needs to drop to about 50. The balance sim decides.
+
+**Bacteriophage hijack ("Wall-Breaker / Hijacker").**
+- When a Bacteriophage reaches a Macrophage or B-Cell, it **injects** over a 2 s channel. If the phage dies during the channel, the injection is interrupted.
+- A successful injection **hijacks** the tower for 8 s, and the tower stops firing. Whether a hijacked tower also fires on neighbouring immune structures is an open question.
+- The phage is consumed by the injection. This keeps it a specialist and prevents one phage from locking a tower permanently.
+- For its wall-breaker role, the phage keeps the x3 multiplier against walls when a wall blocks its path.
+
+**Staphylococcus Biofilm.**
+- Staphylococcus units within 1.5 tiles of each other link into a Biofilm group. The groups are recomputed with union-find every 0.5 s.
+- Damage to any member is **split evenly across the group**, and the group takes 25% less damage.
+- The group moves at the speed of its slowest member and shares one target.
+- Links break when members are more than 2 tiles apart.
+
+**Mucous slow.** Pathogens on tiles next to a Mucous Membrane move at 50% speed. This can be applied as an aura status effect.
+
+## 10. The Dual Economy
+
+The core tension from the MVP carries forward: **ATP is shared between offense and defense**. The two new currencies each open up one side.
+
+| Currency | Earned from | Spent on | Phase |
+| --- | --- | --- | --- |
+| **ATP (Energy)** | **Mitochondria** structures, which generate ATP over real time up to a storage cap. Offline time is computed from timestamps (server-side in Phase 3). Raid loot is taken from destroyed Mitochondria. | Building structures and training units | 2 |
+| **Amino Acids** | Harvested from defeated enemies: each pathogen killed while defending, plus structures destroyed while raiding. The drop is a function of the victim's cost. | Upgrading **structural integrity**: the HP and damage levels of walls and towers, via the `levels` JSON | 2 |
+| **DNA / Plasmids** (premium) | **Successful raids on other players only**, plus in Phase 2 debug raids on AI "wild infection" bases so the currency can be tested | The **Mutation Lab** (permanent pathogen trait unlocks) and gene-transfer donations (Phase 4) | 3 |
+
+**Mutation Lab.** Each pathogen has a small trait tree, such as "Capsid Hardening: +15% HP" or "Rapid Replication: −20% train cost". A trait is a permanent modifier applied through the status-effect system. The unlocked traits are stored on the player profile on the server.
+
+*"Premium" is ambiguous:* it could mean "earned only through PvP" or "purchasable with real money". This plan implements the first. Monetization is an open question (section 15).
+
+## 11. Extended Roster (Phase 2)
+
+Phase 2 is a **single-player "Living Base"** build. The player raids AI-generated bases and defends against AI raids, which lets the whole roster and economy be tested before any server work.
+
+### Immune system (defenses)
+
+| Structure | Behavior | Implementation notes |
+| --- | --- | --- |
+| **Mitochondria** | Resource generator and storage. Can be targeted and holds loot. | Tag `resource`. The generation tick runs outside battle. |
+| **Mucous Membrane** (upgraded wall) | Slows enemies (section 9) and **traps weak pathogens**, which are rooted for 2 s on contact | The trap keys on the `small` tag instead of "bacteria", because the roster has no weak bacterium. It catches Rhinovirus and Parasite spores. Whether that stays biologically honest is an open question. |
+| **B-Cell** | Sniper tower firing antibodies, with the analysis mechanic | As in section 9 |
+| **Macrophage** | Unchanged from the MVP | — |
+| **Dendritic Cell** | **Hidden from the attacker.** It triggers when a pathogen comes within 1 tile, then reveals itself and gives defenses within 4 tiles +50% attack speed for 10 s. It fires once per battle and can also share B-Cell analysis within its radius. | Uses the `visible_to_attacker` flag. The attacker's view never gets hidden entities, so rendering them is filtered by what the attacker can see. |
+| **Fever** (global defense) | Deals X damage per second to **every pathogen** for 6 s. That wipes out low-HP units but also drains the defender's own structures at a lower rate. | In an async raid the defender is offline, so Fever is **configured, not pressed**. The defender picks the trigger during Synthesis, such as "Nucleus HP < 50%" or "20 or more pathogens inside the walls", and gets 1 charge per battle. The "Antibiotic Resistance" trait reduces Fever damage. |
+
+### Pathogens (attackers)
+
+| Unit | Behavior | Implementation notes |
+| --- | --- | --- |
+| **Rhinovirus** ("Goblins") | Fast and weak. Targets **Mitochondria first**, then the nearest structure. | A JSON change: `priority_tags: ["resource"]` |
+| **Bacteriophage** | Wall-breaker and hijacker, as in section 9. Art direction: a "lunar lander" silhouette. | Any third-party 3D reference model needs a license review before its geometry or likeness is used. |
+| **Staphylococcus** | A tank that forms a Biofilm (section 9) | — |
+| **Parasite** ("Dropship") | Large and slow. It **burrows**: it is untargetable underground, ignores walls, and surfaces next to its target after a travel time. On death it **bursts into 4 spores**, which are fast, low-HP and tagged `small`. | A burrowed movement mode skips the weighted path and moves in a straight line at reduced speed. Spores come from the same object pool. |
+
+## 12. Async Multiplayer (Phase 3)
+
+This is the "raid other players" layer that the MVP deliberately left out.
+
+- **Backend: Nakama**, an open-source game server with a Godot client SDK. It provides accounts, storage, leaderboards, groups (used for clans in Phase 4) and server-side runtime code. The alternative is a custom service, which costs more to build.
+- **Base snapshots:** the versioned JSON from M5 becomes the canonical format for defended bases.
+- **Matchmaking:** pick an offline player's snapshot within a strength or trophy band. A defender gets a protection shield after being raided.
+- **Authoritative results:** the client uploads the seed and the battle input log. A headless Godot validation worker re-simulates the battle, which only works because the sim is deterministic with integer math (section 2.4). Loot, Amino Acids and DNA are awarded from the server's result, never from what the client reports.
+- **Replays and defense logs:** a replay is the stored inputs plus the base snapshot, re-simulated on the viewing client.
+- **Mutation Lab** goes live here, because DNA can only be earned through PvP.
+
+## 13. Clans & Social Play (Phases 4–5)
+
+| Feature | Design | Implementation notes |
+| --- | --- | --- |
+| **Clans** | Membership, roles and chat | Nakama groups and chat channels |
+| **Horizontal Gene Transfer** (donations) | A player requests a trait such as "Speed Buff" or "Antibiotic Resistance". Clanmates donate it from traits they have unlocked, and it applies **only to the requester's next raid**. | Donated traits are temporary status modifiers. The rules include a request cooldown and a cap of about 3 traits per raid, and the donor pays a small DNA cost. |
+| **Lymph Node** (clan castle) | Houses defensive **memory cells** donated by clanmates. When pathogens come into range, the memory cells deploy as mobile defenders. | This is the first **mobile defender** entity, so defenders get pathing too. The Nucleus stays the win-condition HQ, and the Lymph Node is a separate structure (open question in section 15). Donations are split in two: plasmids for offense and memory cells for defense. |
+| **Pandemic Mode: Patient Zero** (Phase 5a) | The clan pools its mutated pathogens against a huge, heavily fortified AI boss base. Damage **persists across members' attacks** over a 48 h window. | PvE, so no clan matchmaking is needed. The boss base keeps persistent server-side HP state. Build this first. |
+| **Pandemic Mode: Herd Immunity** (Phase 5b) | Clan versus clan: each clan's member bases form a "Herd Immunity" network that the other clan attacks. | Needs war scheduling, clan matchmaking and war-state storage. Build this last. |
+
+## 14. Roadmap Summary
+
+The estimates are rough and assume 2–3 engineers. They should be re-estimated after the MVP. **Each phase starts only if the previous phase's playtest gate passes.**
+
+| Phase | Contents | Rough duration | Gate to proceed |
+| --- | --- | --- | --- |
+| **1. MVP** | Part I | 6 weeks | Go/no-go targets from section 5 |
+| **1.5. Stretch mechanics** | Section 9, A/B-tested behind feature flags | 1–2 weeks | Each mechanic improves the legibility or fun ratings, or it is cut |
+| **2. Living Base** | Mitochondria, ATP generation, Amino Acids and upgrades, Dendritic Cells, Fever, Parasites, Mucous trap, AI bases and AI raids | 6–8 weeks | The economy loop holds attention over repeated single-player sessions |
+| **3. Async multiplayer** | Nakama backend, accounts, snapshots, matchmaking, server validation, replays, DNA/Plasmids, Mutation Lab | 10–14 weeks | Closed alpha retention and anti-cheat validation |
+| **4. Clans** | Clans, chat, gene transfer, Lymph Node and memory cells | 8–10 weeks | Share of players in a clan; donation usage |
+| **5. Pandemic Mode** | 5a Patient Zero, then 5b Herd Immunity wars | 6–8 weeks each | — |
+
+## 15. Open Questions for Design (Full Game)
+
+1. **Premium currency:** is DNA/Plasmids PvP-only, or can it also be bought? This changes the fairness of the Mutation Lab and the store work required.
+2. **Lymph Node vs Nucleus:** the vision calls the Lymph Node "the central hub of the base". Should it replace the Nucleus as HQ and win condition, or be a separate structure (current plan)?
+3. **Bacteriophage hijack:** does a hijacked tower only go silent, or does it turn on nearby immune structures? Is the phage consumed?
+4. **Fever trigger:** is a configured auto-trigger acceptable, or should Fever only exist in a live-defense mode?
+5. **Mucous trap targets:** "weaker bacteria" matches nothing in the current roster. Should the trap key on `small` units (current plan), or should a weak bacterial unit be added?
+6. **Amino Acid sources:** from defending only, or from both defending and raiding (current plan)?
+7. **B-Cell analysis scope:** per tower (current plan) or per base, and should Dendritic Cells share it?
+8. **Gene-transfer traits:** is the list fixed ("Speed Buff", "Antibiotic Resistance", …), or can any unlocked Mutation Lab trait be donated?
