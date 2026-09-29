@@ -333,7 +333,9 @@ func refresh_config() -> void:
 		var selected_tool: String = controller.tool if controller != null else ""
 		_populate_tray()
 		if controller != null and not selected_tool.is_empty():
-			if selected_tool == "sell" or session.config.structures.has(selected_tool) or (selected_tool == BuildController.TOOL_MOVE_NUCLEUS and session.config.move_nucleus_enabled()):
+			var move_still_valid: bool = selected_tool == BuildController.TOOL_MOVE_NUCLEUS \
+				and session.config.move_nucleus_enabled()
+			if selected_tool == "sell" or session.config.structures.has(selected_tool) or move_still_valid:
 				_on_tool_changed(selected_tool)
 			else:
 				controller.select_tool(selected_tool)

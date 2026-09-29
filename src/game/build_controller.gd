@@ -35,7 +35,7 @@ func setup(p_session: Session, p_grid_view: GridView) -> void:
 		grid_view.cell_released.connect(_on_cell_released)
 
 func select_tool(t: String) -> void:
-	if t == TOOL_MOVE_NUCLEUS and tool != t and (session == null or session.config == null or not session.config.move_nucleus_enabled()):
+	if t == TOOL_MOVE_NUCLEUS and tool != t and not _move_tool_allowed():
 		return
 	if tool == t:
 		tool = ""
@@ -46,6 +46,9 @@ func select_tool(t: String) -> void:
 	if grid_view != null:
 		grid_view.clear_ghost()
 	tool_changed.emit(tool)
+
+func _move_tool_allowed() -> bool:
+	return session != null and session.config != null and session.config.move_nucleus_enabled()
 
 func _is_wall_tool(tool_id: String) -> bool:
 	if session == null or session.config == null:
@@ -106,6 +109,7 @@ func _finish_move(cell: Vector2i) -> void:
 		if SessionLogger != null and SessionLogger.has_method("log_event"):
 			SessionLogger.log_event("nucleus_moved", {"from": from, "to": to})
 		nucleus_moved.emit(from, to)
+	# select_tool toggles, so selecting the active move tool deselects it.
 	select_tool(TOOL_MOVE_NUCLEUS)
 
 func _on_cell_pressed(cell: Vector2i) -> void:

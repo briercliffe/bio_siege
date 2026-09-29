@@ -43,6 +43,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 			build_controller.placed.connect(_on_placed)
 		if not build_controller.sold.is_connected(_on_sold):
 			build_controller.sold.connect(_on_sold)
+		if not build_controller.nucleus_moved.is_connected(_on_nucleus_moved):
+			build_controller.nucleus_moved.connect(_on_nucleus_moved)
 
 	if hud_build != null and session != null and build_controller != null:
 		hud_build.setup(session, build_controller)
