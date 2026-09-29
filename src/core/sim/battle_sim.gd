@@ -17,6 +17,7 @@ var structures_destroyed: int = 0
 var pathogens_killed: int = 0
 var first_destroyed_structure_id: int = 0
 var first_destroyed_structure_type: String = ""
+var seed: int = 0
 
 var _events: Array[Dictionary] = []
 var _occupancy: Dictionary = {}  # Vector2i -> int
@@ -26,6 +27,8 @@ var _next_projectile_id: int = 0
 func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 	config = p_config
 	status = StatusEffects.new()
+	if setup != null:
+		seed = setup.seed
 
 	if config == null:
 		push_error("Config is null")
@@ -166,6 +169,7 @@ func structure_id_at(cell: Vector2i) -> int:
 
 func state_hash() -> String:
 	var lines: PackedStringArray = PackedStringArray()
+	lines.append("Seed:%d" % seed)
 	lines.append("T:%d" % tick)
 	for s: StructureState in structures:
 		lines.append("S:%d:%d:%d" % [s.id, s.hp, 1 if s.alive else 0])

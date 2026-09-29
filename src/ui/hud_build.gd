@@ -5,6 +5,7 @@ signal finalize_requested
 
 const CARD_SCENE: PackedScene = preload("res://src/ui/hud_card.tscn")
 const CONFIRMATION_SCENE: PackedScene = preload("res://src/ui/confirmation_popup.tscn")
+const IMPORT_DIALOG_SCENE: PackedScene = preload("res://src/ui/import_dialog.tscn")
 
 var session: Session = null
 var controller: BuildController = null
@@ -15,6 +16,10 @@ var atp_label: Label = null
 var stats_label: Label = null
 var title_label: Label = null
 var btn_finalize: Button = null
+var btn_menu: Button = null
+var popup_menu: PopupMenu = null
+var import_dialog: ImportDialog = null
+var last_toast_message: String = ""
 
 var bottom_tray: PanelContainer = null
 var scroll_container: ScrollContainer = null
@@ -37,6 +42,9 @@ func _ensure_nodes() -> void:
 	stats_label = get_node_or_null("TopBar/MarginContainer/HBoxContainer/LeftBox/StatsLabel") as Label
 	title_label = get_node_or_null("TopBar/MarginContainer/HBoxContainer/TitleLabel") as Label
 	btn_finalize = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnFinalize") as Button
+	btn_menu = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnMenu") as Button
+	popup_menu = get_node_or_null("PopupMenu") as PopupMenu
+	import_dialog = get_node_or_null("ImportDialog") as ImportDialog
 
 	bottom_tray = get_node_or_null("BottomTray") as PanelContainer
 	scroll_container = get_node_or_null("BottomTray/MarginContainer/ScrollContainer") as ScrollContainer
@@ -45,6 +53,16 @@ func _ensure_nodes() -> void:
 	confirmation_dialog = get_node_or_null("ConfirmationDialog") as ConfirmationPopup
 
 	if top_bar != null:
+		if popup_menu == null:
+			popup_menu = PopupMenu.new()
+			popup_menu.name = "PopupMenu"
+			popup_menu.add_item("Export base", 0)
+			popup_menu.add_item("Import base", 1)
+			add_child(popup_menu)
+		if import_dialog == null:
+			import_dialog = IMPORT_DIALOG_SCENE.instantiate() as ImportDialog
+			import_dialog.name = "ImportDialog"
+			add_child(import_dialog)
 		_wire_static_nodes()
 		return
 
@@ -116,6 +134,13 @@ func _ensure_nodes() -> void:
 	btn_finalize.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top_hbox.add_child(btn_finalize)
 
+	btn_menu = Button.new()
+	btn_menu.name = "BtnMenu"
+	btn_menu.text = "⋯"
+	btn_menu.custom_minimum_size = Vector2(48.0, 48.0)
+	btn_menu.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top_hbox.add_child(btn_menu)
+
 	bottom_tray = PanelContainer.new()
 	bottom_tray.name = "BottomTray"
 	bottom_tray.custom_minimum_size = Vector2(0.0, 140.0)
@@ -154,6 +179,16 @@ func _ensure_nodes() -> void:
 	confirmation_dialog.name = "ConfirmationDialog"
 	add_child(confirmation_dialog)
 
+	popup_menu = PopupMenu.new()
+	popup_menu.name = "PopupMenu"
+	popup_menu.add_item("Export base", 0)
+	popup_menu.add_item("Import base", 1)
+	add_child(popup_menu)
+
+	import_dialog = ImportDialog.new()
+	import_dialog.name = "ImportDialog"
+	add_child(import_dialog)
+
 	_wire_static_nodes()
 
 func _wire_static_nodes() -> void:
@@ -163,6 +198,12 @@ func _wire_static_nodes() -> void:
 		btn_finalize.pressed.connect(_on_finalize_button_pressed)
 	if confirmation_dialog != null and not confirmation_dialog.confirmed.is_connected(_on_confirmation_dialog_confirmed):
 		confirmation_dialog.confirmed.connect(_on_confirmation_dialog_confirmed)
+	if btn_menu != null and not btn_menu.pressed.is_connected(_on_btn_menu_pressed):
+		btn_menu.pressed.connect(_on_btn_menu_pressed)
+	if popup_menu != null and not popup_menu.id_pressed.is_connected(_on_popup_menu_item_selected):
+		popup_menu.id_pressed.connect(_on_popup_menu_item_selected)
+	if import_dialog != null and not import_dialog.load_requested.is_connected(_on_import_load_requested):
+		import_dialog.load_requested.connect(_on_import_load_requested)
 
 func _ready() -> void:
 	_ensure_nodes()
@@ -347,3 +388,92 @@ func _on_atp_icon_draw() -> void:
 		Vector2(w * 0.68, h * 0.05),
 	])
 	atp_icon.draw_colored_polygon(pts, Color("#f1c40f"))
+
+
+func _on_btn_menu_pressed() -> void:
+	if popup_menu != null:
+		var pos: Vector2 = btn_menu.global_position + Vector2(0.0, btn_menu.size.y) if btn_menu != null else Vector2.ZERO
+		popup_menu.popup(Rect2i(Vector2i(pos), Vector2i(140, 0)))
+
+
+func _on_popup_menu_item_selected(id: int) -> void:
+	match id:
+		0:
+			export_base()
+		1:
+			open_import_dialog()
+
+
+func open_import_dialog() -> void:
+	if import_dialog != null:
+		import_dialog.open("Import Base")
+
+
+func export_base() -> String:
+	if session == null or session.grid == null:
+		return ""
+	var base_dict: Dictionary = SnapshotIO.base_to_dict(session.grid)
+	var json_str: String = SnapshotIO.to_json(base_dict)
+	DisplayServer.clipboard_set(json_str)
+	_show_toast("Base copied to clipboard")
+
+	if not DirAccess.dir_exists_absolute("user://bases"):
+		DirAccess.make_dir_recursive_absolute("user://bases")
+	var unix_time: int = int(Time.get_unix_time_from_system())
+	var file_path: String = "user://bases/base_%d.json" % unix_time
+	var file := FileAccess.open(file_path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(json_str)
+		file.close()
+	return json_str
+
+
+func import_base(json_text: String) -> bool:
+	if session == null or session.config == null or session.grid == null or session.wallet == null:
+		return false
+	var res: Dictionary = SnapshotIO.parse_base(json_text, session.config)
+	if not res.get("ok", false):
+		var err_msg: String = str(res.get("error", "Failed to parse base"))
+		if import_dialog != null:
+			import_dialog.set_error(err_msg)
+		return false
+
+	var layout: Array = res.get("layout", [])
+	var total_cost: int = 0
+	for item: Variant in layout:
+		if item is Dictionary:
+			var tid: String = str(item.get("type", ""))
+			var sdef: StructureDef = session.config.structures.get(tid)
+			var is_core: bool = (sdef != null and sdef.has_tag("core")) or (tid == "nucleus")
+			if not is_core and sdef != null:
+				total_cost += int(sdef.cost.get("atp", 0))
+
+	var budget: int = int(session.config.start_wallet.get("atp", 1000))
+	if total_cost > budget:
+		var err_msg := "This base costs %d ATP; the budget is %d" % [total_cost, budget]
+		if import_dialog != null:
+			import_dialog.set_error(err_msg)
+		return false
+
+	session.wallet.reset(session.config.start_wallet)
+	session.grid.load_layout(layout, session.wallet)
+	if import_dialog != null:
+		import_dialog.close()
+	_show_toast("Base loaded")
+	return true
+
+
+func _on_import_load_requested(text: String) -> void:
+	import_base(text)
+
+
+func _show_toast(msg: String) -> void:
+	last_toast_message = msg
+	var t: Toast = get_node_or_null("../Toast") as Toast
+	if t == null:
+		t = get_node_or_null("Toast") as Toast
+	if t == null:
+		t = Toast.new()
+		t.name = "Toast"
+		add_child(t)
+	t.show_message(msg)
