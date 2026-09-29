@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://src/game/phases/infection_phase.gd" id="1_infection"]
 [ext_resource type="PackedScene" path="res://src/view/grid_view.tscn" id="2_grid_view"]
+[ext_resource type="PackedScene" path="res://src/ui/hud_combat.tscn" id="3_hud_combat"]
 
 [node name="InfectionPhase" type="Control"]
 layout_mode = 3
@@ -28,6 +29,9 @@ grow_horizontal = 2
 text = "INFECTION"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="HudCombat" parent="." instance=ExtResource("3_hud_combat")]
+layout_mode = 1
 
 [node name="BannerPanel" type="PanelContainer" parent="."]
 visible = false

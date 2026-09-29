@@ -8,6 +8,7 @@ var tile_px: int = 32
 var hp: int = 0
 var max_hp: int = 0
 var vfx_pool: NodePool = null
+var is_breached: bool = false
 
 var _flash_tween: Tween = null
 
@@ -21,11 +22,18 @@ func setup(p_state: StructureState, p_def: StructureDef, p_tile_px: int, p_vfx_p
 
 	hp = p_state.hp
 	max_hp = p_state.max_hp
+	is_breached = false
 
 	position = Vector2(p_state.origin) * float(tile_px)
 	modulate = Color.WHITE
 	visible = true
 	queue_redraw()
+
+
+func set_breached(val: bool) -> void:
+	if is_breached != val:
+		is_breached = val
+		queue_redraw()
 
 
 func on_damaged(amount: int, new_hp: int) -> void:
@@ -65,6 +73,52 @@ func _exit_tree() -> void:
 		_flash_tween = null
 
 
+func _process(_delta: float) -> void:
+	if is_breached:
+		queue_redraw()
+
+
+func get_crack_count() -> int:
+	if max_hp <= 0:
+		return 1
+	if hp <= max_hp / 3:
+		return 3
+	elif hp <= (max_hp * 2) / 3:
+		return 2
+	return 1
+
+
+func _draw_cracks(w: float, h: float, count: int, crack_color: Color) -> void:
+	if w <= 0.0 or h <= 0.0:
+		return
+	if count >= 1:
+		var crack1 := PackedVector2Array([
+			Vector2(w * 0.2, 0.0),
+			Vector2(w * 0.38, h * 0.28),
+			Vector2(w * 0.28, h * 0.52),
+			Vector2(w * 0.52, h * 0.78),
+			Vector2(w * 0.45, h * 1.0)
+		])
+		draw_polyline(crack1, crack_color, 2.0)
+	if count >= 2:
+		var crack2 := PackedVector2Array([
+			Vector2(w * 0.75, 0.0),
+			Vector2(w * 0.58, h * 0.32),
+			Vector2(w * 0.78, h * 0.64),
+			Vector2(w * 0.68, h * 1.0)
+		])
+		draw_polyline(crack2, crack_color, 2.0)
+	if count >= 3:
+		var crack3 := PackedVector2Array([
+			Vector2(0.0, h * 0.5),
+			Vector2(w * 0.32, h * 0.38),
+			Vector2(w * 0.58, h * 0.62),
+			Vector2(w * 0.82, h * 0.44),
+			Vector2(w * 1.0, h * 0.52)
+		])
+		draw_polyline(crack3, crack_color, 2.0)
+
+
 func _draw() -> void:
 	if structure_state == null:
 		return
@@ -76,6 +130,14 @@ func _draw() -> void:
 	var shape: String = structure_def.placeholder_shape if structure_def != null else "square"
 	var color: Color = structure_def.placeholder_color if structure_def != null else Color.WHITE
 	PlaceholderShapes.draw_shape(self, shape, s_rect, color)
+
+	# Blocker crack overlay
+	if is_breached and hp > 0:
+		var pulse_time: float = fmod(float(Time.get_ticks_msec()) / 1000.0, 0.8)
+		var pulse_alpha: float = lerpf(0.6, 1.0, 0.5 + 0.5 * sin((pulse_time / 0.8) * TAU))
+		var crack_color := Color(0.23, 0.18, 0.18, pulse_alpha)
+		var crack_count: int = get_crack_count()
+		_draw_cracks(w, h, crack_count, crack_color)
 
 	# Health bar: shown only when hp < max_hp and hp > 0
 	if hp < max_hp and hp > 0:
