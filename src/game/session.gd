@@ -2,8 +2,7 @@ class_name Session
 extends RefCounted
 
 var config: GameConfig = null
-@warning_ignore("untyped_declaration")
-var wallet = null            # Wallet, set by #7. Leave untyped until #7 lands.
+var wallet: Wallet = null
 @warning_ignore("untyped_declaration")
 var grid = null              # GridModel, set by #8
 var army_reserve: Dictionary = {}     # pathogen id -> int count; #11 replaces this with an Army object
@@ -20,3 +19,4 @@ func _init(p_config: GameConfig = null) -> void:
 	if config != null:
 		seed = config.default_seed
 		intent_lines_enabled = bool(config.feature_flags.get("intent_lines_default", true))
+		wallet = Wallet.new(config.start_wallet)
