@@ -11,6 +11,7 @@ var grid: GridModel = null
 var config: GameConfig = null
 var tile_px: int = 32
 var deploy_mode: bool = false: set = set_deploy_mode
+var draw_structures: bool = true: set = set_draw_structures
 var army: Army = null: set = set_army
 
 var _has_ghost: bool = false
@@ -20,6 +21,10 @@ var _ghost_valid: bool = false
 
 var _active_device: Device = Device.NONE
 var _last_cell: Vector2i = Vector2i(-99999, -99999)
+
+func set_draw_structures(val: bool) -> void:
+	draw_structures = val
+	queue_redraw()
 
 func set_deploy_mode(val: bool) -> void:
 	if deploy_mode != val:
@@ -201,12 +206,13 @@ func _draw() -> void:
 		draw_line(Vector2(0.0, py), Vector2(total_w, py), grid_line_color, 1.0)
 
 	# Structures from grid.structures()
-	for s: GridModel.PlacedStructure in grid.structures():
-		var sdef: StructureDef = config.structures.get(s.type_id) if config != null else null
-		var shape: String = sdef.placeholder_shape if sdef != null else "square"
-		var color: Color = sdef.placeholder_color if sdef != null else Color.WHITE
-		var s_rect := Rect2(Vector2(s.origin) * float(tile_px), Vector2(s.footprint) * float(tile_px))
-		PlaceholderShapes.draw_shape(self, shape, s_rect, color)
+	if draw_structures:
+		for s: GridModel.PlacedStructure in grid.structures():
+			var sdef: StructureDef = config.structures.get(s.type_id) if config != null else null
+			var shape: String = sdef.placeholder_shape if sdef != null else "square"
+			var color: Color = sdef.placeholder_color if sdef != null else Color.WHITE
+			var s_rect := Rect2(Vector2(s.origin) * float(tile_px), Vector2(s.footprint) * float(tile_px))
+			PlaceholderShapes.draw_shape(self, shape, s_rect, color)
 
 	# Placement ghost
 	if _has_ghost and not _ghost_type_id.is_empty():
