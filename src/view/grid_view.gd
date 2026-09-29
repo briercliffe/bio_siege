@@ -11,6 +11,7 @@ var grid: GridModel = null
 var config: GameConfig = null
 var tile_px: int = 32
 var deploy_mode: bool = false: set = set_deploy_mode
+var army: Army = null: set = set_army
 
 var _has_ghost: bool = false
 var _ghost_type_id: String = ""
@@ -25,7 +26,28 @@ func set_deploy_mode(val: bool) -> void:
 		deploy_mode = val
 		queue_redraw()
 
-func setup(p_grid: GridModel, p_config: GameConfig) -> void:
+func set_army(val: Army) -> void:
+	if army == val:
+		return
+	if army != null and army.changed.is_connected(_on_army_changed):
+		army.changed.disconnect(_on_army_changed)
+	army = val
+	if army != null:
+		army.changed.connect(_on_army_changed)
+	queue_redraw()
+
+func _on_army_changed() -> void:
+	queue_redraw()
+
+func _exit_tree() -> void:
+	if army != null and army.changed.is_connected(_on_army_changed):
+		army.changed.disconnect(_on_army_changed)
+
+func _process(_delta: float) -> void:
+	if deploy_mode:
+		queue_redraw()
+
+func setup(p_grid: GridModel, p_config: GameConfig, p_army: Army = null) -> void:
 	if grid != null:
 		if grid.structure_placed.is_connected(_on_structure_changed):
 			grid.structure_placed.disconnect(_on_structure_changed)
@@ -34,6 +56,8 @@ func setup(p_grid: GridModel, p_config: GameConfig) -> void:
 
 	grid = p_grid
 	config = p_config
+	if p_army != null:
+		set_army(p_army)
 	if config != null and config.tile_px > 0:
 		tile_px = config.tile_px
 
@@ -144,6 +168,13 @@ func _draw() -> void:
 	if grid == null or grid.width <= 0 or grid.height <= 0:
 		return
 
+	# Ring color in deploy mode: pulses green fill #2ecc71 with alpha 0.25 to 0.45 on 1.2s cycle
+	var ring_color := Color("#2ecc71")
+	if deploy_mode:
+		var pulse_time: float = fmod(float(Time.get_ticks_msec()) / 1000.0, 1.2)
+		var pulse_norm: float = 0.5 + 0.5 * sin((pulse_time / 1.2) * TAU)
+		ring_color.a = lerpf(0.25, 0.45, pulse_norm)
+
 	# Draw cells (interior and deploy ring)
 	for y in range(grid.height):
 		for x in range(grid.width):
@@ -151,7 +182,7 @@ func _draw() -> void:
 			var cell_rect := Rect2(float(x * tile_px), float(y * tile_px), float(tile_px), float(tile_px))
 			if grid.is_deploy_zone(cell):
 				if deploy_mode:
-					draw_rect(cell_rect, Color(0.18, 0.8, 0.44, 0.25), true)
+					draw_rect(cell_rect, ring_color, true)
 				else:
 					draw_rect(cell_rect, Color("#d9dee4"), true)
 					_draw_deploy_cell_hatch(cell_rect)
@@ -191,6 +222,49 @@ func _draw() -> void:
 		var g_color: Color = sdef.placeholder_color if sdef != null else Color.WHITE
 		g_color.a = 0.5
 		PlaceholderShapes.draw_shape(self, shape, g_rect, g_color)
+
+	# Unit markers in deploy mode
+	if army != null and deploy_mode:
+		for cell: Vector2i in grid.ring_cells():
+			var deployed: Array[String] = army.deployed_at(cell)
+			if deployed.is_empty():
+				continue
+			var count: int = deployed.size()
+			var last_type: String = deployed[-1]
+			var pdef: PathogenDef = config.pathogens.get(last_type) if config != null else null
+			var shape: String = pdef.placeholder_shape if pdef != null else "circle"
+			var color: Color = pdef.placeholder_color if pdef != null else Color.WHITE
+
+			var tile_size := float(tile_px)
+			var marker_size: float = tile_size * 0.60
+			var offset: float = (tile_size - marker_size) * 0.5
+			var marker_rect := Rect2(
+				float(cell.x * tile_px) + offset,
+				float(cell.y * tile_px) + offset,
+				marker_size,
+				marker_size
+			)
+			PlaceholderShapes.draw_shape(self, shape, marker_rect, color)
+
+			if count > 1:
+				var badge_radius: float = maxf(tile_size * 0.22, 6.0)
+				var badge_center := Vector2(
+					float((cell.x + 1) * tile_px) - badge_radius - 1.0,
+					float(cell.y * tile_px) + badge_radius + 1.0
+				)
+				draw_circle(badge_center, badge_radius, Color.WHITE)
+				draw_arc(badge_center, badge_radius, 0.0, TAU, 16, Color(0.2, 0.2, 0.2, 0.6), 1.0, true)
+
+				var font: Font = ThemeDB.fallback_font
+				if font != null:
+					var font_size: int = max(int(badge_radius * 1.5), 9)
+					var count_text: String = str(count)
+					var str_size: Vector2 = font.get_string_size(count_text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+					var text_pos := Vector2(
+						badge_center.x - str_size.x * 0.5,
+						badge_center.y + str_size.y * 0.35
+					)
+					draw_string(font, text_pos, count_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
 
 func _draw_deploy_cell_hatch(cell_rect: Rect2) -> void:
 	var hatch_color := Color("#b0b8c0")

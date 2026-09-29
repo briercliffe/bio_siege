@@ -6,8 +6,8 @@ var wallet: Wallet = null
 var grid: GridModel = null
 var army: Army = null
 var seed: int = 0
-@warning_ignore("untyped_declaration")
-var battle_setup = null      # BattleSetup, set by #12 at launch
+var battle_count: int = 0
+var battle_setup: BattleSetup = null
 var last_result: Dictionary = {}          # filled by #20, shown by #22
 var prediction_structure_id: int = 0      # filled by #25
 var intent_lines_enabled: bool = true
