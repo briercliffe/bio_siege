@@ -3,18 +3,19 @@ set -euo pipefail
 
 INSTALL_DIR="$HOME/.local/bin"
 GODOT_BIN="$INSTALL_DIR/godot"
-GODOT_URL="https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip"
+GODOT_VERSION="4.7.2"
+GODOT_URL="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
 
 export PATH="$INSTALL_DIR:$PATH"
 
-if ! command -v godot >/dev/null 2>&1; then
-    echo "Godot not found on PATH. Installing to $INSTALL_DIR..."
+if ! command -v godot >/dev/null 2>&1 || ! godot --version 2>&1 | grep -q "$GODOT_VERSION"; then
+    echo "Godot $GODOT_VERSION not found on PATH. Installing to $INSTALL_DIR..."
     mkdir -p "$INSTALL_DIR"
 
     TMP_DIR=$(mktemp -d)
     ZIP_FILE="$TMP_DIR/godot.zip"
 
-    echo "Downloading Godot 4.4.1-stable..."
+    echo "Downloading Godot ${GODOT_VERSION}-stable..."
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL -o "$ZIP_FILE" "$GODOT_URL"
     elif command -v wget >/dev/null 2>&1; then

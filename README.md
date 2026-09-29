@@ -4,13 +4,13 @@ Bio Siege is a biological reverse tower defense and base-building game where pla
 
 ## How to run
 
-Ensure Godot 4.4.1 is installed (you can run `tools/install_godot.sh` on Linux / WSL to install Godot to `$HOME/.local/bin/godot`).
+Ensure Godot 4.7.2 is installed (you can run `tools/install_godot.sh` on Linux / WSL to install Godot to `$HOME/.local/bin/godot`).
 
 To launch the project:
 ```bash
 godot --path .
 ```
-Or open the project in the Godot 4.4 editor and run the main scene (`src/main.tscn`).
+Or open the project in the Godot 4.7 editor and run the main scene (`src/main.tscn`).
 
 ## How to test
 
