@@ -5,6 +5,8 @@ This plan has two parts.
 - **Part I (sections 0–7): the MVP.** It builds the "Attack Your Own Base" sandbox from the MVP spec. It covers engine choice, architecture, the design gaps the spec leaves open, a milestone schedule for a 5-week build (with a 1-week buffer, so 6 weeks at most), and how the evaluation metrics get measured. The MVP scope is unchanged from the spec.
 - **Part II (sections 8–15): the full game.** It covers the dual economy, the extended immune defenses and pathogen roster, and clan play. It shows how each system conflicts with or extends the MVP and stages it into post-MVP phases. Every phase is gated on the MVP's playtest results.
 
+> **Design update (2026-09-29).** The MVP look is locked in [`MVP_UI_SPEC.md`](MVP_UI_SPEC.md): isometric view (view layer only), a 40x40 grid with a 2-tile deploy band, larger footprints (Nucleus 4x4, towers 3x3), and the final screen set and models. Where that spec conflicts with the grid, projection or rendering text below, the spec wins. Sections 0, 1.1, 1.9, 2.4 and the M1, M2 and M4 milestones are affected; the spec's section 7 lists the changes and section 6 lists the follow-up work. The data files have not been changed yet.
+
 # Part I: MVP
 
 ---
