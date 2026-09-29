@@ -5,6 +5,7 @@ var session: Session = null
 var fsm: GameStateMachine = null
 
 var grid_view: GridView = null
+var deploy_controller: DeployController = null
 var hud_spawn: HudSpawn = null
 var toast: Toast = null
 var side_switch_overlay: SideSwitchOverlay = null
@@ -12,6 +13,12 @@ var side_switch_overlay: SideSwitchOverlay = null
 func _resolve_nodes() -> void:
 	if grid_view == null:
 		grid_view = get_node_or_null("GridView") as GridView
+	if deploy_controller == null:
+		deploy_controller = get_node_or_null("DeployController") as DeployController
+	if deploy_controller == null:
+		deploy_controller = DeployController.new()
+		deploy_controller.name = "DeployController"
+		add_child(deploy_controller)
 	if hud_spawn == null:
 		hud_spawn = get_node_or_null("HudSpawn") as HudSpawn
 	if toast == null:
@@ -33,15 +40,16 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 	_resolve_nodes()
 
 	if grid_view != null and session != null:
-		grid_view.setup(session.grid, session.config)
+		grid_view.setup(session.grid, session.config, session.army)
 		grid_view.deploy_mode = true
 
 	if hud_spawn != null and session != null:
 		hud_spawn.setup(session)
 		if not hud_spawn.back_requested.is_connected(_on_back_requested):
 			hud_spawn.back_requested.connect(_on_back_requested)
-		if not hud_spawn.launch_requested.is_connected(_on_launch_requested):
-			hud_spawn.launch_requested.connect(_on_launch_requested)
+
+	if deploy_controller != null and session != null and grid_view != null and hud_spawn != null:
+		deploy_controller.setup(session, grid_view, hud_spawn, toast, fsm)
 
 	_update_grid_layout()
 
@@ -56,10 +64,6 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 func _on_back_requested() -> void:
 	if fsm != null:
 		fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
-
-func _on_launch_requested() -> void:
-	if fsm != null:
-		fsm.request_transition(GameStateMachine.Phase.INFECTION)
 
 func _on_viewport_size_changed() -> void:
 	_update_grid_layout()
