@@ -3,6 +3,7 @@ extends Node
 
 signal tool_changed(tool: String)
 signal place_failed(reason: int)
+signal placed(type_id: String, cell: Vector2i)
 signal sold(type_id: String, refund: Dictionary, cell: Vector2i)
 
 var tool: String = ""
@@ -50,6 +51,15 @@ func _is_tower_tool(tool_id: String) -> bool:
 	var sdef: StructureDef = session.config.structures.get(tool_id)
 	return sdef != null and sdef.buildable and not sdef.has_tag("wall")
 
+func _place_current_tool(cell: Vector2i) -> void:
+	var pid: int = session.grid.place(tool, cell, session.wallet)
+	if pid <= 0:
+		return
+	if SessionLogger != null and SessionLogger.has_method("log_event"):
+		var atp_after: int = session.wallet.get_amount("atp") if session.wallet != null else 0
+		SessionLogger.log_event("structure_placed", {"type": tool, "cell": cell, "atp_after": atp_after})
+	placed.emit(tool, cell)
+
 func _on_cell_pressed(cell: Vector2i) -> void:
 	if session == null or session.grid == null:
 		return
@@ -63,10 +73,7 @@ func _on_cell_pressed(cell: Vector2i) -> void:
 	elif _is_wall_tool(tool):
 		var err: GridModel.PlaceError = session.grid.check_place(tool, cell, session.wallet)
 		if err == GridModel.PlaceError.OK:
-			var pid: int = session.grid.place(tool, cell, session.wallet)
-			if pid > 0 and SessionLogger != null and SessionLogger.has_method("log_event"):
-				var atp_after: int = session.wallet.get_amount("atp") if session.wallet != null else 0
-				SessionLogger.log_event("structure_placed", {"type": tool, "cell": cell, "atp_after": atp_after})
+			_place_current_tool(cell)
 		else:
 			place_failed.emit(int(err))
 	elif tool == "sell":
@@ -98,10 +105,7 @@ func _on_cell_dragged(cell: Vector2i) -> void:
 	elif _is_wall_tool(tool):
 		var err: GridModel.PlaceError = session.grid.check_place(tool, cell, session.wallet)
 		if err == GridModel.PlaceError.OK:
-			var pid: int = session.grid.place(tool, cell, session.wallet)
-			if pid > 0 and SessionLogger != null and SessionLogger.has_method("log_event"):
-				var atp_after: int = session.wallet.get_amount("atp") if session.wallet != null else 0
-				SessionLogger.log_event("structure_placed", {"type": tool, "cell": cell, "atp_after": atp_after})
+			_place_current_tool(cell)
 
 func _on_cell_released(cell: Vector2i) -> void:
 	if session == null or session.grid == null:
@@ -114,10 +118,7 @@ func _on_cell_released(cell: Vector2i) -> void:
 			grid_view.clear_ghost()
 		var err: GridModel.PlaceError = session.grid.check_place(tool, cell, session.wallet)
 		if err == GridModel.PlaceError.OK:
-			var pid: int = session.grid.place(tool, cell, session.wallet)
-			if pid > 0 and SessionLogger != null and SessionLogger.has_method("log_event"):
-				var atp_after: int = session.wallet.get_amount("atp") if session.wallet != null else 0
-				SessionLogger.log_event("structure_placed", {"type": tool, "cell": cell, "atp_after": atp_after})
+			_place_current_tool(cell)
 		else:
 			place_failed.emit(int(err))
 	elif _is_wall_tool(tool):

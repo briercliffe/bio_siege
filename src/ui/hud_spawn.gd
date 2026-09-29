@@ -2,6 +2,7 @@ class_name HudSpawn
 extends Control
 
 signal launch_requested
+signal help_requested
 signal back_requested
 signal deploy_type_selected(type_id: String)
 signal recall_tool_selected(on: bool)
@@ -20,6 +21,8 @@ var btn_back: Button = null
 var title_label: Label = null
 var btn_predict: Button = null
 var btn_launch: Button = null
+var btn_help: Button = null
+var btn_mute: MuteButton = null
 var btn_menu: Button = null
 var popup_menu: PopupMenu = null
 var import_dialog: ImportDialog = null
@@ -51,6 +54,8 @@ func _ensure_nodes() -> void:
 	title_label = get_node_or_null("TopBar/MarginContainer/HBoxContainer/TitleLabel") as Label
 	btn_predict = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnPredict") as Button
 	btn_launch = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnLaunch") as Button
+	btn_help = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnHelp") as Button
+	btn_mute = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnMute") as MuteButton
 	btn_menu = get_node_or_null("TopBar/MarginContainer/HBoxContainer/BtnMenu") as Button
 	popup_menu = get_node_or_null("PopupMenu") as PopupMenu
 	import_dialog = get_node_or_null("ImportDialog") as ImportDialog
@@ -145,6 +150,12 @@ func _ensure_nodes() -> void:
 	btn_launch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top_hbox.add_child(btn_launch)
 
+	btn_help = HowToPlay.create_help_button()
+	top_hbox.add_child(btn_help)
+
+	btn_mute = MuteButton.create()
+	top_hbox.add_child(btn_mute)
+
 	btn_menu = Button.new()
 	btn_menu.name = "BtnMenu"
 	btn_menu.text = "⋯"
@@ -207,6 +218,8 @@ func _wire_static_nodes() -> void:
 		btn_predict.pressed.connect(_on_predict_pressed)
 	if btn_launch != null and not btn_launch.pressed.is_connected(_on_launch_pressed):
 		btn_launch.pressed.connect(_on_launch_pressed)
+	if btn_help != null and not btn_help.pressed.is_connected(_on_btn_help_pressed):
+		btn_help.pressed.connect(_on_btn_help_pressed)
 	if btn_menu != null and not btn_menu.pressed.is_connected(_on_btn_menu_pressed):
 		btn_menu.pressed.connect(_on_btn_menu_pressed)
 	if popup_menu != null and not popup_menu.id_pressed.is_connected(_on_popup_menu_item_selected):
@@ -435,6 +448,10 @@ func get_recall_card() -> HudSpawnCard:
 		if c.is_recall:
 			return c
 	return null
+
+
+func _on_btn_help_pressed() -> void:
+	help_requested.emit()
 
 
 func _on_btn_menu_pressed() -> void:
