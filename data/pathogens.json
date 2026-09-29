@@ -1,0 +1,81 @@
+{
+  "rhinovirus": {
+    "display_name": "Rhinovirus",
+    "role": "Fast swarm",
+    "cost": {
+      "atp": 10
+    },
+    "hp": 30,
+    "speed_tiles_s": 2.5,
+    "attack": {
+      "damage": 6,
+      "interval_s": 0.5,
+      "range_tiles": 1.0
+    },
+    "tags": ["virus", "small"],
+    "targeting": {
+      "priority_tags": [],
+      "fallback": "nearest"
+    },
+    "damage_multipliers": {},
+    "placeholder": {
+      "shape": "circle",
+      "color": "#2ecc71"
+    },
+    "levels": []
+  },
+  "bacteriophage": {
+    "display_name": "Bacteriophage",
+    "role": "Anti-defense specialist",
+    "cost": {
+      "atp": 40
+    },
+    "hp": 80,
+    "speed_tiles_s": 1.5,
+    "attack": {
+      "damage": 20,
+      "interval_s": 1.0,
+      "range_tiles": 1.0
+    },
+    "tags": ["virus"],
+    "targeting": {
+      "priority_tags": [
+        "defense"
+      ],
+      "fallback": "nearest"
+    },
+    "damage_multipliers": {
+      "defense": 3.0
+    },
+    "placeholder": {
+      "shape": "lander",
+      "color": "#e67e22"
+    },
+    "levels": []
+  },
+  "staphylococcus": {
+    "display_name": "Staphylococcus",
+    "role": "Slow tank",
+    "cost": {
+      "atp": 100
+    },
+    "hp": 600,
+    "speed_tiles_s": 0.75,
+    "attack": {
+      "damage": 25,
+      "interval_s": 1.5,
+      "range_tiles": 1.0
+    },
+    "tags": ["bacteria"],
+    "targeting": {
+      "priority_tags": [],
+      "fallback": "nearest"
+    },
+    "damage_multipliers": {},
+    "placeholder": {
+      "shape": "cluster",
+      "color": "#f1c40f"
+    },
+    "levels": []
+  }
+}

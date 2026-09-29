@@ -1,0 +1,98 @@
+{
+  "nucleus": {
+    "display_name": "Nucleus",
+    "role": "HQ: destroy it to win",
+    "cost": {
+      "atp": 0
+    },
+    "hp": 2000,
+    "footprint": [2, 2],
+    "buildable": false,
+    "is_targetable": true,
+    "visible_to_attacker": true,
+    "path_weight": 20,
+    "tags": ["core"],
+    "attack": null,
+    "damage_multipliers": {},
+    "levels": [],
+    "placeholder": {
+      "shape": "rounded_square",
+      "color": "#8e44ad"
+    }
+  },
+  "mucous_wall": {
+    "display_name": "Mucous Wall",
+    "role": "Blocks paths",
+    "cost": {
+      "atp": 10
+    },
+    "hp": 300,
+    "footprint": [1, 1],
+    "buildable": true,
+    "is_targetable": false,
+    "visible_to_attacker": true,
+    "path_weight": 10,
+    "tags": ["wall"],
+    "attack": null,
+    "damage_multipliers": {},
+    "levels": [],
+    "placeholder": {
+      "shape": "square",
+      "color": "#c8b98a"
+    }
+  },
+  "macrophage": {
+    "display_name": "Macrophage",
+    "role": "Splash damage, 2-tile range",
+    "cost": {
+      "atp": 100
+    },
+    "hp": 500,
+    "footprint": [1, 1],
+    "buildable": true,
+    "is_targetable": true,
+    "visible_to_attacker": true,
+    "path_weight": 15,
+    "tags": ["defense"],
+    "attack": {
+      "damage": 40,
+      "interval_s": 1.0,
+      "range_tiles": 2.0,
+      "splash_radius_tiles": 1.0,
+      "projectile_speed_tiles_s": 0
+    },
+    "damage_multipliers": {},
+    "levels": [],
+    "placeholder": {
+      "shape": "circle",
+      "color": "#2e86de"
+    }
+  },
+  "b_cell": {
+    "display_name": "B-Cell",
+    "role": "Sniper, 6-tile range",
+    "cost": {
+      "atp": 150
+    },
+    "hp": 250,
+    "footprint": [1, 1],
+    "buildable": true,
+    "is_targetable": true,
+    "visible_to_attacker": true,
+    "path_weight": 15,
+    "tags": ["defense"],
+    "attack": {
+      "damage": 75,
+      "interval_s": 1.2,
+      "range_tiles": 6.0,
+      "splash_radius_tiles": 0,
+      "projectile_speed_tiles_s": 10.0
+    },
+    "damage_multipliers": {},
+    "levels": [],
+    "placeholder": {
+      "shape": "triangle",
+      "color": "#48dbfb"
+    }
+  }
+}

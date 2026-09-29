@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "grid": {
+    "width": 20,
+    "height": 20,
+    "deploy_ring": 1,
+    "tile_px": 32
+  },
+  "grid_scale": 1,
+  "start_wallet": {
+    "atp": 1000
+  },
+  "tick_rate": 20,
+  "battle_timeout_s": 180,
+  "max_path_recalcs_per_tick": 20,
+  "empty_path_weight": 1,
+  "deploy_hold_interval_s": 0.1,
+  "default_seed": 12345,
+  "feature_flags": {
+    "move_nucleus": false,
+    "intent_lines_default": true
+  }
+}
