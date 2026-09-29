@@ -7,6 +7,8 @@ This plan has two parts.
 
 > **Design update (2026-09-29).** The MVP look is locked in [`MVP_UI_SPEC.md`](MVP_UI_SPEC.md): isometric view (view layer only), a 40x40 grid with a 2-tile deploy band, larger footprints (Nucleus 4x4, towers 3x3), and the final screen set and models. Where that spec conflicts with the grid, projection or rendering text below, the spec wins. Sections 0, 1.1, 1.9, 2.4 and the M1, M2 and M4 milestones are affected; the spec's section 7 lists the changes and section 6 lists the follow-up work. The data files have not been changed yet.
 
+> **Design update (2026-09-29): identity.** [`IDENTITY_PROPOSAL.md`](IDENTITY_PROPOSAL.md) makes adaptation the core of the game: B-Cells learn strains, bases remember them between raids, pathogens mutate, and the self-raid gets a score and an Outbreak run mode. It replaces Phase 1.5 (section 9) with Phase 1.5: Identity, and reshapes parts of sections 10 to 13. Its section 9 lists the amended sections. The work is tracked in epic #85, and every mechanic is behind a feature flag that defaults to off.
+
 # Part I: MVP
 
 ---
