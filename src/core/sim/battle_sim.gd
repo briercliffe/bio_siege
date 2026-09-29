@@ -18,6 +18,7 @@ var pathogens_killed: int = 0
 
 var _events: Array[Dictionary] = []
 var _occupancy: Dictionary = {}  # Vector2i -> int
+var _next_projectile_id: int = 0
 
 
 func _init(p_config: GameConfig, setup: BattleSetup) -> void:
@@ -212,12 +213,109 @@ func damage_pathogen(p: PathogenState, amount: int, source_structure_id: int) ->
 		})
 
 
+func _tower_damage(s: StructureState, victim: PathogenState) -> int:
+	if s == null or s.def == null or victim == null or victim.def == null:
+		return 0
+	var mult: int = 100
+	for tag: String in victim.def.tags:
+		if s.def.damage_multipliers_pct.has(tag):
+			mult = maxi(mult, int(s.def.damage_multipliers_pct[tag]))
+	var dmg: int = FixedMath.apply_pct(s.def.attack_damage, mult)
+	dmg = FixedMath.apply_pct(dmg, status.pct(StatusEffects.key_structure(s.id), StatusEffects.Kind.DAMAGE_DEALT_PCT))
+	dmg = FixedMath.apply_pct(dmg, status.pct(StatusEffects.key_pathogen(victim.id), StatusEffects.Kind.DAMAGE_TAKEN_PCT))
+	return maxi(dmg, 1)
+
+
+func _tower_fire(s: StructureState, target: PathogenState) -> void:
+	if s == null or s.def == null or target == null:
+		return
+	if s.def.projectile_speed_mt_per_tick == 0:
+		if s.def.splash_radius_mt > 0:
+			var hit_unit_ids: Array[int] = []
+			var victims: Array[PathogenState] = []
+			for p: PathogenState in pathogens:
+				if p != null and p.alive and FixedMath.within(target.pos, p.pos, s.def.splash_radius_mt):
+					hit_unit_ids.append(p.id)
+					victims.append(p)
+			for p: PathogenState in victims:
+				damage_pathogen(p, _tower_damage(s, p), s.id)
+			_emit_event({
+				"type": SimEvents.SPLASH,
+				"tick": tick,
+				"structure_id": s.id,
+				"pos": target.pos,
+				"radius": s.def.splash_radius_mt,
+				"hit_unit_ids": hit_unit_ids,
+			})
+		else:
+			damage_pathogen(target, _tower_damage(s, target), s.id)
+	elif s.def.projectile_speed_mt_per_tick > 0:
+		_next_projectile_id += 1
+		var p_id: int = _next_projectile_id
+		var proj := ProjectileState.create(p_id, s.id, target.id, s.center, s.def.projectile_speed_mt_per_tick, 0)
+		projectiles.append(proj)
+		_emit_event({
+			"type": SimEvents.PROJECTILE_SPAWNED,
+			"tick": tick,
+			"projectile_id": p_id,
+			"structure_id": s.id,
+			"target_unit_id": target.id,
+		})
+
+
 func _update_towers() -> void:
-	pass
+	for s: StructureState in structures:
+		if not s.alive or s.def == null or not s.def.has_attack or status.has_flag(StatusEffects.key_structure(s.id), StatusEffects.Kind.DISABLED):
+			continue
+		if s.attack_cooldown > 0:
+			s.attack_cooldown -= 1
+		if not Targeting.tower_keeps_target(s, pathogen(s.target_id)):
+			s.target_id = Targeting.pick_unit_target(s, pathogens)
+		if s.target_id != 0 and s.attack_cooldown == 0:
+			var tgt: PathogenState = pathogen(s.target_id)
+			_tower_fire(s, tgt)
+			s.attack_cooldown = maxi(1, FixedMath.apply_pct(s.def.attack_interval_ticks, status.pct(StatusEffects.key_structure(s.id), StatusEffects.Kind.ATTACK_INTERVAL_PCT)))
+			_emit_event({
+				"type": SimEvents.TOWER_FIRED,
+				"tick": tick,
+				"structure_id": s.id,
+				"target_unit_id": tgt.id,
+			})
 
 
 func _update_projectiles() -> void:
-	pass
+	for j: ProjectileState in projectiles:
+		if not j.alive:
+			continue
+		var tgt: PathogenState = pathogen(j.target_id)
+		if tgt == null or not tgt.alive:
+			j.alive = false
+			_emit_event({
+				"type": SimEvents.PROJECTILE_FIZZLED,
+				"tick": tick,
+				"projectile_id": j.id,
+				"structure_id": j.source_id,
+				"target_unit_id": j.target_id,
+			})
+			continue
+		j.pos = FixedMath.move_towards(j.pos, tgt.pos, j.speed)
+		if j.pos == tgt.pos:
+			damage_pathogen(tgt, _tower_damage(structure(j.source_id), tgt), j.source_id)
+			j.alive = false
+			_emit_event({
+				"type": SimEvents.PROJECTILE_HIT,
+				"tick": tick,
+				"projectile_id": j.id,
+				"structure_id": j.source_id,
+				"target_unit_id": j.target_id,
+			})
+
+	var alive_projectiles: Array[ProjectileState] = []
+	for j: ProjectileState in projectiles:
+		if j.alive:
+			alive_projectiles.append(j)
+	projectiles = alive_projectiles
+
 
 
 func _update_pathogen(p: PathogenState) -> void:
@@ -375,13 +473,19 @@ func _finish(p_outcome: String, p_reason: String) -> void:
 	})
 
 
-func _emit_event(type: String, payload: Dictionary) -> void:
-	var event := {
-		"type": type,
-		"tick": tick,
-	}
-	for k: Variant in payload.keys():
-		event[k] = payload[k]
+func _emit_event(type_or_dict: Variant, payload: Dictionary = {}) -> void:
+	var event: Dictionary = {}
+	if type_or_dict is Dictionary:
+		var d: Dictionary = type_or_dict as Dictionary
+		event["type"] = d.get("type", "")
+		event["tick"] = d.get("tick", tick)
+		for k: Variant in d.keys():
+			event[k] = d[k]
+	else:
+		event["type"] = str(type_or_dict)
+		event["tick"] = tick
+		for k: Variant in payload.keys():
+			event[k] = payload[k]
 	_events.append(event)
 
 
