@@ -71,6 +71,7 @@ func test_retarget_mid_walk() -> void:
 	]
 	var units := [{"type": "rhinovirus", "cell": Vector2i(0, 10)}]
 	var sim := SimFixtures.make_sim(structs, units)
+	sim.structure(1).attack_cooldown = 999
 
 	for i in range(3):
 		sim.step()
