@@ -1,6 +1,9 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://src/game/phases/synthesis_phase.gd" id="1_synthesis"]
+[ext_resource type="PackedScene" path="res://src/view/grid_view.tscn" id="2_grid_view"]
+[ext_resource type="Script" path="res://src/game/build_controller.gd" id="3_build_controller"]
+[ext_resource type="PackedScene" path="res://src/ui/toast.tscn" id="4_toast"]
 
 [node name="SynthesisPhase" type="Control"]
 layout_mode = 3
@@ -11,19 +14,24 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_synthesis")
 
+[node name="GridView" parent="." instance=ExtResource("2_grid_view")]
+
+[node name="BuildController" type="Node" parent="."]
+script = ExtResource("3_build_controller")
+
+[node name="Toast" parent="." instance=ExtResource("4_toast")]
+layout_mode = 1
+
 [node name="Label" type="Label" parent="."]
 layout_mode = 1
-anchors_preset = 8
+anchors_preset = 5
 anchor_left = 0.5
-anchor_top = 0.5
 anchor_right = 0.5
-anchor_bottom = 0.5
 offset_left = -100.0
-offset_top = -20.0
+offset_top = 10.0
 offset_right = 100.0
-offset_bottom = 20.0
+offset_bottom = 40.0
 grow_horizontal = 2
-grow_vertical = 2
 text = "SYNTHESIS"
 horizontal_alignment = 1
 vertical_alignment = 1
