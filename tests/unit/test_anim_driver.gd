@@ -226,6 +226,96 @@ func test_bcell_charge_ramp_and_recoil() -> void:
 	assert_eq(pose.anim, ModelPose.Anim.IDLE)
 
 
+func test_tower_keeps_aim_and_facing_when_its_target_dies() -> void:
+	# Grid origin is up and to the left of this tower on screen, the target to its right.
+	var sim: BattleSim = SimFixtures.make_sim(
+		[{"type": "macrophage", "origin": Vector2i(10, 4)}],
+		[{"type": "rhinovirus", "cell": Vector2i(14, 4)}], 1, config)
+	var tower: StructureState = _tower(sim, "macrophage")
+	var target: PathogenState = sim.pathogens[0]
+	tower.target_id = target.id
+	var driver := AnimDriver.new()
+	var tp: PathogenState = UnitLayer.live_target(sim, tower)
+	assert_eq(tp, target)
+	var pose: ModelPose = driver.pose_for_structure(tower, 10, Vector2(14.5, 4.5), 0.0, tp != null)
+	assert_true(pose.facing_right)
+	var aim: Vector2 = pose.aim
+	assert_gt(aim.x, 0.0)
+
+	target.alive = false
+	tp = UnitLayer.live_target(sim, tower)
+	assert_null(tp, "a dead target is not something to aim at, though target_id still names it")
+	driver.pose_for_structure(tower, 11, Vector2.ZERO, 0.05, tp != null)
+	assert_true(pose.facing_right, "facing does not turn to the grid origin")
+	assert_eq(pose.aim, aim, "aim holds instead of pointing at (0, 0)")
+	driver.pose_for_structure(tower, 12, Vector2.ZERO, 0.1, false)
+	assert_true(pose.facing_right, "and the facing does not stick on the origin later either")
+
+	tower.target_id = 0
+	driver.pose_for_structure(tower, 13, Vector2.ZERO, 0.15)
+	assert_eq(pose.aim, Vector2.ZERO, "no target id: no aim")
+	assert_true(pose.facing_right)
+
+
+func test_aim_lock_eases_in_and_out() -> void:
+	assert_almost_eq(AnimDriver.ease_lock(0.0, true, AnimDriver.AIM_LOCK_S * 0.5), 0.5, 0.0001)
+	assert_almost_eq(AnimDriver.ease_lock(0.5, true, AnimDriver.AIM_LOCK_S), 1.0, 0.0001)
+	assert_almost_eq(AnimDriver.ease_lock(1.0, false, AnimDriver.AIM_LOCK_S * 0.25), 0.75, 0.0001)
+	assert_almost_eq(AnimDriver.ease_lock(0.3, true, -1.0), 0.3, 0.0001, "time never runs back")
+	var sim: BattleSim = SimFixtures.make_sim(
+		[{"type": "b_cell", "origin": Vector2i(10, 10)}],
+		[{"type": "rhinovirus", "cell": Vector2i(14, 10)}], 1, config)
+	var tower: StructureState = _tower(sim, "b_cell")
+	var driver := AnimDriver.new()
+	tower.target_id = 0
+	var pose: ModelPose = driver.pose_for_structure(tower, 10, Vector2.ZERO, 1.0)
+	assert_eq(pose.aim_lock, 0.0)
+	tower.target_id = sim.pathogens[0].id
+	driver.pose_for_structure(tower, 11, Vector2(14.5, 10.5), 1.05)
+	assert_almost_eq(pose.aim_lock, 0.05 / AnimDriver.AIM_LOCK_S, 0.0001, "acquiring a target eases the lock in")
+	for i: int in range(10):
+		driver.pose_for_structure(tower, 12 + i, Vector2(14.5, 10.5), 1.1 + 0.05 * float(i))
+	assert_almost_eq(pose.aim_lock, 1.0, 0.0001)
+
+
+func test_nucleus_pulse_phase_is_continuous_when_hp_changes() -> void:
+	assert_almost_eq(AnimDriver.advance_pulse(0.9, 0.2, 1.0), 0.1, 0.0001)
+	assert_almost_eq(AnimDriver.advance_pulse(0.4, -1.0, 2.0), 0.4, 0.0001)
+	var sim: BattleSim = SimFixtures.make_sim([], [], 1, config)
+	var nucleus: StructureState = sim.structure(sim.nucleus_id)
+	var driver := AnimDriver.new()
+	var pose: ModelPose = driver.pose_for_structure(nucleus, 10, Vector2.ZERO, 5.0)
+	var start: float = pose.pulse_phase
+	driver.pose_for_structure(nucleus, 11, Vector2.ZERO, 5.1)
+	var full: float = NucleusPainter.pulse_rate(1.0)
+	assert_almost_eq(pose.pulse_phase, fposmod(start + 0.1 * full, 1.0), 0.0001)
+	var before: float = pose.pulse_phase
+	nucleus.hp = 1
+	driver.pose_for_structure(nucleus, 11, Vector2.ZERO, 5.1)
+	assert_almost_eq(pose.pulse_phase, before, 0.0001, "an HP change alone does not move the phase")
+	driver.pose_for_structure(nucleus, 12, Vector2.ZERO, 5.15)
+	var hurt: float = NucleusPainter.pulse_rate(pose.hp_frac)
+	assert_gt(hurt, full)
+	assert_almost_eq(pose.pulse_phase, fposmod(before + 0.05 * hurt, 1.0), 0.0001, "then it advances at the faster rate")
+	driver.pose_for_structure(nucleus, 13, Vector2.ZERO, 50.0)
+	assert_almost_eq(pose.pulse_phase, fposmod(before + 0.05 * hurt + AnimDriver.MAX_VIEW_STEP_S * hurt, 1.0), 0.0001, "a hitch is capped")
+
+
+func test_tower_attack_pure_timings() -> void:
+	var charge: Vector2 = AnimDriver.tower_attack("b_cell", true, 3, 24, AnimDriver.NEVER)
+	assert_eq(int(charge.x), ModelPose.Anim.WINDUP)
+	assert_almost_eq(charge.y, 0.5, 0.0001)
+	assert_eq(int(AnimDriver.tower_attack("b_cell", false, 3, 24, AnimDriver.NEVER).x), ModelPose.Anim.IDLE, "no charge without a target")
+	assert_eq(AnimDriver.tower_attack("b_cell", true, 24, 24, 0), Vector2(float(ModelPose.Anim.STRIKE), 1.0))
+	var recoil: Vector2 = AnimDriver.tower_attack("b_cell", true, 21, 24, 3)
+	assert_eq(int(recoil.x), ModelPose.Anim.RECOVER)
+	assert_almost_eq(recoil.y, 0.5, 0.0001)
+	assert_eq(int(AnimDriver.tower_attack("macrophage", true, 8, 20, AnimDriver.NEVER).x), ModelPose.Anim.WINDUP, "macrophage windup is 8 ticks")
+	assert_eq(int(AnimDriver.tower_attack("macrophage", true, 9, 20, AnimDriver.NEVER).x), ModelPose.Anim.IDLE)
+	assert_eq(AnimDriver.tower_attack("macrophage", true, 20, 20, 0), Vector2(float(ModelPose.Anim.STRIKE), AnimDriver.STRIKE_T))
+	assert_eq(int(AnimDriver.tower_attack("macrophage", true, 19, 20, 1).x), ModelPose.Anim.RECOVER)
+
+
 func test_nucleus_and_walls_never_attack() -> void:
 	var sim: BattleSim = SimFixtures.make_sim([{"type": "mucous_wall", "origin": Vector2i(5, 5)}], [], 1, config)
 	var driver := AnimDriver.new()

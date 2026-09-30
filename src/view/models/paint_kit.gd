@@ -18,6 +18,102 @@ const HEX_01: PackedVector2Array = [
 	Vector2(0.5, 1.0), Vector2(0.0, 0.75), Vector2(0.0, 0.25),
 ]
 
+## A shape shaded like the canvas sph(): radial-gradient(circle at 34% 28%, light 0, mid 55%, dark 100%), as
+## one indexed triangle list through RenderingServer.canvas_item_add_triangle_array (the call draw_polygon
+## makes after triangulating). The CSS gradient reaches the farthest corner of the bounding box, so the rim
+## is never fully dark. The outline is fixed at construction (a circle of `points` points, or a lumpy
+## outline as unit offsets) and draw() only scales it, so drawing allocates nothing.
+class RadialMesh extends RefCounted:
+	const FOCUS: Vector2 = Vector2(-0.32, -0.44)
+	const REACH: float = 1.953
+	const MID_AT: float = 0.55
+
+	var unit: PackedVector2Array = PackedVector2Array()
+	var grad: PackedFloat32Array = PackedFloat32Array()
+	var indices: PackedInt32Array = PackedInt32Array()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var cols: PackedColorArray = PackedColorArray()
+	var _last: Array[Color] = [Color(0.0, 0.0, 0.0, -1.0), Color.BLACK, Color.BLACK]
+
+	func _init(rim: PackedVector2Array = PackedVector2Array(), points: int = PaintKit.ELLIPSE_POINTS) -> void:
+		var outline: PackedVector2Array = rim if rim.size() >= 3 else PaintKit.unit_circle_points(points)
+		var n: int = outline.size()
+		unit.append(FOCUS)
+		grad.append(0.0)
+		for i: int in range(n):
+			var m: Vector2 = FOCUS + (outline[i] - FOCUS) * 0.5
+			unit.append(m)
+			grad.append(m.distance_to(FOCUS) / REACH)
+		for i: int in range(n):
+			unit.append(outline[i])
+			grad.append(outline[i].distance_to(FOCUS) / REACH)
+		for i: int in range(n):
+			var j: int = (i + 1) % n
+			indices.append_array([0, 1 + i, 1 + j, 1 + i, 1 + n + i, 1 + n + j, 1 + i, 1 + n + j, 1 + j])
+		pts.resize(unit.size())
+		cols.resize(unit.size())
+
+	## `c` and `r` (the x and y radius) in local px.
+	func draw(ci: CanvasItem, c: Vector2, r: Vector2, light: Color, mid: Color, dark: Color) -> void:
+		for i: int in range(unit.size()):
+			pts[i] = c + unit[i] * r
+		if light != _last[0] or mid != _last[1] or dark != _last[2]:
+			_last[0] = light
+			_last[1] = mid
+			_last[2] = dark
+			for i: int in range(grad.size()):
+				var g: float = grad[i]
+				cols[i] = light.lerp(mid, g / MID_AT) if g < MID_AT else mid.lerp(dark, (g - MID_AT) / (1.0 - MID_AT))
+		RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), indices, pts, cols)
+
+
+## A soft glow as one smooth triangle mesh instead of stacked translucent circles, which band into visible
+## rings at close-up sizes. Full alpha out to an inner radius, then falling to 0 at the outer radius as
+## (1 - u)^power across RINGS rings. Like RadialMesh, draw() only moves points, so it allocates nothing.
+class GlowMesh extends RefCounted:
+	const RINGS: int = 6
+	const POINTS: int = 32
+
+	var unit: PackedVector2Array = PackedVector2Array()
+	var falloff: PackedFloat32Array = PackedFloat32Array()
+	var indices: PackedInt32Array = PackedInt32Array()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var cols: PackedColorArray = PackedColorArray()
+	var _last: Color = Color(0.0, 0.0, 0.0, -1.0)
+
+	func _init(power: float = 1.0) -> void:
+		unit = PaintKit.unit_circle_points(POINTS)
+		for k: int in range(RINGS):
+			falloff.append(pow(1.0 - float(k) / float(RINGS - 1), power))
+		for i: int in range(POINTS):
+			var j: int = (i + 1) % POINTS
+			indices.append_array([0, 1 + i, 1 + j])
+			for k: int in range(RINGS - 1):
+				var a: int = 1 + k * POINTS
+				var b: int = a + POINTS
+				indices.append_array([a + i, b + i, b + j, a + i, b + j, a + j])
+		pts.resize(1 + RINGS * POINTS)
+		cols.resize(1 + RINGS * POINTS)
+
+	## `c`, `r_in` and `r_out` in local px; `col` is the colour at full strength.
+	func draw(ci: CanvasItem, c: Vector2, r_in: float, r_out: float, col: Color) -> void:
+		if col.a <= 0.0 or r_out <= 0.0:
+			return
+		pts[0] = c
+		for k: int in range(RINGS):
+			var r: float = lerpf(r_in, r_out, float(k) / float(RINGS - 1))
+			for i: int in range(POINTS):
+				pts[1 + k * POINTS + i] = c + unit[i] * r
+		if col != _last:
+			_last = col
+			cols[0] = col
+			for k: int in range(RINGS):
+				var ck: Color = Color(col.r, col.g, col.b, col.a * falloff[k])
+				for i: int in range(POINTS):
+					cols[1 + k * POINTS + i] = ck
+		RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), indices, pts, cols)
+
+
 static var _unit_circle: PackedVector2Array = _build_unit_circle()
 static var _scratch: PackedVector2Array = PackedVector2Array()
 static var _quad: PackedVector2Array = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
@@ -27,11 +123,24 @@ static var _quad_cols: PackedColorArray = PackedColorArray([Color.WHITE, Color.W
 
 
 static func _build_unit_circle() -> PackedVector2Array:
+	return unit_circle_points(ELLIPSE_POINTS)
+
+
+## `n` points on the unit circle, clockwise on screen from +x. Allocates: call it at setup, not while drawing.
+static func unit_circle_points(n: int) -> PackedVector2Array:
 	var out := PackedVector2Array()
-	for i: int in range(ELLIPSE_POINTS):
-		var a: float = float(i) / float(ELLIPSE_POINTS) * TAU
+	for i: int in range(maxi(n, 3)):
+		var a: float = float(i) / float(maxi(n, 3)) * TAU
 		out.append(Vector2(cos(a), sin(a)))
 	return out
+
+
+## The alpha factor of translucent layers with these alpha shares drawn over each other.
+static func stacked_alpha(shares: Array[float]) -> float:
+	var clear: float = 1.0
+	for a: float in shares:
+		clear *= 1.0 - clampf(a, 0.0, 1.0)
+	return 1.0 - clear
 
 
 ## The canvas P(dx, dy, w, h): a rect in tile units relative to the ground anchor.
@@ -54,6 +163,16 @@ static func ellipse(ci: CanvasItem, rect: Rect2, color: Color) -> void:
 	for i: int in range(ELLIPSE_POINTS):
 		_scratch[i] = c + _unit_circle[i] * r
 	ci.draw_colored_polygon(_scratch, color)
+
+
+## A filled ellipse as a circle under a squashed transform, so it takes the engine's circle fast path.
+## `centre` and `size` are in tiles and `xf` maps local px to the canvas; `xf` is set again on return.
+static func oval(ci: CanvasItem, xf: Transform2D, centre: Vector2, size: Vector2, t_px: float, color: Color) -> void:
+	if size.x <= 0.0 or size.y <= 0.0:
+		return
+	ci.draw_set_transform_matrix(xf * Transform2D(Vector2(1.0, 0.0), Vector2(0.0, size.y / size.x), centre * t_px))
+	ci.draw_circle(Vector2.ZERO, size.x * 0.5 * t_px, color)
+	ci.draw_set_transform_matrix(xf)
 
 
 ## Fakes radial-gradient(circle at 34% 28%, light 0, mid 55%, dark 100%) with four stacked ellipses.
@@ -126,6 +245,33 @@ static func cylinder(ci: CanvasItem, anchor: Vector2, t_px: float, half: float, 
 	_fill_quad(ci, body.position.x, mid_x, body.position.y, body.end.y, cols[1], cols[2], cols[1], cols[2])
 	_fill_quad(ci, mid_x, body.end.x, body.position.y, body.end.y, cols[2], cols[3], cols[2], cols[3])
 	ellipse(ci, part_rect(anchor, t_px, -half, y0 - 0.8 - height, half * 2.0, 0.7), top_col)
+
+
+## The canvas cyl() pedestal of the towers, with its ellipses as ovals under `xf` (local px, ground centre
+## at the local origin). cols = [bottom, body left, body middle, body right, top, top light]; the top is
+## the radial highlight fake of two extra ovals. `flat` draws the body as one left-to-right quad and the
+## top as one oval. `xf` is set again on return.
+static func pedestal(ci: CanvasItem, xf: Transform2D, t_px: float, half: float, height: float, cols: Array[Color], flat: bool) -> void:
+	if cols.size() < 6:
+		return
+	oval(ci, xf, Vector2(0.0, -0.1), Vector2(half * 2.0, 0.7), t_px, cols[0])
+	var x0: float = -half * t_px
+	var x1: float = half * t_px
+	var y0: float = (-0.45 - height) * t_px
+	var y1: float = -0.1 * t_px
+	if flat:
+		_fill_quad(ci, x0, x1, y0, y1, cols[1], cols[3], cols[1], cols[3])
+	else:
+		_fill_quad(ci, x0, 0.0, y0, y1, cols[1], cols[2], cols[1], cols[2])
+		_fill_quad(ci, 0.0, x1, y0, y1, cols[2], cols[3], cols[2], cols[3])
+	var top: Vector2 = Vector2(0.0, -0.45 - height)
+	var size: Vector2 = Vector2(half * 2.0, 0.7)
+	if flat:
+		oval(ci, xf, top, size, t_px, cols[4].lerp(cols[5], 0.3))
+		return
+	oval(ci, xf, top, size, t_px, cols[4])
+	oval(ci, xf, top + Vector2(-0.12, -0.06) * size, size * 0.7, t_px, cols[4].lerp(cols[5], 0.5))
+	oval(ci, xf, top + Vector2(-0.18, -0.1) * size, size * 0.35, t_px, cols[5])
 
 
 static func vertical_gradient_rect(ci: CanvasItem, rect: Rect2, top: Color, bottom: Color) -> void:

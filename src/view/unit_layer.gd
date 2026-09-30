@@ -117,8 +117,17 @@ static func structure_size_px(s: StructureState, proj: IsoProjection) -> Vector2
 	var t: float = proj.tile_px
 	if s.def != null and s.def.has_tag("wall"):
 		return Vector2(2.0 * t * proj.scale, WallRenderer.height_tiles(s.hp, s.max_hp) * t)
-	var h_t: float = float(GridView.MODEL_HEIGHT_T.get(s.type_id, GridView.DEFAULT_MODEL_HEIGHT_T))
+	var h_t: float = ModelRegistry.painter_for(s.type_id).height_tiles()
 	return Vector2(float(s.footprint.x) * t * proj.scale * STRUCTURE_WIDTH_SCALE, h_t * t)
+
+
+## The live unit a tower is aiming at, or null. After a kill the sim keeps target_id on the dead unit until
+## its next tick, so a set target_id alone does not mean there is something to aim at.
+static func live_target(p_sim: BattleSim, s: StructureState) -> PathogenState:
+	if p_sim == null or s == null or s.target_id == 0:
+		return null
+	var tp: PathogenState = p_sim.pathogen(s.target_id)
+	return tp if tp != null and tp.alive else null
 
 
 static func structure_anchor(s: StructureState) -> Vector2:
@@ -367,12 +376,9 @@ func _draw_structure(s: StructureState) -> void:
 		else:
 			walls.paint_body(self, s.origin, s.hp * 2 < s.max_hp, wp)
 		return
-	var aim_ground: Vector2 = Vector2.ZERO
-	if s.target_id != 0:
-		var tp: PathogenState = sim.pathogen(s.target_id)
-		if tp != null and tp.alive:
-			aim_ground = pathogen_anchor(tp)
-	var pose: ModelPose = driver.pose_for_structure(s, sim.tick, aim_ground, view_time)
+	var tp: PathogenState = live_target(sim, s)
+	var aim_ground: Vector2 = pathogen_anchor(tp) if tp != null else Vector2.ZERO
+	var pose: ModelPose = driver.pose_for_structure(s, sim.tick, aim_ground, view_time, tp != null)
 	var foot: Vector2 = projection.ground_to_screen(structure_anchor(s))
 	ModelRegistry.painter_for(s.type_id).paint(self, foot, pose, projection.tile_px)
 

@@ -65,6 +65,52 @@ func test_ghost_geometry_for_ranged_tower() -> void:
 	gv._rebuild_ghost()
 	assert_true(gv._g_range_fill.is_empty())
 
+func test_structures_are_painted_by_their_model_painters() -> void:
+	var gv: GridView = _make_view()
+	var wallet := Wallet.new({"atp": 100000})
+	assert_gt(gv.grid.place("macrophage", Vector2i(6, 6), wallet), 0)
+	assert_gt(gv.grid.place("b_cell", Vector2i(12, 6), wallet), 0)
+	gv._rebuild_items()
+	var seen: Dictionary = {}
+	for item: GridView.StructureItem in gv._items:
+		if item.kind == 1:
+			assert_null(item.painter, "walls go through the WallRenderer")
+			continue
+		assert_same(item.painter, ModelRegistry.painter_for(item.type_id))
+		assert_eq(item.pose.anim, ModelPose.Anim.IDLE)
+		assert_eq(item.pose.seed, item.id)
+		seen[item.type_id] = item.painter
+	assert_true(seen.get("nucleus") is NucleusPainter)
+	assert_true(seen.get("macrophage") is MacrophagePainter)
+	assert_true(seen.get("b_cell") is BCellPainter)
+	gv.queue_redraw()
+	await wait_process_frames(2)
+	assert_eq(get_logger().get_errors().size(), 0)
+
+func test_idle_clock_runs_only_while_structures_are_drawn() -> void:
+	var gv: GridView = _make_view()
+	gv._rebuild_items()
+	assert_true(gv._has_models, "the Nucleus is always on the island")
+	gv._process(0.25)
+	assert_almost_eq(gv.anim_time, 0.25, 0.0001)
+	gv.draw_structures = false
+	gv._process(0.25)
+	assert_almost_eq(gv.anim_time, 0.25, 0.0001, "Infection draws structures in the UnitLayer, so the island stays still")
+	gv.draw_structures = true
+	gv.visible = false
+	gv._process(0.25)
+	assert_almost_eq(gv.anim_time, 0.25, 0.0001, "no idle redraws while hidden")
+
+func test_tower_ghost_is_the_real_model_in_the_ghost_group() -> void:
+	var gv: GridView = _make_view()
+	gv.set_ghost("b_cell", Vector2i(10, 10), true)
+	gv._rebuild_ghost()
+	assert_true(gv._ghost_group.visible)
+	assert_true(gv._ghost_canvas.painter is BCellPainter)
+	assert_eq(gv._ghost_canvas.foot, gv.projection.footprint_center(Vector2i(10, 10), Vector2i(3, 3)))
+	gv.clear_ghost()
+	assert_false(gv._ghost_group.visible)
+
 func test_night_switch_and_structure_cache_is_depth_sorted() -> void:
 	var gv: GridView = _make_view()
 	gv.set_night(true)

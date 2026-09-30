@@ -25,6 +25,11 @@ const FACING_DEADZONE: float = 0.01
 const IDLE_DESYNC_SECONDS: float = 10.0
 const STRIKE_T: float = 0.5
 const B_CELL_ID: String = "b_cell"
+const NUCLEUS_ID: String = "nucleus"
+## Seconds for a tower's aim_lock to go from 0 to 1 (or back) as it gains or loses a target.
+const AIM_LOCK_S: float = 0.2
+## Longest view-clock step fed to the time-integrated pose fields, so a hitch does not jump them.
+const MAX_VIEW_STEP_S: float = 0.1
 
 var reduce_flashes: bool = false
 
@@ -37,6 +42,7 @@ var _fire_s: Dictionary = {}       # structure id -> tick of its last shot
 var _poses_p: Dictionary = {}      # unit id -> reused ModelPose
 var _poses_s: Dictionary = {}      # structure id -> reused ModelPose
 var _last_ground_p: Dictionary = {}    # unit id -> ground position at the previous pose call
+var _last_time_s: Dictionary = {}      # structure id -> view_time at the previous pose call
 var _latest_tick: int = 0
 
 
@@ -58,6 +64,17 @@ static func advance_gait(phase: float, moved_tiles: float, stride_tiles: float) 
 	if moved_tiles == 0.0 or stride_tiles <= 0.0:
 		return phase
 	return fposmod(phase + moved_tiles / stride_tiles, 1.0)
+
+
+## A 0..1 phase advanced by `dt_s` seconds at `rate_hz`. Integrating the rate (instead of sin(time * rate))
+## keeps the phase continuous when the rate changes.
+static func advance_pulse(phase: float, dt_s: float, rate_hz: float) -> float:
+	return fposmod(phase + maxf(dt_s, 0.0) * rate_hz, 1.0)
+
+
+## A tower's aim_lock moved `dt_s` seconds toward 1 while it has a target, toward 0 otherwise.
+static func ease_lock(lock: float, has_target: bool, dt_s: float) -> float:
+	return move_toward(lock, 1.0 if has_target else 0.0, maxf(dt_s, 0.0) / AIM_LOCK_S)
 
 
 static func facing_right(from_ground: Vector2, to_ground: Vector2, current: bool) -> bool:
@@ -190,23 +207,36 @@ func last_structure_pose(id: int) -> ModelPose:
 	return _poses_s.get(id)
 
 
-func pose_for_structure(s: StructureState, sim_tick: int, aim_ground: Vector2, view_time: float) -> ModelPose:
+## `has_aim` is false when the tower still holds a target id that no longer resolves to a live unit (the sim
+## clears it on its next tick); the tower then keeps its previous aim and facing instead of turning to
+## `aim_ground`.
+func pose_for_structure(s: StructureState, sim_tick: int, aim_ground: Vector2, view_time: float, has_aim: bool = true) -> ModelPose:
 	_latest_tick = sim_tick
+	var fresh: bool = not _poses_s.has(s.id)
 	var pose: ModelPose = _pose(_poses_s, s.id)
 	pose.seed = s.id
 	pose.time = view_time + ViewRng.hash01(s.id, 1) * IDLE_DESYNC_SECONDS
 	pose.hp_frac = _hp_frac(s.hp, s.max_hp)
+	if fresh:
+		pose.pulse_phase = ViewRng.hash01(s.id, 2)
+	var dt: float = clampf(view_time - float(_last_time_s.get(s.id, view_time)), 0.0, MAX_VIEW_STEP_S)
+	_last_time_s[s.id] = view_time
 
 	if _death_s.has(s.id):
 		_apply_death(pose, sim_tick - int(_death_s[s.id]), death_ticks_for(s.type_id))
 		return pose
 
+	if s.type_id == NUCLEUS_ID:
+		pose.pulse_phase = advance_pulse(pose.pulse_phase, dt, NucleusPainter.pulse_rate(pose.hp_frac))
 	pose.death_t = 0.0
 	pose.anim = ModelPose.Anim.IDLE
 	pose.attack_t = 0.0
-	pose.aim = Vector2.ZERO
 	if s.def != null and s.def.has_attack:
-		_tower_attack(pose, s, sim_tick, aim_ground)
+		_tower_attack(pose, s, sim_tick, aim_ground, has_aim)
+		pose.aim_lock = ease_lock(pose.aim_lock, s.target_id != 0, dt)
+	else:
+		pose.aim = Vector2.ZERO
+		pose.aim_lock = 0.0
 	var since_hit: int = sim_tick - int(_hit_s.get(s.id, NEVER))
 	_apply_hit(pose, since_hit)
 	if s.def != null and s.def.has_tag("wall"):
@@ -214,38 +244,43 @@ func pose_for_structure(s: StructureState, sim_tick: int, aim_ground: Vector2, v
 	return pose
 
 
-func _tower_attack(pose: ModelPose, s: StructureState, sim_tick: int, aim_ground: Vector2) -> void:
+func _tower_attack(pose: ModelPose, s: StructureState, sim_tick: int, aim_ground: Vector2, has_aim: bool) -> void:
 	var anchor: Vector2 = Vector2(s.origin) + Vector2(s.footprint) * 0.5
-	if s.target_id != 0:
+	if s.target_id == 0:
+		pose.aim = Vector2.ZERO
+	elif has_aim:
 		var d: Vector2 = aim_ground - anchor
 		var screen: Vector2 = Vector2(d.x - d.y, (d.x + d.y) * 0.5)
 		if screen.length_squared() > 0.000001:
 			pose.aim = screen.normalized()
 		pose.facing_right = facing_right(anchor, aim_ground, pose.facing_right)
-	var interval: int = s.def.attack_interval_ticks
 	var since_fire: int = sim_tick - int(_fire_s.get(s.id, NEVER))
-	if s.type_id == B_CELL_ID:
+	var res: Vector2 = tower_attack(s.type_id, s.target_id != 0, s.attack_cooldown, s.def.attack_interval_ticks, since_fire)
+	pose.anim = int(res.x) as ModelPose.Anim
+	pose.attack_t = res.y
+
+
+## Returns Vector2(anim, attack_t) for a tower. The B-Cell charges over the last TOWER_CHARGE_TICKS of its
+## cooldown (WINDUP, attack_t 0 to 1), fires (STRIKE, 1) and recoils for TOWER_RECOIL_TICKS (RECOVER, 0 to
+## 1). Other towers use the pathogen windup, strike and recover timing.
+static func tower_attack(type_id: String, has_target: bool, cooldown: int, interval_ticks: int, since_fire: int) -> Vector2:
+	if type_id == B_CELL_ID:
 		if since_fire == 0:
-			pose.anim = ModelPose.Anim.STRIKE
-			pose.attack_t = 1.0
-		elif since_fire > 0 and since_fire <= TOWER_RECOIL_TICKS:
-			pose.anim = ModelPose.Anim.RECOVER
-			pose.attack_t = float(since_fire) / float(TOWER_RECOIL_TICKS)
-		elif s.target_id != 0 and s.attack_cooldown <= TOWER_CHARGE_TICKS:
-			pose.anim = ModelPose.Anim.WINDUP
-			pose.attack_t = 1.0 - float(s.attack_cooldown) / float(TOWER_CHARGE_TICKS)
-		return
-	var windup: int = windup_ticks(interval)
-	var recover: int = recover_ticks(interval)
+			return Vector2(float(ModelPose.Anim.STRIKE), 1.0)
+		if since_fire > 0 and since_fire <= TOWER_RECOIL_TICKS:
+			return Vector2(float(ModelPose.Anim.RECOVER), float(since_fire) / float(TOWER_RECOIL_TICKS))
+		if has_target and cooldown <= TOWER_CHARGE_TICKS:
+			return Vector2(float(ModelPose.Anim.WINDUP), 1.0 - float(cooldown) / float(TOWER_CHARGE_TICKS))
+		return Vector2(float(ModelPose.Anim.IDLE), 0.0)
+	var windup: int = windup_ticks(interval_ticks)
+	var recover: int = recover_ticks(interval_ticks)
 	if since_fire == 0:
-		pose.anim = ModelPose.Anim.STRIKE
-		pose.attack_t = STRIKE_T
-	elif since_fire > 0 and since_fire <= recover:
-		pose.anim = ModelPose.Anim.RECOVER
-		pose.attack_t = 0.6 + 0.4 * float(since_fire) / float(recover)
-	elif s.target_id != 0 and windup > 0 and s.attack_cooldown <= windup:
-		pose.anim = ModelPose.Anim.WINDUP
-		pose.attack_t = 0.4 * (1.0 - float(s.attack_cooldown) / float(windup))
+		return Vector2(float(ModelPose.Anim.STRIKE), STRIKE_T)
+	if since_fire > 0 and since_fire <= recover:
+		return Vector2(float(ModelPose.Anim.RECOVER), 0.6 + 0.4 * float(since_fire) / float(recover))
+	if has_target and windup > 0 and cooldown <= windup:
+		return Vector2(float(ModelPose.Anim.WINDUP), 0.4 * (1.0 - float(cooldown) / float(windup)))
+	return Vector2(float(ModelPose.Anim.IDLE), 0.0)
 
 
 func _apply_hit(pose: ModelPose, ticks_since_hit: int) -> void:

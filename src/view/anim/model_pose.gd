@@ -15,5 +15,7 @@ var shake: float = 0.0               # 0..1 shake amount (Reduce flashes halves 
 var death_t: float = 0.0             # 0..1 across the death animation
 var hp_frac: float = 1.0
 var aim: Vector2 = Vector2.ZERO      # towers: unit direction to the target on screen
+var aim_lock: float = 0.0            # towers: 0 with no target, eases to 1 over AnimDriver.AIM_LOCK_S once aimed
+var pulse_phase: float = 0.0         # 0..1, advances at a rate that may change (Nucleus heartbeat)
 var seed: int = 0                    # entity id, for per-entity phase offsets
 var time: float = 0.0                # view clock in seconds for idle loops (stops while paused)

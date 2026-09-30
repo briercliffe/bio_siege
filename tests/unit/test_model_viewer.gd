@@ -69,6 +69,35 @@ func test_move_gait_uses_speed_and_stride() -> void:
 	assert_almost_eq(pose.gait_phase, expect, 0.0001)
 
 
+func test_towers_use_the_battle_tower_timings_and_aim() -> void:
+	var viewer: Control = _make_viewer()
+	var charge: ModelPose = viewer.pose_for("b_cell", ModelPose.Anim.WINDUP, 0.15)
+	assert_eq(charge.anim, ModelPose.Anim.WINDUP)
+	assert_almost_eq(charge.attack_t, 0.5, 0.0001, "3 of the 6 charge ticks")
+	assert_gt(charge.aim.x, 0.0, "aims toward the facing side")
+	assert_eq(viewer.pose_for("b_cell", ModelPose.Anim.STRIKE, 0.0).attack_t, 1.0)
+	var recoil: ModelPose = viewer.pose_for("b_cell", ModelPose.Anim.RECOVER, 0.15)
+	assert_eq(recoil.anim, ModelPose.Anim.RECOVER)
+	assert_almost_eq(recoil.attack_t, 0.5, 0.0001)
+	var macro: ModelPose = viewer.pose_for("macrophage", ModelPose.Anim.WINDUP, 0.0)
+	assert_eq(macro.anim, ModelPose.Anim.WINDUP)
+	assert_almost_eq(macro.attack_t, 0.0, 0.0001)
+	var saw_strike: bool = false
+	for i: int in range(40):
+		var p: ModelPose = viewer.pose_for("b_cell", viewer.STATE_ATTACK_LOOP, float(i) / 20.0)
+		saw_strike = saw_strike or p.anim == ModelPose.Anim.STRIKE
+	assert_true(saw_strike, "the attack loop fires")
+	assert_eq(viewer.pose_for("b_cell", ModelPose.Anim.IDLE, 0.0).aim, Vector2.ZERO, "idle has no target")
+	assert_eq(viewer.pose_for("nucleus", ModelPose.Anim.WINDUP, 0.2).aim, Vector2.ZERO, "the Nucleus never attacks")
+
+
+func test_health_toggle_reaches_the_pose() -> void:
+	var viewer: Control = _make_viewer()
+	viewer._on_hp_pressed(2)
+	assert_almost_eq(viewer.pose_for("nucleus", ModelPose.Anim.IDLE, 0.0).hp_frac, 0.1, 0.0001)
+	assert_true(viewer.hp_buttons[2].button_pressed)
+
+
 func test_contact_sheet_size_states_are_columns_models_are_rows() -> void:
 	var viewer: Control = _make_viewer()
 	assert_eq(viewer.contact_sheet_size(7, 6, Vector2i(240, 240)), Vector2i(1440, 1680))

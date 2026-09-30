@@ -98,6 +98,24 @@ In the stress scene the average frame time is at parity within the noise (+0.4 m
 - A post that sorts right after its own segment is painted in the same command. All shadows are one command, and the cracks are cached triangles with the alpha taken from 33 cached colour steps.
 - `draw_mesh` is not used: on the GL Compatibility renderer it costs about 26 us per call, several times a polygon command.
 
+## Macrophage, B-Cell and Nucleus painters (issue #70)
+
+The three structure painters replace the placeholder billboards in `UnitLayer` (Infection) and in `GridView` (Synthesis and Incubation, where the island now redraws at 30 Hz so the idle loops run). Same Linux VM as the two previous sections (Mesa llvmpipe under Xvfb), so only comparable within this section. Each row is the mean of runs interleaved before, after, before, after, with the build before #70 in a separate worktree.
+
+| Scene | Build | Avg ms | p95 ms | Draw calls |
+|---|---|---|---|---|
+| `tests/perf/rhino_bench.tscn` (200 Rhinoviruses, the Nucleus and walls), 15 s, 3 runs | before #70 | 48.54 | 56.15 | 2085 |
+| | after #70 | 48.30 | 54.04 | 2099 |
+| `tests/perf/stress_battle.tscn` (4 B-Cells, 2 Macrophages, the Nucleus), 12 s after a 3 s warm-up, 4 runs | before #70 | 24.96 | 33.18 | 813 |
+| | after #70 | 25.06 | 33.68 | 866 |
+| Synthesis island: `GridView` alone with a walled Nucleus, 2 Macrophages and a B-Cell, 12 s after a 3 s warm-up, 3 runs | before #70 | 14.75 | 15.75 | 310 |
+| | after #70 | 16.01 | 18.52 | 365 |
+
+- **Battle: at parity.** Both battle scenes are within the 1 to 2 ms run-to-run spread of this VM (the Rhino bench came out 0.2 ms faster, the stress scene 0.1 ms slower on average and 0.5 ms slower at p95). There are at most seven towers on the field against 200 units, so the per-unit painters still dominate. The stress scene issues about 53 more draw commands, about 9 per tower at 23 px.
+- **Synthesis: about +1.3 ms average and +2.8 ms p95.** Before #70 the island was redrawn only on changes; now the idle animation of the towers and the Nucleus redraws the whole island at 30 Hz while structures are shown (it stops in Infection, where `UnitLayer` draws them, and while the view is hidden). That frame has no army, so it stays far inside the budget.
+- **This deviates from the issue, for performance, like the earlier painters.** The issue only skips the granules and lobes, the halo and Y glow, and the pores and streaks below 10 px. Below 28 px per tile (the battle runs at 23 px) the painters also draw a flat path: the Macrophage body is a smooth two-circle oval without the 24-point lumpy outline (the 4% lumps are under a pixel there) or its rim, the arms are plain lines, hands and cup one circle each; the B-Cell's Y is plain lines without round caps and each glow is one circle; the Nucleus dome and nucleolus are two circles each, without the dome rim, the pore rings or the outer glow rings; and every pedestal is one quad and one top oval. At 28 px and above everything returns, as seen on the contact sheet (32 px cells) and in the T = 80 close-ups.
+- Above 28 px the large spheres (the dome, the nucleolus and the lumpy Macrophage body) are one `PaintKit.RadialMesh` each: the canvas radial gradient as a cached indexed triangle list through `canvas_item_add_triangle_array`, one command instead of the four stacked circles of `PaintKit.sphere`, which banded visibly at close-up sizes.
+
 ## Budget for #72
 
 The target is 60 fps on desktop and at most 20 ms average frame time with 200 units on the web, with the p95 under 25 ms.

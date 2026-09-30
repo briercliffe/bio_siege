@@ -16,6 +16,8 @@ const ARC_STEPS: int = 8
 const CIRCLE_POINTS: int = 24
 const PULSE_PERIOD_S: float = 1.2
 const PULSE_REDRAW_INTERVAL_S: float = 1.0 / 30.0
+## The idle animation of the towers and the Nucleus redraws the island at this rate.
+const ANIM_REDRAW_INTERVAL_S: float = 1.0 / 30.0
 const DASH_PX: float = 8.0
 const GAP_PX: float = 6.0
 const DOT_RADIUS_TILES: float = 5.5
@@ -23,9 +25,6 @@ const BLOB_RINGS: int = 6
 const BLOB_RING_ALPHA: float = 0.22
 const DECOR_SEED: int = 11
 const NO_CELL: Vector2i = Vector2i(-99999, -99999)
-
-const MODEL_HEIGHT_T: Dictionary = {"nucleus": 4.1, "macrophage": 3.0, "b_cell": 4.3}
-const DEFAULT_MODEL_HEIGHT_T: float = 3.0
 
 # Day and night theme colours, from the canvas mockup (Field.dc.html).
 const SHADOW_DAY: Color = Color("#7f9fbd")
@@ -69,17 +68,16 @@ const GHOST_DOT: Color = Color(30.0 / 255.0, 90.0 / 255.0, 168.0 / 255.0, 0.65)
 const RANGE_FILL: Color = Color(30.0 / 255.0, 90.0 / 255.0, 168.0 / 255.0, 0.07)
 const RANGE_LINE: Color = Color(30.0 / 255.0, 90.0 / 255.0, 168.0 / 255.0, 0.55)
 
-## A placed structure with its projected geometry cached.
+## A placed structure with its projected geometry cached. Towers and the core are painted by their
+## ModelPainter with an idle pose; walls by the WallRenderer.
 class StructureItem extends RefCounted:
 	var id: int = 0
 	var type_id: String = ""
 	var kind: int = 0 # 0 tower, 1 wall, 2 core
 	var depth: float = 0.0
 	var foot: Vector2 = Vector2.ZERO
-	var width: float = 0.0
-	var height: float = 0.0
-	var shape: String = "square"
-	var color: Color = Color.WHITE
+	var painter: ModelPainter = null
+	var pose: ModelPose = null
 	var plate: PackedVector2Array = PackedVector2Array()
 	var plate_rim: PackedVector2Array = PackedVector2Array()
 	var glow_rings: Array[PackedVector2Array] = []
@@ -112,6 +110,9 @@ var _touching: bool = false
 
 var _pulse_time: float = 0.0
 var _redraw_accum: float = 0.0
+## View clock in seconds for the idle loops of the painted structures. Advances while they are shown.
+var anim_time: float = 0.0
+var _has_models: bool = false
 
 # Cached geometry. Layout caches rebuild when T or origin change; item caches when structures change.
 var _geometry_dirty: bool = true
@@ -153,29 +154,37 @@ var _walls: WallRenderer = WallRenderer.new()
 var _walls_dirty: bool = true
 var _walls_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
 var _still_pose: ModelPose = ModelPose.new()
-## The ghost wall is painted opaque inside a CanvasGroup whose self_modulate fades the composited result
-## once. Per-vertex alpha would let the outline under the top and the post's hidden parts show through.
-## Children paint after _draw(), so the ghost wall sits above the markers and the prediction.
+## The ghost (a wall or a model) is painted opaque inside a CanvasGroup whose self_modulate fades the
+## composited result once. Per-vertex alpha would let hidden parts (the wall outline under the top, a
+## tower's arms behind its body) show through. Children paint after _draw(), so the ghost sits above the
+## markers and the prediction.
 var _ghost_group: CanvasGroup = null
-var _ghost_canvas: GhostWallCanvas = null
+var _ghost_canvas: GhostCanvas = null
 
 
-class GhostWallCanvas extends Node2D:
+class GhostCanvas extends Node2D:
 	var walls: WallRenderer = WallRenderer.new()
 	var cell: Vector2i = Vector2i.ZERO
 	var pose: ModelPose = ModelPose.new()
+	## Set for a tower or core ghost, which is painted at `foot` instead of the wall cell.
+	var painter: ModelPainter = null
+	var foot: Vector2 = Vector2.ZERO
+	var tile_px: float = 14.0
 
 	func _draw() -> void:
+		if painter != null:
+			painter.paint(self, foot, pose, tile_px)
+			return
 		walls.paint_shadows(self)
 		walls.paint_cell(self, cell, 1.0, pose)
 
 
 func _init() -> void:
 	_ghost_group = CanvasGroup.new()
-	_ghost_group.name = "GhostWall"
+	_ghost_group.name = "Ghost"
 	_ghost_group.visible = false
 	_ghost_group.self_modulate = Color(1.0, 1.0, 1.0, PlaceholderBillboard.GHOST_OPACITY)
-	_ghost_canvas = GhostWallCanvas.new()
+	_ghost_canvas = GhostCanvas.new()
 	_ghost_group.add_child(_ghost_canvas)
 	add_child(_ghost_group, false, Node.INTERNAL_MODE_BACK)
 
@@ -220,13 +229,20 @@ func _exit_tree() -> void:
 		army.changed.disconnect(_on_army_changed)
 
 func _process(delta: float) -> void:
-	if not deploy_mode:
+	var animate: bool = draw_structures and _has_models and is_visible_in_tree()
+	if not deploy_mode and not animate:
 		return
-	_pulse_time = fmod(_pulse_time + delta, PULSE_PERIOD_S)
+	if deploy_mode:
+		_pulse_time = fmod(_pulse_time + delta, PULSE_PERIOD_S)
+	if animate:
+		anim_time += delta
 	_redraw_accum += delta
-	if _redraw_accum >= PULSE_REDRAW_INTERVAL_S:
+	if _redraw_accum >= minf(PULSE_REDRAW_INTERVAL_S, ANIM_REDRAW_INTERVAL_S):
 		_redraw_accum = 0.0
 		queue_redraw()
+		if _ghost_group.visible and _ghost_canvas.painter != null:
+			_ghost_canvas.pose.time = anim_time
+			_ghost_canvas.queue_redraw()
 
 func setup(p_grid: GridModel, p_config: GameConfig, p_army: Army = null) -> void:
 	if grid != null:
@@ -237,6 +253,7 @@ func setup(p_grid: GridModel, p_config: GameConfig, p_army: Army = null) -> void
 
 	grid = p_grid
 	config = p_config
+	ModelRegistry.configure(config, projection.scale)
 	if p_army != null:
 		set_army(p_army)
 	if config != null and config.tile_px > 0:
@@ -305,7 +322,7 @@ func clear_ghost() -> void:
 		_has_ghost = false
 		_ghost_type_id = ""
 		_g_item = null
-		_hide_ghost_wall()
+		_hide_ghost()
 		queue_redraw()
 
 func cell_to_local_center(cell: Vector2i) -> Vector2:
@@ -523,8 +540,11 @@ func _rebuild_items() -> void:
 	_items.clear()
 	if grid == null:
 		return
+	_has_models = false
 	for s: GridModel.PlacedStructure in grid.structures():
-		_items.append(_make_item(s.id, s.type_id, s.origin, s.footprint))
+		var item: StructureItem = _make_item(s.id, s.type_id, s.origin, s.footprint)
+		_has_models = _has_models or item.painter != null
+		_items.append(item)
 	_items.sort_custom(_sort_items)
 	var key := Vector4(projection.tile_px, projection.origin.x, projection.origin.y, projection.scale)
 	if _walls_dirty or key != _walls_key:
@@ -551,8 +571,6 @@ func _make_item(id: int, type_id: String, origin: Vector2i, footprint: Vector2i)
 	var item := StructureItem.new()
 	item.id = id
 	item.type_id = type_id
-	item.shape = sdef.placeholder_shape if sdef != null else "square"
-	item.color = sdef.placeholder_color if sdef != null else Color.WHITE
 	var center_g: Vector2 = Vector2(origin) + Vector2(footprint) * 0.5
 	item.depth = IsoProjection.depth_key(center_g)
 	item.foot = projection.ground_to_screen(center_g)
@@ -561,8 +579,9 @@ func _make_item(id: int, type_id: String, origin: Vector2i, footprint: Vector2i)
 		item.cell = origin
 		return item
 	item.kind = 2 if (sdef != null and sdef.has_tag("core")) else 0
-	item.width = float(footprint.x) * t * projection.scale * 1.4
-	item.height = float(MODEL_HEIGHT_T.get(type_id, DEFAULT_MODEL_HEIGHT_T)) * t
+	item.painter = ModelRegistry.painter_for(type_id)
+	item.pose = ModelPose.new()
+	item.pose.seed = id
 	if item.kind == 2:
 		for i: int in range(BLOB_RINGS):
 			var r: float = 7.4 * 0.5 * (1.0 - float(i) / float(BLOB_RINGS))
@@ -599,7 +618,7 @@ func _rebuild_ghost() -> void:
 	_g_range_fill.clear()
 	_g_range_dashes = PackedVector2Array()
 	if not _has_ghost or _ghost_type_id.is_empty() or grid == null:
-		_hide_ghost_wall()
+		_hide_ghost()
 		return
 	_ensure_island()
 	var sdef: StructureDef = config.structures.get(_ghost_type_id) if config != null else null
@@ -613,7 +632,7 @@ func _rebuild_ghost() -> void:
 	if _g_item.kind == 1:
 		_show_ghost_wall(_ghost_origin)
 	else:
-		_hide_ghost_wall()
+		_show_ghost_model(_g_item)
 
 	var reach: int = int(ceilf(DOT_RADIUS_TILES))
 	var cx: int = int(floorf(center_g.x))
@@ -746,30 +765,39 @@ func _draw_plates(k: float) -> void:
 			draw_polyline(item.plate_rim, NUCLEUS_PLATE_RIM, 2.0 * k, true)
 
 func _show_ghost_wall(cell: Vector2i) -> void:
+	_ghost_canvas.painter = null
 	_ghost_canvas.cell = cell
 	_ghost_canvas.walls.rebuild({cell: true}, projection)
 	_ghost_group.visible = true
 	_ghost_canvas.queue_redraw()
 
 
-func _hide_ghost_wall() -> void:
+func _show_ghost_model(item: StructureItem) -> void:
+	_ghost_canvas.painter = item.painter
+	_ghost_canvas.foot = item.foot
+	_ghost_canvas.tile_px = projection.tile_px
+	_ghost_canvas.pose.time = anim_time
+	_ghost_group.visible = true
+	_ghost_canvas.queue_redraw()
+
+
+func _hide_ghost() -> void:
 	_ghost_group.visible = false
 
 
 func _draw_structure_items() -> void:
 	for item: StructureItem in _items:
-		_draw_item(item, false)
+		_draw_item(item)
 
-func _draw_item(item: StructureItem, ghost: bool) -> void:
+## The ghost's wall or model is painted by _ghost_canvas, so only placed structures are drawn here.
+func _draw_item(item: StructureItem) -> void:
 	if item.kind == 1:
-		# The ghost wall is painted by _ghost_canvas.
-		if not ghost:
-			_walls.paint_cell(self, item.cell, 1.0, _still_pose)
+		_walls.paint_cell(self, item.cell, 1.0, _still_pose)
 		return
-	var col: Color = item.color
-	if ghost:
-		col.a *= PlaceholderBillboard.GHOST_OPACITY
-	PlaceholderBillboard.draw_billboard(self, item.shape, col, item.foot, item.width, item.height)
+	item.pose.time = anim_time + ViewRng.hash01(item.id, 1) * AnimDriver.IDLE_DESYNC_SECONDS
+	# The island never damages a structure, so the pulse rate is constant and the phase is a plain product.
+	item.pose.pulse_phase = fposmod(item.pose.time * NucleusPainter.pulse_rate(item.pose.hp_frac), 1.0)
+	item.painter.paint(self, item.foot, item.pose, projection.tile_px)
 
 func _draw_ghost(k: float) -> void:
 	if _g_item == null or _g_border.size() < 2:
@@ -786,7 +814,6 @@ func _draw_ghost(k: float) -> void:
 	draw_polyline(_g_border, tint, 2.0 * k, true)
 	for i: int in range(_g_dots.size()):
 		draw_circle(_g_dots[i], 1.4 * k, Color(GHOST_DOT, GHOST_DOT.a * _g_dot_alpha[i]))
-	_draw_item(_g_item, true)
 
 func _draw_markers() -> void:
 	var t: float = projection.tile_px
