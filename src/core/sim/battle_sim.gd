@@ -22,11 +22,13 @@ var seed: int = 0
 var _events: Array[Dictionary] = []
 var _occupancy: Dictionary = {}  # Vector2i -> int
 var _next_projectile_id: int = 0
+var _analysis_on: bool = false
 
 
 func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 	config = p_config
 	status = StatusEffects.new()
+	_analysis_on = p_config != null and p_config.flag("bcell_analysis")
 	if setup != null:
 		seed = setup.seed
 
@@ -173,6 +175,13 @@ func state_hash() -> String:
 	lines.append("T:%d" % tick)
 	for s: StructureState in structures:
 		lines.append("S:%d:%d:%d" % [s.id, s.hp, 1 if s.alive else 0])
+	for s: StructureState in structures:
+		if s.analysis_exposure.is_empty():
+			continue
+		var akeys: Array = s.analysis_exposure.keys()
+		akeys.sort()
+		for akey: Variant in akeys:
+			lines.append("A:%d:%s:%d:%d" % [s.id, str(akey), int(s.analysis_exposure[akey]), 1 if s.analyzed.has(akey) else 0])
 	for p: PathogenState in pathogens:
 		lines.append("P:%d:%d:%d:%d:%d:%d:%d:%d:%d" % [
 			p.id,
@@ -227,6 +236,8 @@ func _tower_damage(s: StructureState, victim: PathogenState) -> int:
 		if s.def.damage_multipliers_pct.has(tag):
 			mult = maxi(mult, int(s.def.damage_multipliers_pct[tag]))
 	var dmg: int = FixedMath.apply_pct(s.def.attack_damage, mult)
+	if _analysis_on and s.def.has_analysis and s.analyzed.has(victim.strain_key()):
+		dmg = FixedMath.apply_pct(dmg, s.def.analysis_multiplier_pct)
 	dmg = FixedMath.apply_pct(dmg, status.pct(StatusEffects.key_structure(s.id), StatusEffects.Kind.DAMAGE_DEALT_PCT))
 	dmg = FixedMath.apply_pct(dmg, status.pct(StatusEffects.key_pathogen(victim.id), StatusEffects.Kind.DAMAGE_TAKEN_PCT))
 	return maxi(dmg, 1)
@@ -277,6 +288,8 @@ func _update_towers() -> void:
 			s.attack_cooldown -= 1
 		if not Targeting.tower_keeps_target(s, pathogen(s.target_id)):
 			s.target_id = Targeting.pick_unit_target(s, pathogens)
+		if _analysis_on and s.def.has_analysis:
+			_accrue_analysis(s)
 		if s.target_id != 0 and s.attack_cooldown == 0:
 			var tgt: PathogenState = pathogen(s.target_id)
 			_tower_fire(s, tgt)
@@ -287,6 +300,35 @@ func _update_towers() -> void:
 				"structure_id": s.id,
 				"target_unit_id": tgt.id,
 			})
+
+
+func _accrue_analysis(s: StructureState) -> void:
+	if s.target_id == 0:
+		s.analysis_focus_key = ""
+		return
+	var tgt: PathogenState = pathogen(s.target_id)
+	var key: String = tgt.strain_key()
+	s.analysis_focus_key = key
+	if s.analyzed.has(key):
+		return
+	var e: int = int(s.analysis_exposure.get(key, 0)) + tgt.analysis_rate_pct
+	s.analysis_exposure[key] = e
+	if e >= s.def.analysis_threshold_ticks * 100:
+		s.analyzed[key] = true
+		_emit_event(SimEvents.ANALYSIS_COMPLETE, {"structure_id": s.id, "strain_key": key, "unit_type": tgt.type_id})
+
+
+## Sorted, unique strain keys analyzed by any tower, alive or destroyed.
+func analyzed_strain_keys() -> Array[String]:
+	var seen: Dictionary = {}
+	for s: StructureState in structures:
+		for k: Variant in s.analyzed.keys():
+			seen[str(k)] = true
+	var out: Array[String] = []
+	for k: Variant in seen.keys():
+		out.append(str(k))
+	out.sort()
+	return out
 
 
 func _update_projectiles() -> void:

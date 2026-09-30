@@ -252,6 +252,13 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 			s.splash_radius_mt = roundi(float(atk.get("splash_radius_tiles", 0.0)) * float(config.grid_scale) * 1000.0)
 			s.projectile_speed_mt_per_tick = roundi(float(atk.get("projectile_speed_tiles_s", 0.0)) * float(config.grid_scale) * 1000.0 / float(config.tick_rate))
 
+		var an_cfg: Variant = s_data.get("analysis", null)
+		if an_cfg is Dictionary:
+			var an: Dictionary = an_cfg
+			s.has_analysis = true
+			s.analysis_threshold_ticks = maxi(1, roundi(float(an.get("exposure_s", 1.0)) * float(config.tick_rate)))
+			s.analysis_multiplier_pct = roundi(float(an.get("damage_multiplier", 1.0)) * 100.0)
+
 		config.structures[id] = s
 
 	for id_variant: Variant in pathogens_data.keys():
@@ -302,6 +309,35 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 
 	result.config = config
 	return result
+
+static func _validate_analysis(id: String, s_data: Dictionary, errors: PackedStringArray) -> void:
+	var an_val: Variant = s_data["analysis"]
+	if typeof(an_val) != TYPE_DICTIONARY:
+		errors.append("structures.json: %s.analysis: must be a JSON object (got %s)" % [id, _format_val(an_val)])
+		return
+	if s_data.get("attack", null) == null:
+		errors.append("structures.json: %s.analysis: only allowed on structures with an attack (got %s)" % [id, _format_val(an_val)])
+	var an: Dictionary = an_val
+	var an_keys: Array[String] = ["exposure_s", "damage_multiplier"]
+	for ak_var: Variant in an.keys():
+		var ak: String = str(ak_var)
+		if not an_keys.has(ak):
+			errors.append("structures.json: %s.analysis.%s: unknown key (got %s)" % [id, ak, ak])
+	for req_ak: String in an_keys:
+		if not an.has(req_ak):
+			errors.append("structures.json: %s.analysis.%s: missing required field (got null)" % [id, req_ak])
+	if an.has("exposure_s"):
+		var ex: Variant = an["exposure_s"]
+		if not _is_number(ex):
+			errors.append("structures.json: %s.analysis.exposure_s: must be a number (got %s)" % [id, _format_val(ex)])
+		elif float(ex) <= 0.0:
+			errors.append("structures.json: %s.analysis.exposure_s: must be > 0 (got %s)" % [id, _format_val(ex)])
+	if an.has("damage_multiplier"):
+		var dm: Variant = an["damage_multiplier"]
+		if not _is_number(dm):
+			errors.append("structures.json: %s.analysis.damage_multiplier: must be a number (got %s)" % [id, _format_val(dm)])
+		elif float(dm) < 1.0:
+			errors.append("structures.json: %s.analysis.damage_multiplier: must be >= 1 (got %s)" % [id, _format_val(dm)])
 
 static func _format_val(v: Variant) -> String:
 	if typeof(v) == TYPE_FLOAT:
@@ -473,11 +509,12 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 		errors.append("structures.json: root: structures cannot be empty (got empty)")
 		return
 
-	var allowed_keys: Array[String] = [
+	var required_keys: Array[String] = [
 		"display_name", "role", "cost", "hp", "footprint", "buildable",
 		"is_targetable", "visible_to_attacker", "path_weight", "tags",
 		"attack", "damage_multipliers", "levels", "placeholder"
 	]
+	var optional_keys: Array[String] = ["analysis"]
 
 	var core_count: int = 0
 
@@ -495,12 +532,15 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 
 		for k_var: Variant in s_data.keys():
 			var k: String = str(k_var)
-			if not k.begins_with("_") and not allowed_keys.has(k):
+			if not k.begins_with("_") and not required_keys.has(k) and not optional_keys.has(k):
 				errors.append("structures.json: %s.%s: unknown key (got %s)" % [id, k, k])
 
-		for req_key: String in allowed_keys:
+		for req_key: String in required_keys:
 			if not s_data.has(req_key):
 				errors.append("structures.json: %s.%s: missing required field (got null)" % [id, req_key])
+
+		if s_data.has("analysis"):
+			_validate_analysis(id, s_data, errors)
 
 		if s_data.has("display_name"):
 			var dn: Variant = s_data["display_name"]

@@ -11,6 +11,8 @@ var vfx_pool: NodePool = null
 var is_breached: bool = false
 
 var _flash_tween: Tween = null
+var _badge_colors: Array[Color] = []
+var _drawn_ring_pct: int = -1
 
 
 func setup(p_state: StructureState, p_def: StructureDef, p_tile_px: int, p_vfx_pool: NodePool) -> void:
@@ -23,6 +25,8 @@ func setup(p_state: StructureState, p_def: StructureDef, p_tile_px: int, p_vfx_p
 	hp = p_state.hp
 	max_hp = p_state.max_hp
 	is_breached = false
+	_badge_colors.clear()
+	_drawn_ring_pct = -1
 
 	position = Vector2(p_state.origin) * float(tile_px)
 	modulate = Color.WHITE
@@ -73,8 +77,24 @@ func _exit_tree() -> void:
 		_flash_tween = null
 
 
+func add_analysis_badge(color: Color) -> void:
+	_badge_colors.append(color)
+	queue_redraw()
+
+
+func _analysis_ring_pct() -> int:
+	if structure_state == null or structure_state.def == null or not structure_state.def.has_analysis:
+		return -1
+	var key: String = structure_state.analysis_focus_key
+	if key == "" or structure_state.is_analyzed(key):
+		return -1
+	return structure_state.analysis_progress_pct(key)
+
+
 func _process(_delta: float) -> void:
 	if is_breached:
+		queue_redraw()
+	elif _analysis_ring_pct() != _drawn_ring_pct:
 		queue_redraw()
 
 
@@ -156,3 +176,25 @@ func _draw() -> void:
 			fill_color = Color("#f1c40f")
 
 		draw_rect(Rect2(bar_x, bar_y, bar_w * ratio, bar_h), fill_color, true)
+
+	_draw_analysis(w, h)
+
+
+func _draw_analysis(w: float, h: float) -> void:
+	if structure_state == null or structure_state.def == null or not structure_state.def.has_analysis:
+		return
+	var ring_color := Color("#48dbfb")
+	var ring_pct: int = _analysis_ring_pct()
+	_drawn_ring_pct = ring_pct
+	if ring_pct >= 0:
+		var center := Vector2(w * 0.5, h * 0.5)
+		var radius: float = 0.6 * maxf(w, h)
+		draw_arc(center, radius, 0.0, TAU, 48, Color(ring_color, 0.25), 3.0)
+		if ring_pct > 0:
+			var sweep: float = deg_to_rad(float(ring_pct * 360) / 100.0)
+			draw_arc(center, radius, -PI * 0.5, -PI * 0.5 + sweep, 48, ring_color, 3.0)
+	var badge_r: float = float(tile_px) * 0.18
+	for i: int in range(_badge_colors.size()):
+		var c := Vector2(badge_r * (1.0 + 2.2 * float(i)), -badge_r - 1.0)
+		draw_circle(c, badge_r, _badge_colors[i])
+		draw_arc(c, badge_r, 0.0, TAU, 16, Color.WHITE, 1.0)

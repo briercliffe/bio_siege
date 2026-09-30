@@ -234,6 +234,15 @@ func _route_event(ev: Dictionary) -> void:
 		SimEvents.TOWER_FIRED:
 			Sfx.play("tower_fire")
 
+		SimEvents.ANALYSIS_COMPLETE:
+			var sid: int = int(ev.get("structure_id", 0))
+			var unit_type: String = str(ev.get("unit_type", ""))
+			if _structure_views.has(sid):
+				var sv: StructureView = _structure_views[sid]
+				if is_instance_valid(sv):
+					var pdef: PathogenDef = session.config.pathogens.get(unit_type) if (session != null and session.config != null and session.config.pathogens.has(unit_type)) else null
+					sv.add_analysis_badge(pdef.placeholder_color if pdef != null else Color.WHITE)
+
 		SimEvents.STRUCTURE_DAMAGED:
 			Sfx.play("hit")
 			var sid: int = int(ev.get("structure_id", 0))
@@ -348,6 +357,9 @@ func _on_battle_finished(sim: BattleSim) -> void:
 			session.last_result["score"] = score
 			session.last_result["base_value"] = RaidScore.base_value(session.config, structures)
 			session.last_result["best_score"] = session.best_score
+
+		if session.config != null and session.config.flag("bcell_analysis"):
+			session.last_result["analyzed_strains"] = sim.analyzed_strain_keys()
 
 		var pred_id: int = session.prediction_structure_id if session != null else 0
 		# Kept with the result so a config applied on leaving INFECTION cannot erase it.
