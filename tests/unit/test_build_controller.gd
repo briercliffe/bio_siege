@@ -246,12 +246,13 @@ func test_grid_view_fit_to_rect_and_center() -> void:
 	var container_rect := Rect2(100.0, 50.0, 1280.0, 720.0)
 	gv.fit_to_rect(container_rect)
 
-	# 40 * 14 = 560
-	assert_almost_eq(gv.scale.x, 720.0 / 560.0, 0.001)
-	assert_almost_eq(gv.scale.y, 720.0 / 560.0, 0.001)
-
-	assert_eq(gv.cell_to_local_center(Vector2i(0, 0)), Vector2(7.0, 7.0))
-	assert_eq(gv.cell_to_local_center(Vector2i(1, 2)), Vector2(21.0, 35.0))
+	# The node is never scaled any more; the projection carries the tile size instead.
+	assert_eq(gv.scale, Vector2.ONE)
+	assert_true(gv.projection.tile_px <= float(session.config.tile_px) * 2.0)
+	var island: Vector2 = gv.projection.island_size(session.grid.width, session.grid.height)
+	assert_true(island.x <= container_rect.size.x + 0.01)
+	assert_eq(gv.cell_to_local_center(Vector2i(0, 0)), gv.projection.cell_center(Vector2i.ZERO))
+	assert_eq(gv.local_to_cell(gv.cell_to_local_center(Vector2i(7, 9))), Vector2i(7, 9))
 
 func test_placeholder_shapes_guards() -> void:
 	# Safe no-op on null canvas item or invalid rects
@@ -275,11 +276,11 @@ func test_grid_view_input_touch_events() -> void:
 	gv.cell_dragged.connect(func(c: Vector2i) -> void: dragged_cells.append(c))
 	gv.cell_released.connect(func(c: Vector2i) -> void: released_cells.append(c))
 
-	# 1. Touch press at cell (3, 4) -> 3 * 14 + 5 = 106, 4 * 14 + 5 = 138
+	# 1. Touch press at cell (3, 4)
 	var touch_press := InputEventScreenTouch.new()
 	touch_press.index = 0
 	touch_press.pressed = true
-	touch_press.position = Vector2(47, 61)
+	touch_press.position = gv.to_global(gv.cell_to_local_center(Vector2i(3, 4)))
 	gv._unhandled_input(touch_press)
 	assert_eq(pressed_cells, [Vector2i(3, 4)])
 
@@ -287,21 +288,21 @@ func test_grid_view_input_touch_events() -> void:
 	var touch_idx1 := InputEventScreenTouch.new()
 	touch_idx1.index = 1
 	touch_idx1.pressed = true
-	touch_idx1.position = Vector2(47, 61)
+	touch_idx1.position = touch_press.position
 	gv._unhandled_input(touch_idx1)
 	assert_eq(pressed_cells.size(), 1)
 
 	# 2. Drag to (4, 4)
 	var touch_drag := InputEventScreenDrag.new()
 	touch_drag.index = 0
-	touch_drag.position = Vector2(4 * 14 + 5, 4 * 14 + 5)
+	touch_drag.position = gv.to_global(gv.cell_to_local_center(Vector2i(4, 4)))
 	gv._unhandled_input(touch_drag)
 	assert_eq(dragged_cells, [Vector2i(4, 4)])
 
 	# Drag within same cell shouldn't fire signal again
 	var touch_drag_same := InputEventScreenDrag.new()
 	touch_drag_same.index = 0
-	touch_drag_same.position = Vector2(4 * 14 + 10, 4 * 14 + 10)
+	touch_drag_same.position = touch_drag.position + Vector2(1.0, 0.0)
 	gv._unhandled_input(touch_drag_same)
 	assert_eq(dragged_cells.size(), 1)
 
@@ -309,45 +310,9 @@ func test_grid_view_input_touch_events() -> void:
 	var touch_release := InputEventScreenTouch.new()
 	touch_release.index = 0
 	touch_release.pressed = false
-	touch_release.position = Vector2(4 * 14 + 5, 4 * 14 + 5)
+	touch_release.position = touch_drag.position
 	gv._unhandled_input(touch_release)
 	assert_eq(released_cells, [Vector2i(4, 4)])
-
-func test_grid_view_input_mouse_events() -> void:
-	var session: Session = _create_session()
-	var gv: GridView = GridView.new()
-	add_child_autofree(gv)
-	gv.setup(session.grid, session.config)
-
-	var pressed_cells: Array[Vector2i] = []
-	var dragged_cells: Array[Vector2i] = []
-	var released_cells: Array[Vector2i] = []
-	gv.cell_pressed.connect(func(c: Vector2i) -> void: pressed_cells.append(c))
-	gv.cell_dragged.connect(func(c: Vector2i) -> void: dragged_cells.append(c))
-	gv.cell_released.connect(func(c: Vector2i) -> void: released_cells.append(c))
-
-	# Mouse click at cell (2, 2) -> 2 * 14 + 5 = 74
-	var mb_press := InputEventMouseButton.new()
-	mb_press.button_index = MOUSE_BUTTON_LEFT
-	mb_press.pressed = true
-	mb_press.position = Vector2(33, 33)
-	gv._unhandled_input(mb_press)
-	assert_eq(pressed_cells, [Vector2i(2, 2)])
-
-	# Motion to cell (3, 2)
-	var mm := InputEventMouseMotion.new()
-	mm.button_mask = MOUSE_BUTTON_MASK_LEFT
-	mm.position = Vector2(3 * 14 + 5, 33)
-	gv._unhandled_input(mm)
-	assert_eq(dragged_cells, [Vector2i(3, 2)])
-
-	# Mouse release
-	var mb_release := InputEventMouseButton.new()
-	mb_release.button_index = MOUSE_BUTTON_LEFT
-	mb_release.pressed = false
-	mb_release.position = Vector2(3 * 14 + 5, 33)
-	gv._unhandled_input(mb_release)
-	assert_eq(released_cells, [Vector2i(3, 2)])
 
 func test_grid_view_ignores_out_of_bounds_input() -> void:
 	var session: Session = _create_session()
@@ -361,7 +326,7 @@ func test_grid_view_ignores_out_of_bounds_input() -> void:
 	var touch := InputEventScreenTouch.new()
 	touch.index = 0
 	touch.pressed = true
-	touch.position = Vector2(-50, -50) # Negative / out of bounds
+	touch.position = Vector2(-500, -500) # Far outside the island
 	gv._unhandled_input(touch)
 	assert_eq(pressed_cells.size(), 0)
 

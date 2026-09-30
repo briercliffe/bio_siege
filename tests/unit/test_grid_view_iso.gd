@@ -1,0 +1,77 @@
+extends GutTest
+
+func _make_view() -> GridView:
+	var res: ConfigLoadResult = GameConfig.load_from_dir("res://data")
+	assert_true(res.is_ok())
+	var session := Session.new(res.config)
+	var gv := GridView.new()
+	add_child_autofree(gv)
+	gv.setup(session.grid, session.config)
+	gv.fit_to_rect(Rect2(0, 0, 640, 520))
+	return gv
+
+func _touch(gv: GridView, local: Vector2, pressed: bool) -> InputEventScreenTouch:
+	var ev := InputEventScreenTouch.new()
+	ev.index = 0
+	ev.pressed = pressed
+	ev.position = gv.to_global(local)
+	return ev
+
+func test_corner_cells_round_trip() -> void:
+	var gv: GridView = _make_view()
+	for c: Vector2i in [Vector2i(2, 2), Vector2i(37, 2), Vector2i(2, 37), Vector2i(37, 37), Vector2i(20, 20)]:
+		assert_eq(gv.local_to_cell(gv.cell_to_local_center(c)), c)
+
+func test_island_fits_the_rect() -> void:
+	var gv: GridView = _make_view()
+	var size: Vector2 = gv.projection.island_size(40, 40)
+	assert_true(size.x <= 640.01)
+	assert_true(gv.projection.tile_px <= float(gv.config.tile_px) * 2.0)
+	assert_eq(gv.scale, Vector2.ONE)
+
+func test_touch_press_emits_cell() -> void:
+	var gv: GridView = _make_view()
+	var got: Array[Vector2i] = []
+	gv.cell_pressed.connect(func(c: Vector2i) -> void: got.append(c))
+	gv._unhandled_input(_touch(gv, gv.cell_to_local_center(Vector2i(5, 5)), true))
+	assert_eq(got, [Vector2i(5, 5)])
+
+func test_press_outside_island_emits_nothing() -> void:
+	var gv: GridView = _make_view()
+	var got: Array[Vector2i] = []
+	gv.cell_pressed.connect(func(c: Vector2i) -> void: got.append(c))
+	gv._unhandled_input(_touch(gv, Vector2(1.0, 1.0), true))
+	assert_eq(got.size(), 0)
+
+func test_mouse_events_are_ignored() -> void:
+	var gv: GridView = _make_view()
+	var got: Array[Vector2i] = []
+	gv.cell_pressed.connect(func(c: Vector2i) -> void: got.append(c))
+	var mb := InputEventMouseButton.new()
+	mb.button_index = MOUSE_BUTTON_LEFT
+	mb.pressed = true
+	mb.position = gv.to_global(gv.cell_to_local_center(Vector2i(5, 5)))
+	gv._unhandled_input(mb)
+	assert_eq(got.size(), 0)
+
+func test_ghost_geometry_for_ranged_tower() -> void:
+	var gv: GridView = _make_view()
+	gv.set_ghost("b_cell", Vector2i(10, 10), true)
+	gv._rebuild_ghost()
+	assert_not_null(gv._g_item)
+	assert_false(gv._g_range_fill.is_empty())
+	assert_false(gv._g_dots.is_empty())
+	gv.set_ghost("mucous_wall", Vector2i(10, 10), false)
+	gv._rebuild_ghost()
+	assert_true(gv._g_range_fill.is_empty())
+
+func test_night_switch_and_structure_cache_is_depth_sorted() -> void:
+	var gv: GridView = _make_view()
+	gv.set_night(true)
+	assert_true(gv.night)
+	gv._rebuild_items()
+	assert_eq(gv._items.size(), gv.grid.structures().size())
+	var last: float = -1.0
+	for item: GridView.StructureItem in gv._items:
+		assert_true(item.depth >= last)
+		last = item.depth
