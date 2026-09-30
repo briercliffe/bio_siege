@@ -167,7 +167,7 @@ static func build_demo_grid(cfg: GameConfig) -> GridModel:
 				entries.append({"type": DEMO_WALL_TYPE, "origin": Vector2i(x, y)})
 	entries.append_array(DEMO_TOWERS)
 	# A wallet holding exactly the demo's cost, since placing without one refuses anything that costs ATP.
-	var costs: Array = []
+	var costs: Array[Dictionary] = []
 	for entry: Dictionary in entries:
 		var sdef: StructureDef = cfg.structures.get(entry["type"] as String) as StructureDef
 		if sdef != null:

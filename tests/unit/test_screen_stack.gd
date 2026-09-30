@@ -68,6 +68,7 @@ func test_unknown_id_is_a_noop() -> void:
 	var stack := _make_stack()
 	watch_signals(stack)
 	stack.push("no_such_screen")
+	assert_push_warning("unknown screen id 'no_such_screen'")
 	assert_false(stack.is_open())
 	assert_eq(stack.get_child_count(), 0)
 	assert_signal_not_emitted(stack, "screen_opened")
@@ -114,3 +115,34 @@ func test_fallback_replaces_placeholder_while_scene_is_missing() -> void:
 	stack.push("how_to_play")
 	assert_eq(calls[0], 1)
 	assert_false(stack.is_open(), "the fallback opens its own overlay, not a stack entry")
+
+
+func test_clear_closes_every_screen() -> void:
+	var stack := _make_stack()
+	stack.push("settings")
+	stack.push("saved")
+	var screens: Array[Control] = [stack.top_screen()]
+	watch_signals(stack)
+	stack.clear()
+	assert_false(stack.is_open())
+	assert_eq(stack.top_id(), "")
+	assert_signal_emit_count(stack, "screen_closed", 2)
+	assert_true(screens[0].is_queued_for_deletion())
+	stack.clear()
+	assert_signal_emit_count(stack, "screen_closed", 2, "clearing an empty stack is a no-op")
+
+
+func test_non_control_scene_root_falls_back_to_placeholder() -> void:
+	var root := Node.new()
+	var packed := PackedScene.new()
+	packed.pack(root)
+	root.free()
+	var path: String = "user://test_node_root_screen.tscn"
+	assert_eq(ResourceSaver.save(packed, path), OK)
+	var stack := _make_stack()
+	stack.scene_paths["settings"] = path
+	stack.push("settings")
+	assert_push_warning("is not a Control")
+	assert_true(stack.top_screen() is PlaceholderScreen)
+	assert_eq(stack.top_id(), "settings")
+	DirAccess.remove_absolute(path)

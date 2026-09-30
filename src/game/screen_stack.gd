@@ -51,7 +51,11 @@ func push(id: String) -> void:
 	if ResourceLoader.exists(path):
 		var packed: PackedScene = load(path) as PackedScene
 		if packed != null:
-			screen = packed.instantiate() as Control
+			var node: Node = packed.instantiate()
+			screen = node as Control
+			if screen == null and node != null:
+				node.free()
+				push_warning("ScreenStack: scene root of '%s' is not a Control: %s" % [id, path])
 	elif fallbacks.has(id):
 		(fallbacks[id] as Callable).call()
 		return
@@ -76,6 +80,12 @@ func pop() -> void:
 	if is_instance_valid(screen):
 		screen.queue_free()
 	screen_closed.emit(id)
+
+
+## Closes every open screen, top first. Main calls it on each phase change.
+func clear() -> void:
+	while not _screens.is_empty():
+		pop()
 
 
 func top_id() -> String:

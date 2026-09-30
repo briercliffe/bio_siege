@@ -26,6 +26,10 @@ func _ready() -> void:
 	GameData.config_reloaded.connect(_on_config_reloaded)
 	if fsm != null:
 		fsm.config_applied.connect(_on_config_applied)
+		fsm.phase_changed.connect(_on_phase_changed)
+
+func _on_phase_changed(_from: GameStateMachine.Phase, _to: GameStateMachine.Phase) -> void:
+	screen_stack.clear()
 
 func _show_how_to_play_on_first_launch() -> void:
 	if fsm == null or fsm.phase != GameStateMachine.Phase.TITLE:

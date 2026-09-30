@@ -1,6 +1,6 @@
 extends GutTest
 
-func test_all_36_transition_pairs() -> void:
+func test_all_transition_pairs() -> void:
 	var fsm: GameStateMachine = GameStateMachine.new()
 	add_child_autoqfree(fsm)
 
@@ -368,6 +368,21 @@ func test_main_scene_integration() -> void:
 	var dbg: DebugOverlay = main_node.get_node_or_null("DebugOverlay") as DebugOverlay
 	assert_not_null(dbg, "Main must have DebugOverlay node")
 	assert_eq(dbg.fsm, fsm, "DebugOverlay should be connected to FSM")
+
+
+func test_phase_change_clears_open_screens() -> void:
+	var main_node: Node = (load("res://src/main.tscn") as PackedScene).instantiate()
+	add_child_autoqfree(main_node)
+	var fsm: GameStateMachine = main_node.get_node("GameStateMachine") as GameStateMachine
+	var stack: ScreenStack = main_node.get_node("ScreenStack") as ScreenStack
+	stack.clear()
+	stack.push("settings")
+	assert_true(stack.is_open())
+	fsm.force_transition(GameStateMachine.Phase.TITLE)
+	assert_false(stack.is_open(), "a phase change closes every menu screen")
+	stack.push("saved")
+	fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
+	assert_false(stack.is_open())
 
 
 func test_session_outbreak_follows_flag() -> void:
