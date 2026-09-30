@@ -77,5 +77,55 @@ class TestTelemetryReport(unittest.TestCase):
             self.assertIn("Surveys Submitted: 1", text)
 
 
+class TestIdentityMetrics(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.identity_path = os.path.join(
+            os.path.dirname(__file__), "fixtures", "identity_telemetry.jsonl"
+        )
+        self.old_path = os.path.join(
+            os.path.dirname(__file__), "fixtures", "sample_telemetry.jsonl"
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_largest_strain_share_and_flags_key(self):
+        battles = extract_battles(parse_telemetry_files([self.identity_path]))
+        self.assertEqual(len(battles), 3)
+        self.assertEqual(battles[0]["largest_strain_share"], 0.75)
+        self.assertEqual(battles[0]["flags_key"], "none")
+        self.assertEqual(battles[0]["defense_share"], 0.25)
+        self.assertEqual(battles[0]["score"], "")
+        self.assertEqual(battles[1]["flags_key"], "bcell_analysis+immune_memory")
+        self.assertEqual(battles[1]["largest_strain_share"], 0.5)
+        self.assertEqual(battles[1]["score"], 420)
+
+    def test_summary_has_one_block_per_flag_set(self):
+        generate_report(parse_telemetry_files([self.identity_path]), self.temp_dir)
+        with open(os.path.join(self.temp_dir, "summary.txt"), "r", encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("Identity metrics", text)
+        self.assertIn("[none]", text)
+        self.assertIn("[bcell_analysis+immune_memory]", text)
+        both_block, none_block = text.split("[bcell_analysis+immune_memory]")[1].split("[none]")
+        self.assertIn("battles: 1", none_block)
+        self.assertIn("outbreak median generations_cleared: n/a", none_block)
+        self.assertIn("battles: 2", both_block)
+        self.assertIn("median score: 510", both_block)
+        self.assertIn("outbreak median generations_cleared: 4", both_block)
+        self.assertIn("prediction accuracy: 1/2 (50.0%)", both_block)
+
+    def test_old_logs_leave_new_columns_empty(self):
+        generate_report(parse_telemetry_files([self.old_path]), self.temp_dir)
+        with open(os.path.join(self.temp_dir, "battles.csv"), "r", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        self.assertEqual(len(rows), 2)
+        for row in rows:
+            self.assertEqual(row["largest_strain_share"], "")
+            self.assertEqual(row["score"], "")
+            self.assertEqual(row["flags_key"], "none")
+
+
 if __name__ == "__main__":
     unittest.main()

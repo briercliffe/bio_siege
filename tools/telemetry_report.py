@@ -11,6 +11,7 @@ import csv
 import json
 import os
 import sys
+import statistics
 from typing import Any, Dict, List, Optional
 
 
@@ -32,6 +33,62 @@ def parse_telemetry_files(file_paths: List[str]) -> List[Dict[str, Any]]:
                     # Gracefully skip truncated or invalid lines
                     continue
     return events
+
+
+def flags_key_of(launch: Optional[Dict[str, Any]]) -> str:
+    """Sorted names of the flags that are true in the launch event, joined with '+', or 'none'."""
+    flags = launch.get("flags") if launch else None
+    if not isinstance(flags, dict):
+        return "none"
+    on = sorted(str(k) for k, v in flags.items() if v is True)
+    return "+".join(on) if on else "none"
+
+
+def largest_strain_share_of(launch: Optional[Dict[str, Any]]) -> Any:
+    """Largest army_atp_by_type value over their sum, rounded to 3 decimals, or '' when missing."""
+    by_type = launch.get("army_atp_by_type") if launch else None
+    if not isinstance(by_type, dict) or not by_type:
+        return ""
+    try:
+        values = [float(v) for v in by_type.values()]
+    except (TypeError, ValueError):
+        return ""
+    total = sum(values)
+    if total <= 0:
+        return ""
+    return round(max(values) / total, 3)
+
+
+def defense_share_of(launch: Optional[Dict[str, Any]]) -> Any:
+    """base_atp / (base_atp + army_atp + unspent_atp), or '' when missing."""
+    if not launch:
+        return ""
+    try:
+        base = float(launch["base_atp"])
+        army = float(launch["army_atp"])
+        unspent = float(launch["unspent_atp"])
+    except (KeyError, TypeError, ValueError):
+        return ""
+    total = base + army + unspent
+    if total <= 0:
+        return ""
+    return round(base / total, 3)
+
+
+def extract_outbreak_runs(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """outbreak_run_end events, each attributed to the flags of the most recent launch."""
+    runs: List[Dict[str, Any]] = []
+    last_launch: Optional[Dict[str, Any]] = None
+    for ev in events:
+        name = ev.get("event")
+        if name == "launch":
+            last_launch = ev
+        elif name == "outbreak_run_end":
+            runs.append({
+                "flags_key": flags_key_of(last_launch),
+                "generations_cleared": ev.get("generations_cleared", ""),
+            })
+    return runs
 
 
 def extract_battles(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -65,10 +122,71 @@ def extract_battles(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "first_destroyed_structure_type": ev.get("first_destroyed_structure_type", ""),
                 "prediction_structure_id": ev.get("prediction_structure_id", ""),
                 "prediction_correct": ev.get("prediction_correct", ""),
+                "flags_key": flags_key_of(current_launch),
+                "largest_strain_share": largest_strain_share_of(current_launch),
+                "defense_share": defense_share_of(current_launch),
+                "score": ev.get("score", ""),
             }
             battles.append(battle_row)
             current_launch = None
     return battles
+
+
+def _is_number(v: Any) -> bool:
+    if isinstance(v, bool) or v is None or str(v).strip() == "":
+        return False
+    try:
+        float(v)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _prediction_outcomes(battles: List[Dict[str, Any]]) -> List[bool]:
+    return [
+        b["prediction_correct"] is True or str(b["prediction_correct"]).lower() == "true"
+        for b in battles
+        if b.get("prediction_correct") is not None
+        and str(b.get("prediction_correct")).strip() != ""
+    ]
+
+
+def identity_metrics_lines(battles: List[Dict[str, Any]], outbreak_runs: List[Dict[str, Any]]) -> List[str]:
+    """The 'Identity metrics' summary section, one block per flags_key."""
+    lines: List[str] = ["", "Identity metrics (by flag set):"]
+    keys = sorted({str(b.get("flags_key", "none")) for b in battles} | {str(r["flags_key"]) for r in outbreak_runs})
+    if not keys:
+        lines.append("  (no battles)")
+        return lines
+    for key in keys:
+        group = [b for b in battles if str(b.get("flags_key", "none")) == key]
+        shares = [float(b["largest_strain_share"]) for b in group if _is_number(b.get("largest_strain_share"))]
+        defs = [float(b["defense_share"]) for b in group if _is_number(b.get("defense_share"))]
+        scores = [float(b["score"]) for b in group if _is_number(b.get("score"))]
+        cleared = [float(r["generations_cleared"]) for r in outbreak_runs
+                   if r["flags_key"] == key and _is_number(r["generations_cleared"])]
+        preds = _prediction_outcomes(group)
+        lines.append(f"  [{key}]")
+        lines.append(f"    battles: {len(group)}")
+        lines.append(
+            f"    median largest strain share: {statistics.median(shares):.3f}" if shares
+            else "    median largest strain share: n/a"
+        )
+        lines.append(
+            f"    battles with defense_share > 0.20: {sum(1 for d in defs if d > 0.20) / len(defs) * 100:.1f}%"
+            if defs else "    battles with defense_share > 0.20: n/a"
+        )
+        lines.append(f"    median score: {statistics.median(scores):g}" if scores else "    median score: n/a")
+        lines.append(
+            f"    outbreak median generations_cleared: {statistics.median(cleared):g}" if cleared
+            else "    outbreak median generations_cleared: n/a"
+        )
+        correct = sum(1 for p in preds if p)
+        lines.append(
+            f"    prediction accuracy: {correct}/{len(preds)} ({correct / len(preds) * 100:.1f}%)" if preds
+            else "    prediction accuracy: n/a"
+        )
+    return lines
 
 
 def generate_report(events: List[Dict[str, Any]], out_dir: str) -> None:
@@ -96,6 +214,10 @@ def generate_report(events: List[Dict[str, Any]], out_dir: str) -> None:
         "first_destroyed_structure_type",
         "prediction_structure_id",
         "prediction_correct",
+        "flags_key",
+        "largest_strain_share",
+        "defense_share",
+        "score",
     ]
 
     csv_path = os.path.join(out_dir, "battles.csv")
@@ -195,6 +317,8 @@ def generate_report(events: List[Dict[str, Any]], out_dir: str) -> None:
             f"  - Avg Economy Rating: {avg_econ:.2f} / 5",
             f"  - Map Feel Breakdown: {map_feels}",
         ])
+
+    lines.extend(identity_metrics_lines(battles, extract_outbreak_runs(events)))
 
     with open(summary_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")

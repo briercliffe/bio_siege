@@ -223,3 +223,84 @@ func test_parse_args_validation_errors() -> void:
 	# Invalid jitter
 	var res7: Dictionary = BalanceSimArgs.parse_args(["--scenario=mixed", "--jitter=-1"])
 	assert_false(res7.get("ok", false))
+
+
+func _load_config() -> GameConfig:
+	var res: ConfigLoadResult = GameConfig.load_from_dir("res://data")
+	assert_true(res.is_ok(), "Config should load")
+	return res.config
+
+
+func test_flag_option_repeatable_and_validated() -> void:
+	var ok: Dictionary = BalanceSimArgs.parse_args(["--scenario=repeat_swarm", "--flag=bcell_analysis", "--flag=immune_memory"])
+	assert_true(ok.get("ok", false))
+	assert_eq((ok["options"] as Dictionary)["flags"], ["bcell_analysis", "immune_memory"])
+	var bad: Dictionary = BalanceSimArgs.parse_args(["--scenario=mixed", "--flag=Bad-Name"])
+	assert_false(bad.get("ok", true))
+	assert_eq(bad.get("exit_code"), 1)
+
+
+func test_strain_option_validated() -> void:
+	var ok: Dictionary = BalanceSimArgs.parse_args(["--scenario=mixed", "--strain=rhinovirus:capsid_hardening"])
+	assert_true(ok.get("ok", false))
+	assert_eq((ok["options"] as Dictionary)["strains"], {"rhinovirus": "capsid_hardening"})
+	assert_false(BalanceSimArgs.parse_args(["--scenario=mixed", "--strain=rhinovirus"]).get("ok", true))
+	assert_false(BalanceSimArgs.parse_args(["--scenario=mixed", "--strain=a:b:c"]).get("ok", true))
+	assert_false(BalanceSimArgs.parse_args(["--scenario=mixed", "--strain=:wild"]).get("ok", true))
+
+
+func test_parse_memory() -> void:
+	var ok: Dictionary = BalanceSimArgs.parse_memory("rhinovirus/wild:3,staphylococcus/wild:1")
+	assert_true(ok.get("ok", false))
+	assert_eq(ok["levels"], {"rhinovirus/wild": 3, "staphylococcus/wild": 1})
+	assert_false(BalanceSimArgs.parse_memory("rhinovirus:3").get("ok", true))
+	assert_false(BalanceSimArgs.parse_memory("rhinovirus/wild:0").get("ok", true))
+	assert_false(BalanceSimArgs.parse_memory("a/b/c:1").get("ok", true))
+	var via_args: Dictionary = BalanceSimArgs.parse_args(["--scenario=mixed", "--memory=rhinovirus/wild:3"])
+	assert_eq((via_args["options"] as Dictionary)["memory"], {"rhinovirus/wild": 3})
+	assert_false(BalanceSimArgs.parse_args(["--scenario=mixed", "--memory=rhinovirus:3"]).get("ok", true))
+
+
+func test_generations_option_bounds_and_default() -> void:
+	var def: Dictionary = BalanceSimArgs.parse_args(["--scenario=mixed"])
+	assert_eq((def["options"] as Dictionary)["generations"], 1)
+	assert_eq((def["options"] as Dictionary)["flags"], [])
+	assert_eq((def["options"] as Dictionary)["strains"], {})
+	assert_eq((def["options"] as Dictionary)["memory"], {})
+	assert_false(BalanceSimArgs.parse_args(["--scenario=mixed", "--generations=0"]).get("ok", true))
+	assert_false(BalanceSimArgs.parse_args(["--scenario=mixed", "--generations=51"]).get("ok", true))
+	var ok: Dictionary = BalanceSimArgs.parse_args(["--scenario=mixed", "--generations=50"])
+	assert_eq((ok["options"] as Dictionary)["generations"], 50)
+
+
+func test_repeat_swarm_is_valid_scenario() -> void:
+	assert_true(BalanceSimArgs.parse_args(["--scenario=repeat_swarm"]).get("ok", false))
+
+
+func test_apply_strains_matching_types_only_and_no_mutation() -> void:
+	var units: Array = [
+		{"type": "rhinovirus", "cell": Vector2i(0, 0)},
+		{"type": "staphylococcus", "cell": Vector2i(1, 0)},
+	]
+	var out: Array = BalanceSimArgs.apply_strains(units, {"rhinovirus": "capsid_hardening"})
+	assert_eq((out[0] as Dictionary).get("strain"), "capsid_hardening")
+	assert_false((out[1] as Dictionary).has("strain"))
+	assert_false((units[0] as Dictionary).has("strain"), "input array must not change")
+
+
+func test_unit_strain_keys_default_wild_sorted_unique() -> void:
+	var units: Array = [
+		{"type": "staphylococcus"},
+		{"type": "rhinovirus", "strain": "capsid_hardening"},
+		{"type": "rhinovirus"},
+		{"type": "rhinovirus"},
+	]
+	assert_eq(BalanceSimArgs.unit_strain_keys(units), ["rhinovirus/capsid_hardening", "rhinovirus/wild", "staphylococcus/wild"])
+
+
+func test_memory_from_levels_clamps_to_max_level() -> void:
+	var cfg: GameConfig = _load_config()
+	var m: ImmuneMemory = BalanceSimArgs.memory_from_levels({"rhinovirus/wild": 9, "staphylococcus/wild": 1}, cfg)
+	assert_eq(m.level_of("rhinovirus/wild"), cfg.memory_max_level)
+	assert_eq(m.level_of("staphylococcus/wild"), 1)
+	assert_eq(m.raids, 0)

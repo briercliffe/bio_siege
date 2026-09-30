@@ -338,3 +338,35 @@ func test_launch_passes_memory_seed() -> void:
 	var off_comps: Dictionary = _setup_components(off_session)
 	(off_comps["hud"] as HudSpawn).launch_requested.emit()
 	assert_true(off_session.battle_setup.memory_seed.is_empty())
+
+
+func _last_launch_event() -> Dictionary:
+	var found: Dictionary = {}
+	for line: String in SessionLogger.all_sessions_text().split("\n"):
+		if line.contains("\"event\":\"launch\""):
+			var parsed: Variant = JSON.parse_string(line)
+			if parsed is Dictionary:
+				found = parsed as Dictionary
+	return found
+
+
+func test_launch_event_includes_flags_and_army_atp_by_type() -> void:
+	var session: Session = _create_session(_load_config())
+	for k: Variant in session.config.feature_flags.keys():
+		session.config.feature_flags[k] = false
+	session.army.reserve["rhinovirus"] = 2
+	session.army.reserve["staphylococcus"] = 1
+	var comps: Dictionary = _setup_components(session)
+	(comps["hud"] as HudSpawn).launch_requested.emit()
+
+	var ev: Dictionary = _last_launch_event()
+	assert_eq(int(ev.get("seed", -1)), session.seed, "Latest launch event is this launch")
+	var flags: Dictionary = ev.get("flags", {})
+	assert_false(flags.is_empty(), "flags must be logged even with every flag off")
+	for k: Variant in flags.keys():
+		assert_false(bool(flags[k]), "flag %s stays off" % str(k))
+	var by_type: Dictionary = ev.get("army_atp_by_type", {})
+	var expected_rhino: int = 2 * int(session.army.unit_cost("rhinovirus").get("atp", 0))
+	var expected_staph: int = 1 * int(session.army.unit_cost("staphylococcus").get("atp", 0))
+	assert_eq(int(by_type.get("rhinovirus", -1)), expected_rhino)
+	assert_eq(int(by_type.get("staphylococcus", -1)), expected_staph)
