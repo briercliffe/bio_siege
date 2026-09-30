@@ -134,46 +134,22 @@ func test_hud_intent_lines_button_toggle() -> void:
 	assert_true(session.intent_lines_enabled)
 	assert_eq(hud.btn_intent.text, "Intent lines: ON")
 
-func test_structure_view_breached_and_crack_count_logic() -> void:
-	var sv := StructureView.new()
-	add_child_autofree(sv)
-
-	assert_false(sv.is_breached)
-	sv.set_breached(true)
-	assert_true(sv.is_breached)
-	sv.set_breached(false)
-	assert_false(sv.is_breached)
-
-	# Crack count logic: max_hp = 300
-	sv.max_hp = 300
-	# 1 crack above 66% hp (hp > 200)
-	sv.hp = 250
-	assert_eq(sv.get_crack_count(), 1)
-	sv.hp = 201
-	assert_eq(sv.get_crack_count(), 1)
-
-	# 2 cracks from 33% to 66% (hp > 100 and hp <= 200)
-	sv.hp = 200
-	assert_eq(sv.get_crack_count(), 2)
-	sv.hp = 150
-	assert_eq(sv.get_crack_count(), 2)
-	sv.hp = 101
-	assert_eq(sv.get_crack_count(), 2)
-
-	# 3 cracks below 33% (hp <= 100)
-	sv.hp = 100
-	assert_eq(sv.get_crack_count(), 3)
-	sv.hp = 50
-	assert_eq(sv.get_crack_count(), 3)
-	sv.hp = 1
-	assert_eq(sv.get_crack_count(), 3)
+func test_wall_crack_count_thresholds() -> void:
+	# max_hp = 300: 1 crack above 66% hp, 2 from 33% to 66%, 3 at or below 33%.
+	for hp: int in [250, 201]:
+		assert_eq(UnitLayer.crack_count(hp, 300), 1)
+	for hp: int in [200, 150, 101]:
+		assert_eq(UnitLayer.crack_count(hp, 300), 2)
+	for hp: int in [100, 50, 1]:
+		assert_eq(UnitLayer.crack_count(hp, 300), 3)
+	assert_eq(UnitLayer.crack_count(10, 0), 1)
 
 func test_intent_lines_view_visibility() -> void:
 	var session: Session = _create_session()
 	session.intent_lines_enabled = true
 	var ilv := IntentLinesView.new()
 	add_child_autofree(ilv)
-	ilv.setup(session, null, {}, {})
+	ilv.setup(session, null, null, null)
 
 	ilv._process(0.016)
 	assert_true(ilv.visible)

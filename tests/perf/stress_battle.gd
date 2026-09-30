@@ -54,18 +54,12 @@ func _update_overlay() -> void:
 		if v < lowest_fps:
 			lowest_fps = v
 
-	var pathogen_pool_count: int = 0
-	var proj_pool_count: int = 0
-	var vfx_pool_count: int = 0
+	var items_drawn: int = 0
 	var alive_count: int = 0
 
 	if infection_phase != null:
-		if infection_phase.pathogen_pool != null:
-			pathogen_pool_count = infection_phase.pathogen_pool.created_count
-		if infection_phase.projectile_pool != null:
-			proj_pool_count = infection_phase.projectile_pool.created_count
-		if infection_phase.vfx_pool != null:
-			vfx_pool_count = infection_phase.vfx_pool.created_count
+		if infection_phase.unit_layer != null:
+			items_drawn = infection_phase.unit_layer.last_item_count
 
 		if infection_phase.runner != null and infection_phase.runner.sim != null:
 			for p: PathogenState in infection_phase.runner.sim.pathogens:
@@ -80,11 +74,8 @@ func _update_overlay() -> void:
 		]
 
 	if pool_label != null:
-		pool_label.text = "Pools Created:\n  Pathogen: %d\n  Projectile: %d\n  VFX: %d" % [
-			pathogen_pool_count,
-			proj_pool_count,
-			vfx_pool_count
-		]
+		var nodes: int = infection_phase.unit_layer.get_child_count() if (infection_phase != null and infection_phase.unit_layer != null) else 0
+		pool_label.text = "Draw items: %d\nUnit layer nodes: %d" % [items_drawn, nodes]
 
 
 func _on_btn_back_pressed() -> void:

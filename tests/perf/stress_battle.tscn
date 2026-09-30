@@ -59,10 +59,8 @@ Alive Pathogens: 0"
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.85, 0.85, 1)
 theme_override_font_sizes/font_size = 13
-text = "Pools Created:
-  Pathogen: 0
-  Projectile: 0
-  VFX: 0"
+text = "Draw items: 0
+Unit layer nodes: 0"
 
 [node name="BtnBack" type="Button" parent="."]
 layout_mode = 1

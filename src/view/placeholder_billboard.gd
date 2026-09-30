@@ -35,13 +35,29 @@ static func wall_faces(proj: IsoProjection, cell: Vector2i) -> Array[PackedVecto
 	faces.append(PackedVector2Array([n + lift, e + lift, s + lift, w + lift]))
 	return faces
 
-static func draw_wall_faces(ci: CanvasItem, faces: Array[PackedVector2Array], ghost: bool = false) -> void:
-	ci.draw_polygon(faces[0], _left_cols_ghost if ghost else _left_cols)
-	ci.draw_polygon(faces[1], _right_cols_ghost if ghost else _right_cols)
+## `flash` lerps the wall colours toward white (0..1) and `alpha` fades them. Both default to a no-op fast path.
+static func draw_wall_faces(ci: CanvasItem, faces: Array[PackedVector2Array], ghost: bool = false, flash: float = 0.0, alpha: float = 1.0) -> void:
+	var left: PackedColorArray = _left_cols_ghost if ghost else _left_cols
+	var right: PackedColorArray = _right_cols_ghost if ghost else _right_cols
 	var top: Color = WALL_TOP
 	if ghost:
 		top.a = GHOST_OPACITY
+	if flash > 0.0 or alpha < 1.0:
+		left = _tinted(left, flash, alpha)
+		right = _tinted(right, flash, alpha)
+		top = top.lerp(Color.WHITE, flash)
+		top.a *= alpha
+	ci.draw_polygon(faces[0], left)
+	ci.draw_polygon(faces[1], right)
 	ci.draw_colored_polygon(faces[2], top)
+
+static func _tinted(cols: PackedColorArray, flash: float, alpha: float) -> PackedColorArray:
+	var out := PackedColorArray()
+	for c: Color in cols:
+		var t: Color = c.lerp(Color.WHITE, flash)
+		t.a = c.a * alpha
+		out.append(t)
+	return out
 
 static func _faded(cols: PackedColorArray) -> PackedColorArray:
 	var out := PackedColorArray()

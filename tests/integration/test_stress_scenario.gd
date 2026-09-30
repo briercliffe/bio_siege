@@ -59,7 +59,7 @@ func test_stress_battle_scene_instantiation() -> void:
 
 	scene._process(0.016)
 	assert_true(fps_label.text.contains("FPS:"), "FpsLabel must show FPS")
-	assert_true(pool_label.text.contains("Pools Created:"), "PoolLabel must show pool counts")
+	assert_true(pool_label.text.contains("Draw items:"), "PoolLabel must show draw item counts")
 
 
 func test_debug_overlay_stress_button() -> void:
