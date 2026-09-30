@@ -11,6 +11,7 @@ extends RefCounted
 
 const WINDUP_CAP_TICKS: int = 12
 const HIT_DECAY_TICKS: int = 4
+const WALL_SHAKE_TICKS: int = 3
 const DEATH_TICKS: Dictionary = {"rhinovirus": 8, "bacteriophage": 14, "staphylococcus": 18,
 	"macrophage": 16, "b_cell": 20, "nucleus": 40, "mucous_wall": 10}
 const STRIDE_TILES: Dictionary = {"rhinovirus": 1.6, "bacteriophage": 2.0, "staphylococcus": 1.2}
@@ -72,8 +73,8 @@ static func flash_amount(ticks_since_hit: int, reduce: bool) -> float:
 	return clampf(1.0 - float(ticks_since_hit) / float(HIT_DECAY_TICKS), 0.0, 1.0)
 
 
-static func shake_amount(ticks_since_hit: int, reduce: bool) -> float:
-	var s: float = clampf(1.0 - float(ticks_since_hit) / float(HIT_DECAY_TICKS), 0.0, 1.0)
+static func shake_amount(ticks_since_hit: int, reduce: bool, decay_ticks: int = HIT_DECAY_TICKS) -> float:
+	var s: float = clampf(1.0 - float(ticks_since_hit) / float(maxi(decay_ticks, 1)), 0.0, 1.0)
 	return s * 0.5 if reduce else s
 
 
@@ -200,7 +201,10 @@ func pose_for_structure(s: StructureState, sim_tick: int, aim_ground: Vector2, v
 	pose.aim = Vector2.ZERO
 	if s.def != null and s.def.has_attack:
 		_tower_attack(pose, s, sim_tick, aim_ground)
-	_apply_hit(pose, sim_tick - int(_hit_s.get(s.id, NEVER)))
+	var since_hit: int = sim_tick - int(_hit_s.get(s.id, NEVER))
+	_apply_hit(pose, since_hit)
+	if s.def != null and s.def.has_tag("wall"):
+		pose.shake = shake_amount(since_hit, reduce_flashes, WALL_SHAKE_TICKS)
 	return pose
 
 

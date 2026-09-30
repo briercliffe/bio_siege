@@ -134,15 +134,16 @@ func test_hud_intent_lines_button_toggle() -> void:
 	assert_true(session.intent_lines_enabled)
 	assert_eq(hud.btn_intent.text, "Intent lines: ON")
 
-func test_wall_crack_count_thresholds() -> void:
-	# max_hp = 300: 1 crack above 66% hp, 2 from 33% to 66%, 3 at or below 33%.
-	for hp: int in [250, 201]:
-		assert_eq(UnitLayer.crack_count(hp, 300), 1)
-	for hp: int in [200, 150, 101]:
-		assert_eq(UnitLayer.crack_count(hp, 300), 2)
-	for hp: int in [100, 50, 1]:
-		assert_eq(UnitLayer.crack_count(hp, 300), 3)
-	assert_eq(UnitLayer.crack_count(10, 0), 1)
+func test_wall_crack_pulse_stays_between_0_6_and_1_on_a_0_8s_cycle() -> void:
+	var lo: float = 2.0
+	var hi: float = -1.0
+	for i: int in range(80):
+		var a: float = UnitLayer.crack_pulse_alpha(float(i) * 0.01)
+		lo = minf(lo, a)
+		hi = maxf(hi, a)
+	assert_almost_eq(lo, 0.6, 0.01)
+	assert_almost_eq(hi, 1.0, 0.01)
+	assert_almost_eq(UnitLayer.crack_pulse_alpha(0.1), UnitLayer.crack_pulse_alpha(0.9), 0.0001)
 
 func test_intent_lines_view_visibility() -> void:
 	var session: Session = _create_session()

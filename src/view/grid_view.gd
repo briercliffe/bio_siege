@@ -83,7 +83,7 @@ class StructureItem extends RefCounted:
 	var plate: PackedVector2Array = PackedVector2Array()
 	var plate_rim: PackedVector2Array = PackedVector2Array()
 	var glow_rings: Array[PackedVector2Array] = []
-	var faces: Array[PackedVector2Array] = []
+	var cell: Vector2i = Vector2i.ZERO
 
 ## A deployed-unit marker with its screen position cached.
 class UnitMarker extends RefCounted:
@@ -146,6 +146,14 @@ var _g_dot_alpha: PackedFloat32Array = PackedFloat32Array()
 var _g_range_fill: Array[PackedVector2Array] = []
 var _g_range_dashes: PackedVector2Array = PackedVector2Array()
 var _g_item: StructureItem = null
+
+# Walls are connected segments, cached by WallRenderer and rebuilt only when a wall is placed or removed or
+# the projection changes. The ghost preview has its own lone-cell renderer.
+var _walls: WallRenderer = WallRenderer.new()
+var _ghost_walls: WallRenderer = WallRenderer.new()
+var _walls_dirty: bool = true
+var _walls_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
+var _still_pose: ModelPose = ModelPose.new()
 
 func set_draw_structures(val: bool) -> void:
 	draw_structures = val
@@ -218,11 +226,14 @@ func setup(p_grid: GridModel, p_config: GameConfig, p_army: Army = null) -> void
 		_apply_default_layout()
 	_geometry_dirty = true
 	_items_dirty = true
+	_walls_dirty = true
 	_markers_dirty = true
 	_ghost_dirty = true
 	queue_redraw()
 
-func _on_structure_changed(_s: GridModel.PlacedStructure) -> void:
+func _on_structure_changed(s: GridModel.PlacedStructure) -> void:
+	if s != null and _is_wall(s.type_id):
+		_walls_dirty = true
 	_items_dirty = true
 	_ghost_dirty = true
 	queue_redraw()
@@ -490,6 +501,19 @@ func _rebuild_items() -> void:
 	for s: GridModel.PlacedStructure in grid.structures():
 		_items.append(_make_item(s.id, s.type_id, s.origin, s.footprint))
 	_items.sort_custom(_sort_items)
+	var key := Vector4(projection.tile_px, projection.origin.x, projection.origin.y, projection.scale)
+	if _walls_dirty or key != _walls_key:
+		_walls_dirty = false
+		_walls_key = key
+		var cells: Dictionary = {}
+		for s: GridModel.PlacedStructure in grid.structures():
+			if _is_wall(s.type_id):
+				cells[s.origin] = true
+		_walls.rebuild(cells, projection)
+
+func _is_wall(type_id: String) -> bool:
+	var sdef: StructureDef = config.structures.get(type_id) if config != null else null
+	return sdef != null and sdef.has_tag("wall")
 
 func _sort_items(a: StructureItem, b: StructureItem) -> bool:
 	if a.depth != b.depth:
@@ -509,7 +533,7 @@ func _make_item(id: int, type_id: String, origin: Vector2i, footprint: Vector2i)
 	item.foot = projection.ground_to_screen(center_g)
 	if sdef != null and sdef.has_tag("wall"):
 		item.kind = 1
-		item.faces = PlaceholderBillboard.wall_faces(projection, origin)
+		item.cell = origin
 		return item
 	item.kind = 2 if (sdef != null and sdef.has_tag("core")) else 0
 	item.width = float(footprint.x) * t * projection.scale * 1.4
@@ -560,6 +584,9 @@ func _rebuild_ghost() -> void:
 	_g_fill = _project(fill_g)
 	_g_border = _closed(_g_fill)
 	_g_item = _make_item(0, _ghost_type_id, _ghost_origin, footprint)
+	if _g_item.kind == 1:
+		_ghost_walls.modulate = Color(1.0, 1.0, 1.0, PlaceholderBillboard.GHOST_OPACITY)
+		_ghost_walls.rebuild({_ghost_origin: true}, projection)
 
 	var reach: int = int(ceilf(DOT_RADIUS_TILES))
 	var cx: int = int(floorf(center_g.x))
@@ -603,6 +630,7 @@ func _draw() -> void:
 	_draw_band(k)
 	if draw_structures:
 		_draw_plates(k)
+		_walls.paint_shadows(self)
 		_draw_structure_items()
 	if _has_ghost:
 		_draw_ghost(k)
@@ -696,7 +724,11 @@ func _draw_structure_items() -> void:
 
 func _draw_item(item: StructureItem, ghost: bool) -> void:
 	if item.kind == 1:
-		PlaceholderBillboard.draw_wall_faces(self, item.faces, ghost)
+		if ghost:
+			_ghost_walls.paint_shadows(self)
+			_ghost_walls.paint_cell(self, item.cell, 1.0, _still_pose)
+		else:
+			_walls.paint_cell(self, item.cell, 1.0, _still_pose)
 		return
 	var col: Color = item.color
 	if ghost:

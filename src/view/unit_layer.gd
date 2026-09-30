@@ -6,6 +6,12 @@ extends Node2D
 
 const KIND_STRUCTURE: int = 0
 const KIND_PATHOGEN: int = 1
+## A wall's post and its cracks are separate draw items just after the segment, so a unit standing on the
+## same depth key sorts between them the way the canvas does.
+const KIND_WALL_POST: int = 2
+const KIND_WALL_CRACKS: int = 3
+const WALL_POST_BIAS: float = 0.001
+const WALL_CRACKS_BIAS: float = 0.002
 
 const SCORCH_DIAMETER_T: float = 3.6
 const SCORCH_RINGS: int = 5
@@ -26,12 +32,9 @@ const PATHOGEN_SIZE_T: Dictionary = {
 }
 const DEFAULT_PATHOGEN_SIZE_T: Vector2 = Vector2(1.2, 1.25)
 
-## Crack polylines in face-local (u, v) space, the same marks the old StructureView drew.
-const CRACKS: Array = [
-	[Vector2(0.2, 0.0), Vector2(0.38, 0.28), Vector2(0.28, 0.52), Vector2(0.52, 0.78), Vector2(0.45, 1.0)],
-	[Vector2(0.75, 0.0), Vector2(0.58, 0.32), Vector2(0.78, 0.64), Vector2(0.68, 1.0)],
-	[Vector2(0.0, 0.5), Vector2(0.32, 0.38), Vector2(0.58, 0.62), Vector2(0.82, 0.44), Vector2(1.0, 0.52)],
-]
+const WALL_TYPE_ID: String = "mucous_wall"
+const CRACK_PULSE_LO: float = 0.6
+const CRACK_PULSE_HI: float = 1.0
 
 
 class UnitDrawItem extends RefCounted:
@@ -67,8 +70,13 @@ var driver: AnimDriver = AnimDriver.new()
 ## View clock in seconds for idle loops. Advances only while the battle runs.
 var view_time: float = 0.0
 
-var _wall_faces: Dictionary = {}
-var _faces_key: Vector3 = Vector3(-1.0, 0.0, 0.0)
+## Connected wall segments for the live wall cells. Rebuilt when a wall is destroyed or the projection changes.
+var walls: WallRenderer = WallRenderer.new()
+var _wall_cells: Dictionary = {}
+var _walls_dirty: bool = true
+## Destroyed walls, by structure id, whose goo decal stays on the ground for the rest of the battle.
+var _goo: Array[int] = []
+var _proj_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
 
 
 func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, p_snapshots: BattleSnapshotBuffer, p_runner: BattleRunner) -> void:
@@ -84,7 +92,9 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 	_dying_p.clear()
 	_dying_s.clear()
 	_scorch.clear()
-	_wall_faces.clear()
+	_goo.clear()
+	_walls_dirty = true
+	_proj_key = Vector4(-1.0, 0.0, 0.0, 0.0)
 	queue_redraw()
 
 
@@ -106,7 +116,7 @@ static func pathogen_size_t(type_id: String) -> Vector2:
 static func structure_size_px(s: StructureState, proj: IsoProjection) -> Vector2:
 	var t: float = proj.tile_px
 	if s.def != null and s.def.has_tag("wall"):
-		return Vector2(2.0 * t * proj.scale, PlaceholderBillboard.WALL_HEIGHT_T * t)
+		return Vector2(2.0 * t * proj.scale, WallRenderer.height_tiles(s.hp, s.max_hp) * t)
 	var h_t: float = float(GridView.MODEL_HEIGHT_T.get(s.type_id, GridView.DEFAULT_MODEL_HEIGHT_T))
 	return Vector2(float(s.footprint.x) * t * proj.scale * STRUCTURE_WIDTH_SCALE, h_t * t)
 
@@ -115,14 +125,10 @@ static func structure_anchor(s: StructureState) -> Vector2:
 	return Vector2(s.origin) + Vector2(s.footprint) * 0.5
 
 
-static func crack_count(hp: int, max_hp: int) -> int:
-	if max_hp <= 0:
-		return 1
-	if hp <= max_hp / 3:
-		return 3
-	if hp <= (max_hp * 2) / 3:
-		return 2
-	return 1
+## Crack colour alpha while a pathogen is breaking the wall: 0.6 to 1.0 on a 0.8 s cycle of the view clock.
+static func crack_pulse_alpha(time_s: float) -> float:
+	var phase: float = fposmod(time_s, CRACK_PULSE_PERIOD_S) / CRACK_PULSE_PERIOD_S
+	return lerpf(CRACK_PULSE_LO, CRACK_PULSE_HI, 0.5 + 0.5 * sin(phase * TAU))
 
 
 ## Ground anchor of a live pathogen, interpolated between ticks.
@@ -150,7 +156,12 @@ func on_event(ev: Dictionary) -> void:
 			if s == null:
 				return
 			_dying_s[sid] = AnimDriver.event_tick(ev, sim.tick)
-			if s.def != null and not s.def.has_tag("wall") and not _scorch.has(sid):
+			if s.def != null and s.def.has_tag("wall"):
+				# The segment and its neighbours' bridges go at once, leaving the gap; chunks and goo play there.
+				_walls_dirty = true
+				if not _goo.has(sid):
+					_goo.append(sid)
+			elif not _scorch.has(sid):
 				_scorch.append(sid)
 
 
@@ -185,14 +196,29 @@ func _collect() -> void:
 	_breached.clear()
 	if sim == null or projection == null:
 		return
-	for s: StructureState in sim.structures:
-		if s.alive:
-			_take_item(KIND_STRUCTURE, s.id, IsoProjection.depth_key(structure_anchor(s)), -1.0)
+	_refresh_wall_cache()
 	for p: PathogenState in sim.pathogens:
 		if p.alive:
 			_take_item(KIND_PATHOGEN, p.id, IsoProjection.depth_key(pathogen_anchor(p)), -1.0)
 			if p.blocker_id != 0:
 				_breached[p.blocker_id] = true
+	var live_walls: int = 0
+	for s: StructureState in sim.structures:
+		if not s.alive:
+			continue
+		var key: float = IsoProjection.depth_key(structure_anchor(s))
+		_take_item(KIND_STRUCTURE, s.id, key, -1.0)
+		if s.def == null or not s.def.has_tag("wall"):
+			continue
+		live_walls += 1
+		var hurt: bool = s.hp * 2 < s.max_hp
+		if not hurt and walls.has_post(s.origin):
+			_take_item(KIND_WALL_POST, s.id, key + WALL_POST_BIAS, -1.0)
+		if hurt or _breached.has(s.id):
+			_take_item(KIND_WALL_CRACKS, s.id, key + WALL_CRACKS_BIAS, -1.0)
+	# A wall that died without an event reaching the view still leaves its gap on the next frame.
+	if live_walls != _wall_cells.size():
+		_walls_dirty = true
 
 	_expired.clear()
 	for sid_var: Variant in _dying_s:
@@ -237,28 +263,41 @@ func _draw() -> void:
 	last_item_count = _sorted.size()
 	if sim == null or projection == null:
 		return
-	_refresh_wall_cache()
 	_draw_ground_decals()
 	for item: UnitDrawItem in _sorted:
-		if item.kind == KIND_STRUCTURE:
-			_draw_structure(sim.structure(item.id))
-		else:
-			_draw_pathogen(sim.pathogen(item.id))
+		match item.kind:
+			KIND_STRUCTURE:
+				_draw_structure(sim.structure(item.id))
+			KIND_PATHOGEN:
+				_draw_pathogen(sim.pathogen(item.id))
+			KIND_WALL_POST:
+				var ps: StructureState = sim.structure(item.id)
+				walls.paint_post(self, ps.origin, _wall_pose(ps))
+			KIND_WALL_CRACKS:
+				var cs: StructureState = sim.structure(item.id)
+				var alpha: float = crack_pulse_alpha(view_time) if _breached.has(cs.id) else WallRenderer.CRACK_ALPHA
+				walls.paint_cracks(self, cs.origin, cs.hp * 2 < cs.max_hp, alpha, _wall_pose(cs))
 
 
 func _refresh_wall_cache() -> void:
-	var key := Vector3(projection.tile_px, projection.origin.x, projection.origin.y)
-	if key != _faces_key:
-		_faces_key = key
-		_wall_faces.clear()
+	var key := Vector4(projection.tile_px, projection.origin.x, projection.origin.y, projection.scale)
+	if key != _proj_key:
+		_proj_key = key
+		_walls_dirty = true
 		# Painter state such as the staph trails is stored in screen space.
 		ModelRegistry.reset_painters()
+	if not _walls_dirty:
+		return
+	_walls_dirty = false
+	_wall_cells.clear()
+	for s: StructureState in sim.structures:
+		if s.alive and s.def != null and s.def.has_tag("wall"):
+			_wall_cells[s.origin] = true
+	walls.rebuild(_wall_cells, projection)
 
 
-func _faces_for(s: StructureState) -> Array[PackedVector2Array]:
-	if not _wall_faces.has(s.id):
-		_wall_faces[s.id] = PlaceholderBillboard.wall_faces(projection, s.origin)
-	return _wall_faces[s.id]
+func _wall_pose(s: StructureState) -> ModelPose:
+	return driver.pose_for_structure(s, sim.tick, Vector2.ZERO, view_time)
 
 
 func _draw_ground_decals() -> void:
@@ -283,10 +322,25 @@ func _draw_ground_decals() -> void:
 		else:
 			draw_circle(c, PLATE_TOWER_RADIUS, PLATE_FILL)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
+	var goo_ticks: float = float(AnimDriver.death_ticks_for(WALL_TYPE_ID))
+	for sid: int in _goo:
+		var gs: StructureState = sim.structure(sid)
+		if gs == null:
+			continue
+		var age: int = driver.structure_death_age(sid, sim.tick)
+		walls.paint_goo(self, gs.origin, clampf(float(age) / goo_ticks, 0.0, 1.0) if age >= 0 else 1.0)
+	walls.paint_shadows(self)
 
 
 func _draw_structure(s: StructureState) -> void:
 	if s == null:
+		return
+	if s.def != null and s.def.has_tag("wall"):
+		var wp: ModelPose = _wall_pose(s)
+		if wp.anim == ModelPose.Anim.DEAD:
+			walls.paint_break(self, s.origin, wp.death_t)
+		else:
+			walls.paint_body(self, s.origin, s.hp * 2 < s.max_hp, wp)
 		return
 	var aim_ground: Vector2 = Vector2.ZERO
 	if s.target_id != 0:
@@ -294,31 +348,8 @@ func _draw_structure(s: StructureState) -> void:
 		if tp != null and tp.alive:
 			aim_ground = pathogen_anchor(tp)
 	var pose: ModelPose = driver.pose_for_structure(s, sim.tick, aim_ground, view_time)
-	if s.def != null and s.def.has_tag("wall"):
-		PlaceholderBillboard.draw_wall_faces(self, _faces_for(s), false, PlaceholderPainter.HIT_WHITE * pose.hit_t, 1.0 - pose.death_t)
-		if pose.anim != ModelPose.Anim.DEAD and _breached.has(s.id) and s.hp > 0:
-			_draw_cracks(_faces_for(s), crack_count(s.hp, s.max_hp))
-		return
 	var foot: Vector2 = projection.ground_to_screen(structure_anchor(s))
 	ModelRegistry.painter_for(s.type_id).paint(self, foot, pose, projection.tile_px)
-
-
-func _draw_cracks(faces: Array[PackedVector2Array], count: int) -> void:
-	var pulse: float = fmod(float(Time.get_ticks_msec()) / 1000.0, CRACK_PULSE_PERIOD_S)
-	var a: float = lerpf(0.6, 1.0, 0.5 + 0.5 * sin(pulse / CRACK_PULSE_PERIOD_S * TAU))
-	var col := Color(0.23, 0.18, 0.18, a)
-	var width: float = maxf(1.0, projection.tile_px / 14.0 * 1.5)
-	for f: int in range(2):
-		var q: PackedVector2Array = faces[f]
-		for i: int in range(count):
-			var uv: Array = CRACKS[i]
-			var pts := PackedVector2Array()
-			for pt_var: Variant in uv:
-				var pt: Vector2 = pt_var
-				var top: Vector2 = q[0].lerp(q[1], pt.x)
-				var bottom: Vector2 = q[3].lerp(q[2], pt.x)
-				pts.append(top.lerp(bottom, pt.y))
-			draw_polyline(pts, col, width)
 
 
 func _draw_pathogen(p: PathogenState) -> void:
