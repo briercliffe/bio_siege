@@ -28,10 +28,18 @@ static var _painters: Dictionary = {}
 
 static func painter_for(type_id: String) -> ModelPainter:
 	if not _painters.has(type_id):
-		var p := PlaceholderPainter.new()
-		p.size_t = Vector2(DEFAULT_PATHOGEN_WIDTH_T, float(HEIGHT_T.get(type_id, DEFAULT_HEIGHT_T)))
-		_painters[type_id] = p
+		_painters[type_id] = _create(type_id)
 	return _painters[type_id]
+
+
+## Real painters by type id; everything else gets a placeholder.
+static func _create(type_id: String) -> ModelPainter:
+	match type_id:
+		"rhinovirus":
+			return RhinoPainter.new()
+	var p := PlaceholderPainter.new()
+	p.size_t = Vector2(DEFAULT_PATHOGEN_WIDTH_T, float(HEIGHT_T.get(type_id, DEFAULT_HEIGHT_T)))
+	return p
 
 
 ## Gives each placeholder painter the shape, colour and size of its config definition. Safe to call again.
