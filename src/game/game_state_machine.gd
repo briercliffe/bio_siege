@@ -19,6 +19,8 @@ const PHASE_SCENE_PATHS: Dictionary = {
 var phase: Phase = Phase.NONE
 var previous_phase: Phase = Phase.NONE
 var session: Session = null
+## Player preferences file, handed to the Session and to phases that read settings. Tests use a temp file.
+var settings_path: String = GameSettings.DEFAULT_PATH
 
 var phase_root: Control = null
 ## Menu screens (How to play, Saved, Settings) open over the phases through this. Main assigns it.
@@ -83,7 +85,7 @@ func can_transition(from: Phase, to: Phase) -> bool:
 func start() -> void:
 	if session == null:
 		var cfg: GameConfig = GameData.config if GameData != null else null
-		session = Session.new(cfg)
+		session = Session.new(cfg, settings_path)
 	if GameData != null and not GameData.config_reloaded.is_connected(on_config_reloaded):
 		GameData.config_reloaded.connect(on_config_reloaded)
 	request_transition(Phase.TITLE)
@@ -150,6 +152,8 @@ func _apply_transition(to: Phase) -> void:
 		var scene_res: PackedScene = load(scene_path) as PackedScene
 		if scene_res != null:
 			var phase_scene: Node = scene_res.instantiate()
+			if "settings_path" in phase_scene:
+				phase_scene.set("settings_path", settings_path)
 			if phase_scene.has_method("setup"):
 				phase_scene.call("setup", session, self)
 			root.add_child(phase_scene)

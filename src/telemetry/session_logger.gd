@@ -6,6 +6,8 @@ var _current_path: String = ""
 var _file: FileAccess = null
 ## Cached telemetry consent. While it is off, log_event() writes nothing and no session file is opened.
 var _consent: bool = true
+## Player preferences file the consent is read from at _ready(). Tests point it at a temp file.
+var settings_path: String = GameSettings.DEFAULT_PATH
 
 func _enter_tree() -> void:
 	if instance == null:
@@ -22,7 +24,7 @@ func _ready() -> void:
 	if instance == null:
 		instance = self
 	_consent = GameSettings.get_bool(GameSettings.SECTION_PRIVACY, GameSettings.KEY_TELEMETRY_CONSENT,
-			GameSettings.DEFAULT_TELEMETRY_CONSENT)
+			GameSettings.DEFAULT_TELEMETRY_CONSENT, settings_path)
 	if _file == null and _consent:
 		_init_session_file()
 

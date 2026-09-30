@@ -3,6 +3,8 @@ extends GutTest
 const SessionLoggerScript = preload("res://src/telemetry/session_logger.gd")
 const TEST_FILE_PATH: String = "user://telemetry/test_session_log.jsonl"
 const TEST_OTHER_FILE_PATH: String = "user://telemetry/test_session_log_other.jsonl"
+## Never written, so a fresh logger reads the default consent (on), not the developer's saved choice.
+const MISSING_SETTINGS_PATH: String = "user://test_session_logger_no_settings.cfg"
 
 func before_each() -> void:
 	if FileAccess.file_exists(TEST_FILE_PATH):
@@ -18,6 +20,7 @@ func after_each() -> void:
 
 func test_logger_custom_file_and_event_logging() -> void:
 	var logger := SessionLoggerScript.new()
+	logger.settings_path = MISSING_SETTINGS_PATH
 	add_child_autoqfree(logger)
 	logger.set_custom_file_path(TEST_FILE_PATH)
 
@@ -49,6 +52,7 @@ func test_logger_custom_file_and_event_logging() -> void:
 
 func test_vector2i_conversion() -> void:
 	var logger := SessionLoggerScript.new()
+	logger.settings_path = MISSING_SETTINGS_PATH
 	add_child_autoqfree(logger)
 	logger.set_custom_file_path(TEST_FILE_PATH)
 
@@ -85,11 +89,13 @@ func test_vector2i_conversion() -> void:
 
 func test_all_sessions_text() -> void:
 	var logger1 := SessionLoggerScript.new()
+	logger1.settings_path = MISSING_SETTINGS_PATH
 	add_child_autoqfree(logger1)
 	logger1.set_custom_file_path(TEST_FILE_PATH)
 	logger1.log_event("event_a", {"msg": "hello"})
 
 	var logger2 := SessionLoggerScript.new()
+	logger2.settings_path = MISSING_SETTINGS_PATH
 	add_child_autoqfree(logger2)
 	logger2.set_custom_file_path(TEST_OTHER_FILE_PATH)
 	logger2.log_event("event_b", {"msg": "world"})

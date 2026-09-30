@@ -1,5 +1,21 @@
 extends GutTest
 
+const TEST_SETTINGS_PATH: String = "user://test_gsm_settings.cfg"
+
+
+func before_each() -> void:
+	_remove_settings()
+
+
+func after_each() -> void:
+	_remove_settings()
+
+
+func _remove_settings() -> void:
+	if FileAccess.file_exists(TEST_SETTINGS_PATH):
+		DirAccess.remove_absolute(TEST_SETTINGS_PATH)
+
+
 func test_all_transition_pairs() -> void:
 	var fsm: GameStateMachine = GameStateMachine.new()
 	add_child_autoqfree(fsm)
@@ -131,7 +147,7 @@ func test_session_init_copies_config_values() -> void:
 	var res: ConfigLoadResult = GameConfig.load_from_dir("res://data")
 	assert_true(res.is_ok())
 	var cfg: GameConfig = res.config
-	var session: Session = Session.new(cfg)
+	var session: Session = Session.new(cfg, TEST_SETTINGS_PATH)
 
 	assert_eq(session.config, cfg)
 	assert_eq(session.seed, cfg.default_seed)
@@ -149,14 +165,14 @@ func test_session_init_copies_config_values() -> void:
 	# 2. Custom values
 	cfg.default_seed = 98765
 	cfg.feature_flags["intent_lines_default"] = false
-	var custom_session: Session = Session.new(cfg)
+	var custom_session: Session = Session.new(cfg, TEST_SETTINGS_PATH)
 	assert_eq(custom_session.seed, 98765)
 	assert_eq(custom_session.intent_lines_enabled, false)
 	assert_not_null(custom_session.wallet)
 	assert_not_null(custom_session.grid)
 
 	# 3. Null config
-	var null_session: Session = Session.new(null)
+	var null_session: Session = Session.new(null, TEST_SETTINGS_PATH)
 	assert_null(null_session.config)
 	assert_eq(null_session.seed, 0)
 	assert_true(null_session.intent_lines_enabled)
@@ -404,3 +420,13 @@ func test_record_outbreak_noop_without_run() -> void:
 	var session := Session.new(cfg)
 	session.record_outbreak("attacker", 400)
 	assert_null(session.outbreak)
+
+
+func test_start_builds_the_session_from_the_fsm_settings_path() -> void:
+	GameSettings.set_bool(GameSettings.SECTION_GAMEPLAY, GameSettings.KEY_INTENT_LINES_DEFAULT, false, TEST_SETTINGS_PATH)
+	var fsm := GameStateMachine.new()
+	fsm.settings_path = TEST_SETTINGS_PATH
+	add_child_autoqfree(fsm)
+	fsm.start()
+	assert_not_null(fsm.session)
+	assert_false(fsm.session.intent_lines_enabled)

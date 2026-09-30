@@ -80,6 +80,7 @@ var toast: Toast = null
 var _row_titles: Array[Label] = []
 var _row_subtitles: Array[Label] = []
 var _dividers: Array[ColorRect] = []
+var _volume_dragging: bool = false
 
 
 func _init() -> void:
@@ -137,9 +138,24 @@ static func _show_switch(sw: ToggleSwitch, on: bool) -> void:
 	sw.queue_redraw()
 
 
+## Applied live on every step; saved once when a drag ends, or at once for a tap or programmatic change.
 func _on_volume_changed(v: float) -> void:
 	SettingsApply.apply_master_volume(v)
-	GameSettings.set_float(GameSettings.SECTION_AUDIO, GameSettings.KEY_MASTER_VOLUME, v, settings_path)
+	if not _volume_dragging:
+		_save_volume()
+
+
+func _on_volume_drag_started() -> void:
+	_volume_dragging = true
+
+
+func _on_volume_drag_ended(_value_changed: bool) -> void:
+	_volume_dragging = false
+	_save_volume()
+
+
+func _save_volume() -> void:
+	GameSettings.set_float(GameSettings.SECTION_AUDIO, GameSettings.KEY_MASTER_VOLUME, volume_slider.value, settings_path)
 
 
 func _on_sfx_toggled(on: bool) -> void:
@@ -213,6 +229,8 @@ func _build() -> void:
 	volume_slider.custom_minimum_size = SLIDER_SIZE
 	volume_slider.value = GameSettings.DEFAULT_MASTER_VOLUME
 	volume_slider.value_changed.connect(_on_volume_changed)
+	volume_slider.drag_started.connect(_on_volume_drag_started)
+	volume_slider.drag_ended.connect(_on_volume_drag_ended)
 	sfx_switch = _make_switch("SfxSwitch", _on_sfx_toggled)
 	intent_switch = _make_switch("IntentSwitch", _on_intent_toggled)
 	flashes_switch = _make_switch("FlashesSwitch", _on_flashes_toggled)

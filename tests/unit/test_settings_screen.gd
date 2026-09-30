@@ -20,6 +20,7 @@ func before_each() -> void:
 	_bus_db = AudioServer.get_bus_volume_db(SettingsApply.MASTER_BUS)
 	_bus_mute = AudioServer.is_bus_mute(SettingsApply.MASTER_BUS)
 	_logger_consent = SessionLogger.has_consent()
+	SessionLogger.set_consent(true)
 
 
 func after_each() -> void:
@@ -146,6 +147,41 @@ func test_volume_slider_sets_the_master_bus_and_saves() -> void:
 	assert_true(AudioServer.is_bus_mute(SettingsApply.MASTER_BUS))
 
 
+func test_volume_drag_applies_live_and_saves_on_release() -> void:
+	var screen := _make_screen()
+	screen.volume_slider.drag_started.emit()
+	screen.volume_slider.value = 0.4
+	screen.volume_slider.value = 0.3
+	assert_almost_eq(AudioServer.get_bus_volume_db(SettingsApply.MASTER_BUS), linear_to_db(0.3), 0.01)
+	assert_null(_saved(GameSettings.SECTION_AUDIO, GameSettings.KEY_MASTER_VOLUME), "nothing saved mid-drag")
+	screen.volume_slider.drag_ended.emit(true)
+	assert_almost_eq(float(_saved(GameSettings.SECTION_AUDIO, GameSettings.KEY_MASTER_VOLUME)), 0.3, 0.001)
+
+
+func test_main_uses_its_settings_path() -> void:
+	GameSettings.set_bool(GameSettings.SECTION_DEBUG, GameSettings.KEY_DEBUG_OVERLAY, OS.is_debug_build(), TEST_PATH)
+	GameSettings.set_bool(GameSettings.SECTION_GAMEPLAY, GameSettings.KEY_INTENT_LINES_DEFAULT, false, TEST_PATH)
+	GameSettings.set_bool(GameSettings.SECTION_GAME, GameSettings.KEY_SEEN_HOW_TO_PLAY, true, TEST_PATH)
+	GameSettings.set_float(GameSettings.SECTION_AUDIO, GameSettings.KEY_MASTER_VOLUME, 0.6, TEST_PATH)
+	var main_node: Node = (load("res://src/main.tscn") as PackedScene).instantiate()
+	main_node.set("settings_path", TEST_PATH)
+	add_child_autofree(main_node)
+	var fsm: GameStateMachine = main_node.get_node("GameStateMachine") as GameStateMachine
+	assert_eq(fsm.settings_path, TEST_PATH)
+	assert_false(fsm.session.intent_lines_enabled)
+	assert_almost_eq(AudioServer.get_bus_volume_db(SettingsApply.MASTER_BUS), linear_to_db(0.6), 0.01)
+	var overlay: Control = main_node.get_node_or_null("DebugOverlay") as Control
+	if overlay != null and not overlay.is_queued_for_deletion():
+		assert_true(overlay.visible)
+	var how_to_play: Control = main_node.get_node("HowToPlay") as Control
+	assert_false(how_to_play.visible, "How to play was already seen in this settings file")
+	var stack: ScreenStack = main_node.get_node("ScreenStack") as ScreenStack
+	stack.push("settings")
+	var screen: SettingsScreen = stack.top_screen() as SettingsScreen
+	assert_eq(screen.settings_path, TEST_PATH)
+	assert_false(screen.intent_switch.button_pressed)
+
+
 func test_sound_effects_off_mutes_sfx() -> void:
 	Sfx.muted = false
 	var screen := _make_screen()
@@ -160,6 +196,9 @@ func test_sound_effects_off_mutes_sfx() -> void:
 func test_telemetry_off_stops_the_session_logger_writing() -> void:
 	var screen := _make_screen()
 	var log_path: String = SessionLogger._current_path
+	assert_false(log_path.is_empty(), "the autoload has a session file while consent is on")
+	SessionLogger.log_event("probe", {})
+	assert_gt(_file_size(log_path), 0)
 	screen.telemetry_switch.button_pressed = false
 	assert_false(SessionLogger.has_consent())
 	var before: int = _file_size(log_path)
