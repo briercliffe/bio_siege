@@ -132,7 +132,7 @@ func test_jitter_wraps_around_ring() -> void:
 	assert_eq(jittered[0]["cell"], ring[3], "Index 0 with offset -1 should wrap to last ring cell")
 
 	# Also verify on full scenario ring
-	var scenario_ring: Array[Vector2i] = Scenarios.ring_cells(20, 20)
+	var scenario_ring: Array[Vector2i] = Scenarios.ring_cells(40, 40, 2)
 	var units2: Array = [
 		{"type": "rhinovirus", "cell": scenario_ring[0]}
 	]
@@ -141,7 +141,7 @@ func test_jitter_wraps_around_ring() -> void:
 
 
 func test_apply_jitter_zero_is_noop() -> void:
-	var ring: Array[Vector2i] = Scenarios.ring_cells(20, 20)
+	var ring: Array[Vector2i] = Scenarios.ring_cells(40, 40, 2)
 	var units: Array = [
 		{"type": "rhinovirus", "cell": ring[0]},
 		{"type": "bacteriophage", "cell": ring[5]}

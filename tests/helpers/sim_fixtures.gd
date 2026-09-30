@@ -25,7 +25,7 @@ static func make_sim(structures: Array, units: Array, seed: int = 1, config: Gam
 	if not has_core:
 		structs.append({
 			"type": "nucleus",
-			"origin": Vector2i(9, 9)
+			"origin": Vector2i(18, 18)
 		})
 
 	var setup := BattleSetup.create(structs, units, seed)

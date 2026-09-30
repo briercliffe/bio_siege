@@ -1,32 +1,32 @@
 extends GutTest
 
 func test_walk_and_first_hit() -> void:
-	var sim := SimFixtures.make_sim([], [{"type": "rhinovirus", "cell": Vector2i(0, 10)}])
-	for i in range(65):
+	var sim := SimFixtures.make_sim([], [{"type": "rhinovirus", "cell": Vector2i(0, 20)}])
+	for i in range(71):
 		sim.step()
 
 	var nucleus := sim.structure(sim.nucleus_id)
 	assert_not_null(nucleus)
-	assert_eq(nucleus.hp, 1994, "Nucleus hp after 65 steps should be 1994")
+	assert_eq(nucleus.hp, 1994, "Nucleus hp after 71 steps should be 1994")
 
 	var unit := sim.pathogen(1)
 	assert_not_null(unit)
 	assert_eq(unit.state, PathogenState.State.ATTACKING, "Unit state should be ATTACKING")
 	assert_eq(unit.target_id, 1, "Unit target_id should be 1")
-	assert_eq(unit.pos, Vector2i(8500, 10500), "Unit pos should be (8500, 10500)")
-	assert_eq(sim.first_contact_tick, 64, "First contact tick should be 64")
+	assert_eq(unit.pos, Vector2i(17500, 20500), "Unit pos should be (17500, 20500)")
+	assert_eq(sim.first_contact_tick, 68, "First contact tick should be 68")
 
 	for i in range(10):
 		sim.step()
 
-	assert_eq(nucleus.hp, 1988, "Nucleus hp after 75 steps should be 1988")
+	assert_eq(nucleus.hp, 1988, "Nucleus hp after 81 steps should be 1988")
 
 
 func test_blocker() -> void:
 	var walls: Array = []
-	for y in range(1, 19):
-		walls.append({"type": "mucous_wall", "origin": Vector2i(5, y)})
-	var sim := SimFixtures.make_sim(walls, [{"type": "rhinovirus", "cell": Vector2i(0, 10)}])
+	for y in range(2, 38):
+		walls.append({"type": "mucous_wall", "origin": Vector2i(10, y)})
+	var sim := SimFixtures.make_sim(walls, [{"type": "rhinovirus", "cell": Vector2i(0, 20)}])
 
 	while sim.pathogen(1).state != PathogenState.State.ATTACKING and sim.tick < 50:
 		sim.step()
@@ -34,7 +34,7 @@ func test_blocker() -> void:
 	var unit := sim.pathogen(1)
 	assert_eq(unit.state, PathogenState.State.ATTACKING)
 	assert_eq(unit.target_id, sim.nucleus_id)
-	var wall_id := sim.structure_id_at(Vector2i(5, 10))
+	var wall_id := sim.structure_id_at(Vector2i(10, 20))
 	assert_eq(unit.blocker_id, wall_id)
 
 	var events := sim.drain_events()
@@ -66,10 +66,10 @@ func test_blocker() -> void:
 
 func test_retarget_mid_walk() -> void:
 	var structs := [
-		{"type": "b_cell", "origin": Vector2i(2, 10)},
-		{"type": "nucleus", "origin": Vector2i(9, 9)}
+		{"type": "b_cell", "origin": Vector2i(4, 19)},
+		{"type": "nucleus", "origin": Vector2i(18, 18)}
 	]
-	var units := [{"type": "rhinovirus", "cell": Vector2i(0, 10)}]
+	var units := [{"type": "rhinovirus", "cell": Vector2i(0, 20)}]
 	var sim := SimFixtures.make_sim(structs, units)
 	sim.structure(1).attack_cooldown = 999
 
@@ -77,7 +77,7 @@ func test_retarget_mid_walk() -> void:
 		sim.step()
 
 	var unit := sim.pathogen(1)
-	assert_eq(unit.pos, Vector2i(875, 10500))
+	assert_eq(unit.pos, Vector2i(1250, 20500))
 	assert_ne(unit.pos, FixedMath.cell_center(unit.cell))
 
 	var b_cell := sim.structure(1)
@@ -88,18 +88,18 @@ func test_retarget_mid_walk() -> void:
 
 	sim.step()
 	assert_eq(unit.target_id, sim.nucleus_id)
-	assert_eq(unit.pos, Vector2i(1000, 10500))
+	assert_eq(unit.pos, Vector2i(1500, 20500))
 
-	while unit.pos != Vector2i(1500, 10500):
+	while unit.pos != Vector2i(2500, 20500):
 		sim.step()
 
-	assert_eq(unit.pos, Vector2i(1500, 10500))
-	assert_eq(unit.cell, Vector2i(1, 10))
+	assert_eq(unit.pos, Vector2i(2500, 20500))
+	assert_eq(unit.cell, Vector2i(2, 20))
 
 	sim.step()
 	assert_eq(unit.path_version, sim.path_service.grid_version)
 	assert_ne(unit.state, PathogenState.State.DEAD)
-	assert_gt(unit.pos.x, 1500, "Unit should continue moving towards Nucleus")
+	assert_gt(unit.pos.x, 2500, "Unit should continue moving towards Nucleus")
 
 	var nucleus := sim.structure(sim.nucleus_id)
 	while nucleus.hp == nucleus.max_hp and not sim.finished and sim.tick < 200:
@@ -118,8 +118,8 @@ func test_damage_multiplier() -> void:
 	assert_eq(b_cell.max_hp - b_cell.hp, 60, "Bacteriophage vs B-Cell should deal 60 damage")
 
 	var sim_nuc := SimFixtures.make_sim(
-		[{"type": "nucleus", "origin": Vector2i(9, 9)}],
-		[{"type": "bacteriophage", "cell": Vector2i(8, 9)}]
+		[{"type": "nucleus", "origin": Vector2i(18, 18)}],
+		[{"type": "bacteriophage", "cell": Vector2i(17, 18)}]
 	)
 	sim_nuc.step()
 	var nucleus := sim_nuc.structure(sim_nuc.nucleus_id)
@@ -127,7 +127,7 @@ func test_damage_multiplier() -> void:
 
 
 func test_end_attacker() -> void:
-	var sim := SimFixtures.make_sim([], [{"type": "rhinovirus", "cell": Vector2i(8, 9)}])
+	var sim := SimFixtures.make_sim([], [{"type": "rhinovirus", "cell": Vector2i(17, 18)}])
 	var nuc := sim.structure(sim.nucleus_id)
 	nuc.hp = 6
 	sim.run_to_end()
@@ -189,7 +189,7 @@ func test_budget() -> void:
 
 
 func test_status_hooks() -> void:
-	var sim_root := SimFixtures.make_sim([], [{"type": "rhinovirus", "cell": Vector2i(0, 10)}])
+	var sim_root := SimFixtures.make_sim([], [{"type": "rhinovirus", "cell": Vector2i(0, 20)}])
 	var key := StatusEffects.key_pathogen(1)
 	sim_root.status.add(key, StatusEffects.Kind.ROOTED, 1, 100, "root_effect")
 	var initial_pos := sim_root.pathogen(1).pos
@@ -197,11 +197,11 @@ func test_status_hooks() -> void:
 		sim_root.step()
 	assert_eq(sim_root.pathogen(1).pos, initial_pos, "ROOTED unit pos must not change over 5 steps")
 
-	var sim_speed := SimFixtures.make_sim([], [{"type": "rhinovirus", "cell": Vector2i(0, 10)}])
+	var sim_speed := SimFixtures.make_sim([], [{"type": "rhinovirus", "cell": Vector2i(0, 20)}])
 	sim_speed.status.add(key, StatusEffects.Kind.SPEED_PCT, 50, 100, "slow_effect")
 	var speed_start_pos := sim_speed.pathogen(1).pos
 	sim_speed.step()
-	assert_eq(sim_speed.pathogen(1).pos, speed_start_pos + Vector2i(62, 0), "SPEED_PCT 50 unit should move 62 mt in one step")
+	assert_eq(sim_speed.pathogen(1).pos, speed_start_pos + Vector2i(125, 0), "SPEED_PCT 50 unit should move 125 mt in one step")
 
 
 func test_determinism() -> void:
@@ -236,7 +236,7 @@ func test_determinism() -> void:
 
 
 func test_drain_events() -> void:
-	var sim := SimFixtures.make_sim([], [{"type": "rhinovirus", "cell": Vector2i(0, 10)}])
+	var sim := SimFixtures.make_sim([], [{"type": "rhinovirus", "cell": Vector2i(0, 20)}])
 	var events1 := sim.drain_events()
 	assert_gt(events1.size(), 0, "First drain_events call should return events")
 	var events2 := sim.drain_events()

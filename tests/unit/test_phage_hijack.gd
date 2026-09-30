@@ -169,9 +169,10 @@ func test_already_disabled_attacks_normally() -> void:
 func test_walls_are_not_hijacked() -> void:
 	var cfg: GameConfig = _cfg()
 	var structs: Array = [{"type": "macrophage", "origin": MAC_ORIGIN}]
-	for dx: int in range(-1, 2):
-		for dy: int in range(-1, 2):
-			if dx != 0 or dy != 0:
+	for dx: int in range(-1, 4):
+		for dy: int in range(-1, 4):
+			var inside_tower: bool = dx >= 0 and dx < 3 and dy >= 0 and dy < 3
+			if not inside_tower:
 				structs.append({"type": "mucous_wall", "origin": MAC_ORIGIN + Vector2i(dx, dy)})
 	var sim: BattleSim = SimFixtures.make_sim(structs, _phages(), 1, cfg)
 	sim.status.add(StatusEffects.key_structure(1), StatusEffects.Kind.DISABLED, 1, 10000, "off")

@@ -11,7 +11,7 @@ func _cfg(analysis: bool = true) -> GameConfig:
 
 func _structs() -> Array:
 	return [
-		{"type": "nucleus", "origin": Vector2i(9, 9)},
+		{"type": "nucleus", "origin": Vector2i(18, 18)},
 		{"type": "b_cell", "origin": BCELL_ORIGIN},
 		{"type": "b_cell", "origin": Vector2i(14, 3)},
 		{"type": "macrophage", "origin": Vector2i(5, 3)},
@@ -20,7 +20,7 @@ func _structs() -> Array:
 
 func _units() -> Array:
 	return [
-		{"type": "staphylococcus", "cell": Vector2i(0, 10)},
+		{"type": "staphylococcus", "cell": Vector2i(0, 20)},
 		{"type": "rhinovirus", "cell": Vector2i(0, 11)},
 		{"type": "rhinovirus", "cell": Vector2i(0, 12)},
 	]

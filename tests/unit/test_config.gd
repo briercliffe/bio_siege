@@ -36,11 +36,11 @@ func test_rules_values() -> void:
 	var result: ConfigLoadResult = GameConfig.load_from_dir("res://data")
 	var cfg: GameConfig = result.config
 	assert_not_null(cfg)
-	assert_eq(cfg.grid_width, 20)
-	assert_eq(cfg.grid_height, 20)
-	assert_eq(cfg.deploy_ring, 1)
-	assert_eq(cfg.tile_px, 32)
-	assert_eq(cfg.grid_scale, 1)
+	assert_eq(cfg.grid_width, 40)
+	assert_eq(cfg.grid_height, 40)
+	assert_eq(cfg.deploy_ring, 2)
+	assert_eq(cfg.tile_px, 14)
+	assert_eq(cfg.grid_scale, 2)
 	assert_eq(cfg.tick_rate, 20)
 	assert_eq(cfg.battle_timeout_ticks, 3600) # 180s * 20 ticks
 	assert_eq(cfg.max_path_recalcs_per_tick, 20)
@@ -82,7 +82,7 @@ func test_structure_stats() -> void:
 	assert_eq(n.role, "HQ: destroy it to win")
 	assert_eq(n.cost.get("atp", 0), 0)
 	assert_eq(n.hp, 2000)
-	assert_eq(n.footprint, Vector2i(2, 2))
+	assert_eq(n.footprint, Vector2i(4, 4))
 	assert_eq(n.buildable, false)
 	assert_eq(n.is_targetable, true)
 	assert_eq(n.visible_to_attacker, true)
@@ -94,7 +94,7 @@ func test_structure_stats() -> void:
 	var w: StructureDef = cfg.structures.get("mucous_wall")
 	assert_not_null(w)
 	assert_eq(w.hp, 300)
-	assert_eq(w.cost.get("atp", 0), 10)
+	assert_eq(w.cost.get("atp", 0), 5)
 	assert_eq(w.footprint, Vector2i(1, 1))
 	assert_eq(w.buildable, true)
 	assert_eq(w.is_targetable, false)
@@ -107,31 +107,31 @@ func test_structure_stats() -> void:
 	assert_not_null(m)
 	assert_eq(m.hp, 500)
 	assert_eq(m.cost.get("atp", 0), 100)
-	assert_eq(m.footprint, Vector2i(1, 1))
+	assert_eq(m.footprint, Vector2i(3, 3))
 	assert_eq(m.buildable, true)
 	assert_eq(m.is_targetable, true)
 	assert_true(m.has_tag("defense"))
 	assert_true(m.has_attack)
 	assert_eq(m.attack_damage, 40)
 	assert_eq(m.attack_interval_ticks, 20) # 1.0s * 20
-	assert_eq(m.attack_range_mt, 2000) # 2.0 * 1000
-	assert_eq(m.splash_radius_mt, 1000) # 1.0 * 1000
+	assert_eq(m.attack_range_mt, 4000) # 2.0 * 2 (grid_scale) * 1000
+	assert_eq(m.splash_radius_mt, 2000) # 1.0 * 2 * 1000
 	assert_eq(m.projectile_speed_mt_per_tick, 0)
 
 	var b: StructureDef = cfg.structures.get("b_cell")
 	assert_not_null(b)
 	assert_eq(b.hp, 250)
 	assert_eq(b.cost.get("atp", 0), 150)
-	assert_eq(b.footprint, Vector2i(1, 1))
+	assert_eq(b.footprint, Vector2i(3, 3))
 	assert_eq(b.buildable, true)
 	assert_eq(b.is_targetable, true)
 	assert_true(b.has_tag("defense"))
 	assert_true(b.has_attack)
 	assert_eq(b.attack_damage, 75)
 	assert_eq(b.attack_interval_ticks, 24) # 1.2s * 20
-	assert_eq(b.attack_range_mt, 6000) # 6.0 * 1000
+	assert_eq(b.attack_range_mt, 12000) # 6.0 * 2 * 1000
 	assert_eq(b.splash_radius_mt, 0)
-	assert_eq(b.projectile_speed_mt_per_tick, 500) # 10.0 * 1000 / 20
+	assert_eq(b.projectile_speed_mt_per_tick, 1000) # 10.0 * 2 * 1000 / 20
 
 func test_pathogen_stats() -> void:
 	var result: ConfigLoadResult = GameConfig.load_from_dir("res://data")
@@ -144,10 +144,10 @@ func test_pathogen_stats() -> void:
 	assert_eq(r.role, "Fast swarm")
 	assert_eq(r.cost.get("atp", 0), 10)
 	assert_eq(r.hp, 30)
-	assert_eq(r.speed_mt_per_tick, 125) # 2.5 * 1000 / 20
+	assert_eq(r.speed_mt_per_tick, 250) # 2.5 * 2 * 1000 / 20
 	assert_eq(r.attack_damage, 6)
 	assert_eq(r.attack_interval_ticks, 10) # 0.5s * 20
-	assert_eq(r.attack_range_mt, 1000)
+	assert_eq(r.attack_range_mt, 2000)
 	assert_true(r.has_tag("virus"))
 	assert_true(r.has_tag("small"))
 
@@ -155,10 +155,10 @@ func test_pathogen_stats() -> void:
 	assert_not_null(p)
 	assert_eq(p.hp, 80)
 	assert_eq(p.cost.get("atp", 0), 40)
-	assert_eq(p.speed_mt_per_tick, 75) # 1.5 * 1000 / 20
+	assert_eq(p.speed_mt_per_tick, 150) # 1.5 * 2 * 1000 / 20
 	assert_eq(p.attack_damage, 20)
 	assert_eq(p.attack_interval_ticks, 20) # 1.0s * 20
-	assert_eq(p.attack_range_mt, 1000)
+	assert_eq(p.attack_range_mt, 2000)
 	assert_eq(p.damage_multipliers_pct.get("defense", 0), 300) # 3.0 * 100
 	assert_eq(p.priority_tags, PackedStringArray(["defense"]))
 
@@ -166,10 +166,10 @@ func test_pathogen_stats() -> void:
 	assert_not_null(s)
 	assert_eq(s.hp, 600)
 	assert_eq(s.cost.get("atp", 0), 100)
-	assert_eq(s.speed_mt_per_tick, 38) # 0.75 * 1000 / 20 = 37.5 -> roundi = 38
+	assert_eq(s.speed_mt_per_tick, 75) # 0.75 * 2 * 1000 / 20
 	assert_eq(s.attack_damage, 25)
 	assert_eq(s.attack_interval_ticks, 30) # 1.5s * 20
-	assert_eq(s.attack_range_mt, 1000)
+	assert_eq(s.attack_range_mt, 2000)
 	assert_true(s.has_tag("bacteria"))
 
 # -----------------------------------------------------------------------------
@@ -198,7 +198,7 @@ func test_fixed_point_scaling() -> void:
 	# b_cell projectile speed: 10.0 * 2 * 1000 / 10 = 2000 mt/tick
 	assert_eq(b.projectile_speed_mt_per_tick, 2000)
 	# footprint should NOT be scaled
-	assert_eq(b.footprint, Vector2i(1, 1))
+	assert_eq(b.footprint, Vector2i(3, 3))
 
 	# rhinovirus speed: 2.5 * 2 * 1000 / 10 = 500 mt/tick
 	var r: PathogenDef = cfg.pathogens.get("rhinovirus")
@@ -441,12 +441,12 @@ func test_load_from_dir_missing_dir() -> void:
 func test_rules_validation_edge_cases() -> void:
 	# deploy ring too large
 	var r1: Dictionary = JSON.parse_string(default_rules_str)
-	r1["grid"]["deploy_ring"] = 10
+	r1["grid"]["deploy_ring"] = 25
 	var res1: ConfigLoadResult = GameConfig.load_from_strings(
 		JSON.stringify(r1), default_structures_str, default_pathogens_str
 	)
 	assert_true(res1.is_err())
-	assert_true(_contains_error(res1.errors, "grid.deploy_ring: deploy ring too large for grid (got 10)"))
+	assert_true(_contains_error(res1.errors, "grid.deploy_ring: deploy ring too large for grid (got 25)"))
 
 	# grid_scale <= 0
 	var r2: Dictionary = JSON.parse_string(default_rules_str)

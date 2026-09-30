@@ -1,6 +1,6 @@
 extends GutTest
 
-const NUCLEUS_ORIGIN: Vector2i = Vector2i(9, 9)
+const NUCLEUS_ORIGIN: Vector2i = Vector2i(18, 18)
 
 var _signal_log: Array[String] = []
 
@@ -37,8 +37,8 @@ func _make_hud(session: Session) -> Dictionary:
 	return ctx
 
 func _assert_nucleus_cells(grid: GridModel, origin: Vector2i, expected: GridModel.TileState) -> void:
-	for y in range(origin.y, origin.y + 2):
-		for x in range(origin.x, origin.x + 2):
+	for y in range(origin.y, origin.y + 4):
+		for x in range(origin.x, origin.x + 4):
 			assert_eq(grid.tile_state(Vector2i(x, y)), expected, "cell (%d,%d)" % [x, y])
 
 # ---------------------------------------------------------------------------
@@ -62,48 +62,48 @@ func test_move_nucleus_to_new_spot() -> void:
 	var err: GridModel.PlaceError = grid.move_structure(1, Vector2i(3, 3))
 	assert_eq(err, GridModel.PlaceError.OK)
 	assert_eq(grid.get_structure(1).origin, Vector2i(3, 3))
-	assert_eq(grid.tile_state(Vector2i(9, 9)), GridModel.TileState.EMPTY)
-	assert_eq(grid.tile_state(Vector2i(10, 10)), GridModel.TileState.EMPTY)
+	assert_eq(grid.tile_state(NUCLEUS_ORIGIN), GridModel.TileState.EMPTY)
+	assert_eq(grid.tile_state(Vector2i(21, 21)), GridModel.TileState.EMPTY)
 	_assert_nucleus_cells(grid, Vector2i(3, 3), GridModel.TileState.NUCLEUS)
 	assert_eq(grid.structure_id_at(Vector2i(4, 4)), 1)
-	assert_eq(grid.structure_id_at(Vector2i(9, 9)), 0)
+	assert_eq(grid.structure_id_at(NUCLEUS_ORIGIN), 0)
 	assert_eq(wallet.get_amount("atp"), atp_before, "Wallet is never touched by a move")
 
 func test_move_one_cell_right_overlapping_own_cells() -> void:
 	var grid: GridModel = _make_grid(_load_config())
-	var err: GridModel.PlaceError = grid.move_structure(1, Vector2i(10, 9))
+	var err: GridModel.PlaceError = grid.move_structure(1, Vector2i(19, 18))
 	assert_eq(err, GridModel.PlaceError.OK)
-	assert_eq(grid.get_structure(1).origin, Vector2i(10, 9))
-	assert_eq(grid.tile_state(Vector2i(9, 9)), GridModel.TileState.EMPTY)
-	assert_eq(grid.tile_state(Vector2i(9, 10)), GridModel.TileState.EMPTY)
-	_assert_nucleus_cells(grid, Vector2i(10, 9), GridModel.TileState.NUCLEUS)
+	assert_eq(grid.get_structure(1).origin, Vector2i(19, 18))
+	assert_eq(grid.tile_state(Vector2i(18, 18)), GridModel.TileState.EMPTY)
+	assert_eq(grid.tile_state(Vector2i(18, 19)), GridModel.TileState.EMPTY)
+	_assert_nucleus_cells(grid, Vector2i(19, 18), GridModel.TileState.NUCLEUS)
 
 func test_move_onto_deploy_ring_rejected() -> void:
 	var cfg: GameConfig = _load_config()
 	var grid: GridModel = _make_grid(cfg)
 	var wallet: Wallet = Wallet.new(cfg.start_wallet)
-	var err: GridModel.PlaceError = grid.move_structure(1, Vector2i(0, 5))
+	var err: GridModel.PlaceError = grid.move_structure(1, Vector2i(1, 5))
 	assert_eq(err, GridModel.PlaceError.DEPLOY_ZONE)
 	assert_eq(grid.get_structure(1).origin, NUCLEUS_ORIGIN)
 	_assert_nucleus_cells(grid, NUCLEUS_ORIGIN, GridModel.TileState.NUCLEUS)
-	assert_eq(grid.tile_state(Vector2i(0, 5)), GridModel.TileState.EMPTY)
+	assert_eq(grid.tile_state(Vector2i(1, 5)), GridModel.TileState.EMPTY)
 	assert_eq(wallet.get_amount("atp"), cfg.start_wallet["atp"])
 
 func test_move_partially_onto_deploy_ring_rejected() -> void:
 	var grid: GridModel = _make_grid(_load_config())
-	# Footprint (0,3)-(1,4) touches the ring column x = 0.
-	assert_eq(grid.move_structure(1, Vector2i(0, 3)), GridModel.PlaceError.DEPLOY_ZONE)
-	# Footprint (18,3)-(19,4) touches the ring column x = 19.
-	assert_eq(grid.move_structure(1, Vector2i(18, 3)), GridModel.PlaceError.DEPLOY_ZONE)
-	# Footprint (3,18)-(4,19) touches the ring row y = 19.
-	assert_eq(grid.move_structure(1, Vector2i(3, 18)), GridModel.PlaceError.DEPLOY_ZONE)
+	# Footprint (1,3)-(4,6) touches the band column x = 1.
+	assert_eq(grid.move_structure(1, Vector2i(1, 3)), GridModel.PlaceError.DEPLOY_ZONE)
+	# Footprint (35,3)-(38,6) touches the band column x = 38.
+	assert_eq(grid.move_structure(1, Vector2i(35, 3)), GridModel.PlaceError.DEPLOY_ZONE)
+	# Footprint (3,35)-(6,38) touches the band row y = 38.
+	assert_eq(grid.move_structure(1, Vector2i(3, 35)), GridModel.PlaceError.DEPLOY_ZONE)
 	assert_eq(grid.get_structure(1).origin, NUCLEUS_ORIGIN)
 
 func test_move_next_to_ring_is_allowed() -> void:
 	var grid: GridModel = _make_grid(_load_config())
-	assert_eq(grid.move_structure(1, Vector2i(1, 1)), GridModel.PlaceError.OK)
-	assert_eq(grid.move_structure(1, Vector2i(17, 17)), GridModel.PlaceError.OK)
-	assert_eq(grid.get_structure(1).origin, Vector2i(17, 17))
+	assert_eq(grid.move_structure(1, Vector2i(2, 2)), GridModel.PlaceError.OK)
+	assert_eq(grid.move_structure(1, Vector2i(34, 34)), GridModel.PlaceError.OK)
+	assert_eq(grid.get_structure(1).origin, Vector2i(34, 34))
 
 func test_move_onto_wall_rejected() -> void:
 	var cfg: GameConfig = _load_config()
@@ -126,8 +126,8 @@ func test_move_out_of_bounds_rejected() -> void:
 	var grid: GridModel = _make_grid(_load_config())
 	assert_eq(grid.move_structure(1, Vector2i(-1, 5)), GridModel.PlaceError.OUT_OF_BOUNDS)
 	assert_eq(grid.move_structure(1, Vector2i(5, -3)), GridModel.PlaceError.OUT_OF_BOUNDS)
-	assert_eq(grid.move_structure(1, Vector2i(19, 5)), GridModel.PlaceError.OUT_OF_BOUNDS)
-	assert_eq(grid.move_structure(1, Vector2i(5, 19)), GridModel.PlaceError.OUT_OF_BOUNDS)
+	assert_eq(grid.move_structure(1, Vector2i(39, 5)), GridModel.PlaceError.OUT_OF_BOUNDS)
+	assert_eq(grid.move_structure(1, Vector2i(5, 39)), GridModel.PlaceError.OUT_OF_BOUNDS)
 	assert_eq(grid.move_structure(1, Vector2i(99, 99)), GridModel.PlaceError.OUT_OF_BOUNDS)
 	assert_eq(grid.get_structure(1).origin, NUCLEUS_ORIGIN)
 
@@ -148,7 +148,7 @@ func test_move_keeps_id_and_type() -> void:
 	var moved: GridModel.PlacedStructure = grid.get_structure(1)
 	assert_eq(moved.id, 1)
 	assert_eq(moved.type_id, "nucleus")
-	assert_eq(moved.footprint, Vector2i(2, 2))
+	assert_eq(moved.footprint, Vector2i(4, 4))
 	assert_eq(grid.count_by_type(), {"nucleus": 1, "mucous_wall": 1})
 	assert_eq(grid.structures().size(), 2)
 
@@ -167,7 +167,7 @@ func test_move_works_for_any_structure() -> void:
 	assert_eq(grid.get_structure(tower_id).origin, Vector2i(4, 4))
 	assert_eq(grid.tile_state(Vector2i(3, 3)), GridModel.TileState.EMPTY)
 	assert_eq(grid.tile_state(Vector2i(4, 4)), GridModel.TileState.TOWER)
-	assert_eq(grid.move_structure(tower_id, Vector2i(9, 9)), GridModel.PlaceError.OCCUPIED)
+	assert_eq(grid.move_structure(tower_id, Vector2i(18, 18)), GridModel.PlaceError.OCCUPIED)
 	assert_eq(wallet.get_amount("atp"), atp)
 
 func test_move_has_no_cost_check() -> void:
@@ -179,7 +179,7 @@ func test_move_has_no_cost_check() -> void:
 	assert_eq(wallet.get_amount("atp"), 0)
 
 	assert_eq(grid.move_structure(tower_id, Vector2i(4, 4)), GridModel.PlaceError.OK)
-	assert_eq(grid.move_structure(1, Vector2i(6, 6)), GridModel.PlaceError.OK)
+	assert_eq(grid.move_structure(1, Vector2i(10, 10)), GridModel.PlaceError.OK)
 	assert_eq(wallet.get_amount("atp"), 0)
 
 func test_move_to_current_origin_is_silent_noop() -> void:
@@ -223,7 +223,7 @@ func test_check_move_matches_move_structure() -> void:
 	var grid: GridModel = _make_grid(cfg)
 	var wallet: Wallet = Wallet.new(cfg.start_wallet)
 	grid.place("mucous_wall", Vector2i(3, 3), wallet)
-	for origin: Vector2i in [Vector2i(3, 3), Vector2i(0, 0), Vector2i(-1, 4), Vector2i(10, 9), Vector2i(6, 6)]:
+	for origin: Vector2i in [Vector2i(3, 3), Vector2i(0, 0), Vector2i(-1, 4), Vector2i(19, 18), Vector2i(6, 6)]:
 		assert_eq(grid.check_move(1, origin), grid.move_structure(1, origin), str(origin))
 
 func test_find_core() -> void:
@@ -242,7 +242,7 @@ func test_load_layout_honors_nucleus_origin() -> void:
 	var layout: Array = [{"type": "nucleus", "origin": Vector2i(3, 3)}]
 	assert_eq(grid.load_layout(layout), GridModel.PlaceError.OK)
 	assert_eq(grid.get_structure(1).origin, Vector2i(3, 3))
-	assert_eq(grid.tile_state(Vector2i(9, 9)), GridModel.TileState.EMPTY)
+	assert_eq(grid.tile_state(Vector2i(18, 18)), GridModel.TileState.EMPTY)
 	_assert_nucleus_cells(grid, Vector2i(3, 3), GridModel.TileState.NUCLEUS)
 	assert_eq(grid.count_by_type(), {"nucleus": 1})
 
@@ -259,11 +259,11 @@ func test_load_layout_places_structures_on_old_nucleus_cells() -> void:
 	var grid: GridModel = _make_grid(cfg)
 	var wallet: Wallet = Wallet.new(cfg.start_wallet)
 	var layout: Array = [
-		{"type": "mucous_wall", "origin": Vector2i(9, 9)},
+		{"type": "mucous_wall", "origin": Vector2i(18, 18)},
 		{"type": "nucleus", "origin": Vector2i(3, 3)},
 	]
 	assert_eq(grid.load_layout(layout, wallet), GridModel.PlaceError.OK)
-	assert_eq(grid.tile_state(Vector2i(9, 9)), GridModel.TileState.WALL)
+	assert_eq(grid.tile_state(Vector2i(18, 18)), GridModel.TileState.WALL)
 	assert_eq(grid.get_structure(1).origin, Vector2i(3, 3))
 
 func test_load_layout_rejects_invalid_nucleus_origin() -> void:
@@ -271,15 +271,15 @@ func test_load_layout_rejects_invalid_nucleus_origin() -> void:
 	var grid: GridModel = _make_grid(cfg)
 	assert_eq(grid.load_layout([{"type": "nucleus", "origin": Vector2i(0, 0)}]), GridModel.PlaceError.DEPLOY_ZONE)
 	assert_eq(grid.get_structure(1).origin, NUCLEUS_ORIGIN)
-	assert_eq(grid.load_layout([{"type": "nucleus", "origin": Vector2i(30, 3)}]), GridModel.PlaceError.OUT_OF_BOUNDS)
+	assert_eq(grid.load_layout([{"type": "nucleus", "origin": Vector2i(37, 3)}]), GridModel.PlaceError.OUT_OF_BOUNDS)
 
 func test_layout_round_trip_with_moved_nucleus() -> void:
 	var cfg: GameConfig = _load_config()
 	var grid: GridModel = _make_grid(cfg)
 	var wallet: Wallet = Wallet.new(cfg.start_wallet)
-	grid.place("mucous_wall", Vector2i(9, 9), wallet)
+	grid.place("mucous_wall", Vector2i(18, 18), wallet)
 	grid.move_structure(1, Vector2i(3, 3))
-	grid.place("macrophage", Vector2i(6, 6), wallet)
+	grid.place("macrophage", Vector2i(10, 10), wallet)
 	var layout: Array[Dictionary] = grid.to_layout()
 
 	var other: GridModel = GridModel.new(cfg)
@@ -297,7 +297,7 @@ func test_snapshot_round_trip_with_moved_nucleus() -> void:
 	var grid: GridModel = _make_grid(cfg)
 	var wallet: Wallet = Wallet.new(cfg.start_wallet)
 	grid.move_structure(1, Vector2i(3, 3))
-	grid.place("macrophage", Vector2i(9, 9), wallet)
+	grid.place("macrophage", Vector2i(18, 18), wallet)
 
 	var json_str: String = SnapshotIO.to_json(SnapshotIO.base_to_dict(grid))
 	var parsed: Dictionary = SnapshotIO.parse_base(json_str, cfg)
@@ -308,7 +308,7 @@ func test_snapshot_round_trip_with_moved_nucleus() -> void:
 	restored.reset_with_nucleus()
 	assert_eq(restored.load_layout(parsed["layout"], Wallet.new(cfg.start_wallet)), GridModel.PlaceError.OK)
 	assert_eq(restored.get_structure(1).origin, Vector2i(3, 3))
-	assert_eq(restored.tile_state(Vector2i(9, 9)), GridModel.TileState.TOWER)
+	assert_eq(restored.tile_state(Vector2i(18, 18)), GridModel.TileState.TOWER)
 	assert_eq(SnapshotIO.to_json(SnapshotIO.base_to_dict(restored)), json_str)
 
 func _moved_nucleus_setup(grid: GridModel) -> BattleSetup:
@@ -454,23 +454,23 @@ func test_controller_move_drag_and_release_moves_nucleus() -> void:
 	bc.select_tool("move_nucleus")
 	assert_eq(bc.tool, "move_nucleus")
 
-	# Grab the bottom-right nucleus cell; the ghost keeps that grab offset.
-	grid_view.cell_pressed.emit(Vector2i(10, 10))
+	# Grab the bottom-right nucleus cell (21,21); the ghost keeps that grab offset.
+	grid_view.cell_pressed.emit(Vector2i(21, 21))
 	assert_true(grid_view._has_ghost)
 	assert_eq(grid_view._ghost_type_id, "nucleus")
 	assert_eq(grid_view._ghost_origin, NUCLEUS_ORIGIN)
 	assert_true(grid_view._ghost_valid)
 
-	grid_view.cell_dragged.emit(Vector2i(5, 6))
-	assert_eq(grid_view._ghost_origin, Vector2i(4, 5))
+	grid_view.cell_dragged.emit(Vector2i(6, 7))
+	assert_eq(grid_view._ghost_origin, Vector2i(3, 4))
 	assert_true(grid_view._ghost_valid)
 	assert_eq(session.grid.get_structure(1).origin, NUCLEUS_ORIGIN, "Nothing moves until release")
 
-	grid_view.cell_released.emit(Vector2i(5, 6))
-	assert_eq(session.grid.get_structure(1).origin, Vector2i(4, 5))
-	assert_eq(session.grid.tile_state(Vector2i(9, 9)), GridModel.TileState.EMPTY)
+	grid_view.cell_released.emit(Vector2i(6, 7))
+	assert_eq(session.grid.get_structure(1).origin, Vector2i(3, 4))
+	assert_eq(session.grid.tile_state(Vector2i(18, 18)), GridModel.TileState.EMPTY)
 	assert_false(grid_view._has_ghost)
-	assert_eq(events, [[NUCLEUS_ORIGIN, Vector2i(4, 5)]])
+	assert_eq(events, [[NUCLEUS_ORIGIN, Vector2i(3, 4)]])
 	assert_eq(session.wallet.get_amount("atp"), atp_before)
 	assert_eq(bc.tool, "", "Tool deselects after a successful move")
 	assert_eq(tool_events, ["move_nucleus", ""])
@@ -480,16 +480,16 @@ func test_controller_ghost_red_when_invalid() -> void:
 	var ctx: Dictionary = _make_controller(session)
 	var bc: BuildController = ctx["controller"]
 	var grid_view: GridView = ctx["grid_view"]
-	session.grid.place("mucous_wall", Vector2i(5, 5), session.wallet)
+	session.grid.place("mucous_wall", Vector2i(10, 10), session.wallet)
 
 	bc.select_tool("move_nucleus")
-	grid_view.cell_pressed.emit(Vector2i(9, 9))
+	grid_view.cell_pressed.emit(NUCLEUS_ORIGIN)
 	grid_view.cell_dragged.emit(Vector2i(0, 5))
 	assert_eq(grid_view._ghost_origin, Vector2i(0, 5))
 	assert_false(grid_view._ghost_valid, "Ring is red")
-	grid_view.cell_dragged.emit(Vector2i(5, 5))
+	grid_view.cell_dragged.emit(Vector2i(10, 10))
 	assert_false(grid_view._ghost_valid, "Wall overlap is red")
-	grid_view.cell_dragged.emit(Vector2i(10, 9))
+	grid_view.cell_dragged.emit(Vector2i(19, 18))
 	assert_true(grid_view._ghost_valid, "Overlapping its own cells is green")
 	grid_view.cell_dragged.emit(Vector2i(3, 3))
 	assert_true(grid_view._ghost_valid)
@@ -499,7 +499,7 @@ func test_controller_invalid_release_toasts_and_keeps_nucleus() -> void:
 	var ctx: Dictionary = _make_controller(session)
 	var bc: BuildController = ctx["controller"]
 	var grid_view: GridView = ctx["grid_view"]
-	session.grid.place("mucous_wall", Vector2i(5, 5), session.wallet)
+	session.grid.place("mucous_wall", Vector2i(10, 10), session.wallet)
 	var atp_before: int = session.wallet.get_amount("atp")
 
 	var toast: Toast = Toast.new()
@@ -514,7 +514,7 @@ func test_controller_invalid_release_toasts_and_keeps_nucleus() -> void:
 
 	bc.select_tool("move_nucleus")
 
-	grid_view.cell_pressed.emit(Vector2i(9, 9))
+	grid_view.cell_pressed.emit(NUCLEUS_ORIGIN)
 	grid_view.cell_dragged.emit(Vector2i(0, 5))
 	grid_view.cell_released.emit(Vector2i(0, 5))
 	assert_eq(reasons, [int(GridModel.PlaceError.DEPLOY_ZONE)])
@@ -523,8 +523,8 @@ func test_controller_invalid_release_toasts_and_keeps_nucleus() -> void:
 	assert_false(grid_view._has_ghost)
 	assert_eq(bc.tool, "move_nucleus", "Tool stays selected after a failed drop")
 
-	grid_view.cell_pressed.emit(Vector2i(10, 10))
-	grid_view.cell_released.emit(Vector2i(5, 5))
+	grid_view.cell_pressed.emit(Vector2i(21, 21))
+	grid_view.cell_released.emit(Vector2i(12, 12))
 	assert_eq(reasons.back(), int(GridModel.PlaceError.OCCUPIED))
 	assert_eq(toast.last_message, "That tile is taken")
 	assert_eq(session.grid.get_structure(1).origin, NUCLEUS_ORIGIN)
@@ -559,8 +559,8 @@ func test_controller_release_to_same_spot_deselects_without_event() -> void:
 	bc.nucleus_moved.connect(func(from: Vector2i, to: Vector2i) -> void: moved_events.append([from, to]))
 
 	bc.select_tool("move_nucleus")
-	grid_view.cell_pressed.emit(Vector2i(9, 9))
-	grid_view.cell_released.emit(Vector2i(9, 9))
+	grid_view.cell_pressed.emit(NUCLEUS_ORIGIN)
+	grid_view.cell_released.emit(NUCLEUS_ORIGIN)
 	assert_eq(moved_events.size(), 0)
 	assert_eq(session.grid.get_structure(1).origin, NUCLEUS_ORIGIN)
 	assert_eq(bc.tool, "")
@@ -572,7 +572,7 @@ func test_controller_switching_tool_cancels_pickup() -> void:
 	var grid_view: GridView = ctx["grid_view"]
 
 	bc.select_tool("move_nucleus")
-	grid_view.cell_pressed.emit(Vector2i(9, 9))
+	grid_view.cell_pressed.emit(NUCLEUS_ORIGIN)
 	assert_true(grid_view._has_ghost)
 	bc.select_tool("sell")
 	assert_false(grid_view._has_ghost)
@@ -591,7 +591,7 @@ func test_controller_flag_off_ignores_move_tool() -> void:
 	bc.select_tool("move_nucleus")
 	assert_eq(bc.tool, "")
 	assert_eq(tool_events.size(), 0)
-	grid_view.cell_pressed.emit(Vector2i(9, 9))
+	grid_view.cell_pressed.emit(NUCLEUS_ORIGIN)
 	grid_view.cell_released.emit(Vector2i(4, 4))
 	assert_eq(session.grid.get_structure(1).origin, NUCLEUS_ORIGIN)
 
@@ -603,7 +603,7 @@ func test_controller_move_logs_nucleus_moved_event() -> void:
 	var before: int = SessionLogger.all_sessions_text().count("\"event\":\"nucleus_moved\"")
 
 	bc.select_tool("move_nucleus")
-	grid_view.cell_pressed.emit(Vector2i(9, 9))
+	grid_view.cell_pressed.emit(NUCLEUS_ORIGIN)
 	grid_view.cell_released.emit(Vector2i(3, 4))
 	# A rejected drop must not log.
 	bc.select_tool("move_nucleus")
@@ -616,7 +616,7 @@ func test_controller_move_logs_nucleus_moved_event() -> void:
 	for line: String in text.split("\n"):
 		if line.contains("\"event\":\"nucleus_moved\""):
 			found = JSON.parse_string(line) as Dictionary
-	assert_eq(found.get("from"), [9.0, 9.0])
+	assert_eq(found.get("from"), [18.0, 18.0])
 	assert_eq(found.get("to"), [3.0, 4.0])
 
 func test_synthesis_phase_move_flow_and_toast() -> void:
@@ -631,11 +631,11 @@ func test_synthesis_phase_move_flow_and_toast() -> void:
 	phase.hud_build.get_card("move_nucleus").pressed.emit()
 	assert_eq(phase.build_controller.tool, "move_nucleus")
 
-	phase.grid_view.cell_pressed.emit(Vector2i(9, 9))
+	phase.grid_view.cell_pressed.emit(NUCLEUS_ORIGIN)
 	phase.grid_view.cell_released.emit(Vector2i(0, 0))
 	assert_eq(phase.toast.last_message, "The outer ring is reserved for pathogen deployment")
 
-	phase.grid_view.cell_pressed.emit(Vector2i(9, 9))
+	phase.grid_view.cell_pressed.emit(NUCLEUS_ORIGIN)
 	phase.grid_view.cell_released.emit(Vector2i(6, 6))
 	assert_eq(session.grid.get_structure(1).origin, Vector2i(6, 6))
 	assert_eq(phase.build_controller.tool, "")

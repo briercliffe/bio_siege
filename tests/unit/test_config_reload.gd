@@ -154,18 +154,18 @@ func test_grid_set_config_updates_dimensions() -> void:
 	var bigger: GameConfig = _variant(func(r: Dictionary, _s: Dictionary, _p: Dictionary) -> void:
 		r["grid"]["width"] = 16
 		r["grid"]["height"] = 18
-		r["grid"]["deploy_ring"] = 2
+		r["grid"]["deploy_ring"] = 3
 	)
 	grid.set_config(bigger)
 	assert_eq(grid.width, 16)
 	assert_eq(grid.height, 18)
-	assert_eq(grid.deploy_ring, 2)
+	assert_eq(grid.deploy_ring, 3)
 
 
 func test_grid_remove_unknown_structures() -> void:
 	var session := Session.new(_base)
 	session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
-	session.grid.place("mucous_wall", Vector2i(5, 3), session.wallet)
+	session.grid.place("mucous_wall", Vector2i(7, 3), session.wallet)
 	var no_macrophage: GameConfig = _variant(func(_r: Dictionary, s: Dictionary, _p: Dictionary) -> void:
 		s.erase("macrophage")
 	)
@@ -174,7 +174,7 @@ func test_grid_remove_unknown_structures() -> void:
 	assert_eq(session.grid.remove_unknown_structures(), 1)
 	assert_signal_emit_count(session.grid, "structure_removed", 1)
 	assert_eq(session.grid.structure_id_at(Vector2i(3, 3)), 0)
-	assert_gt(session.grid.structure_id_at(Vector2i(5, 3)), 0)
+	assert_gt(session.grid.structure_id_at(Vector2i(7, 3)), 0)
 	assert_eq(session.grid.remove_unknown_structures(), 0)
 
 
@@ -203,7 +203,7 @@ func test_army_remove_unknown_types() -> void:
 func test_cost_decrease_recomputes_atp_at_new_prices() -> void:
 	var session := Session.new(_base)
 	session.grid.place("b_cell", Vector2i(3, 3), session.wallet)
-	session.grid.place("b_cell", Vector2i(5, 3), session.wallet)
+	session.grid.place("b_cell", Vector2i(7, 3), session.wallet)
 	for i in range(5):
 		session.army.buy("rhinovirus", session.wallet)
 	assert_eq(session.wallet.get_amount("atp"), 1000 - 300 - 50)
@@ -233,7 +233,7 @@ func test_new_prices_apply_to_later_purchases_and_refunds() -> void:
 
 func test_cost_increase_can_push_atp_negative_without_selling() -> void:
 	var session := Session.new(_base)
-	for x in [3, 5, 7]:
+	for x in [3, 7, 11]:
 		session.grid.place("macrophage", Vector2i(x, 3), session.wallet)
 	for i in range(10):
 		session.army.buy("rhinovirus", session.wallet)
@@ -315,11 +315,11 @@ func test_deploy_ring_change_resets_base() -> void:
 	var session := Session.new(_base)
 	session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
 	var ring: GameConfig = _variant(func(r: Dictionary, _s: Dictionary, _p: Dictionary) -> void:
-		r["grid"]["deploy_ring"] = 2
+		r["grid"]["deploy_ring"] = 3
 	)
 	var summary: Dictionary = session.apply_new_config(ring)
 	assert_true(summary["base_reset"])
-	assert_eq(session.grid.deploy_ring, 2)
+	assert_eq(session.grid.deploy_ring, 3)
 	assert_eq(session.wallet.get_amount("atp"), 1000)
 	assert_eq(session.grid.structures().size(), 1)
 
@@ -345,8 +345,8 @@ func test_start_wallet_change_recomputes_atp() -> void:
 func test_unknown_structure_type_is_removed_and_reported() -> void:
 	var session := Session.new(_base)
 	session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
-	session.grid.place("macrophage", Vector2i(5, 3), session.wallet)
-	session.grid.place("mucous_wall", Vector2i(7, 3), session.wallet)
+	session.grid.place("macrophage", Vector2i(7, 3), session.wallet)
+	session.grid.place("mucous_wall", Vector2i(11, 3), session.wallet)
 	var no_macrophage: GameConfig = _variant(func(_r: Dictionary, s: Dictionary, _p: Dictionary) -> void:
 		s.erase("macrophage")
 	)
@@ -359,7 +359,7 @@ func test_unknown_structure_type_is_removed_and_reported() -> void:
 	assert_eq(session.grid.count_by_type().get("mucous_wall"), 1)
 	assert_eq(session.grid.structure_id_at(Vector2i(3, 3)), 0)
 	# removed structures are no longer paid for
-	assert_eq(session.wallet.get_amount("atp"), 1000 - 10)
+	assert_eq(session.wallet.get_amount("atp"), 1000 - 5)
 	assert_false(summary["base_reset"])
 
 
@@ -738,7 +738,7 @@ func test_error_banner_is_cleared_by_reload_queued_during_infection() -> void:
 func test_prediction_cleared_when_predicted_structure_is_removed() -> void:
 	var session := Session.new(_base)
 	var doomed: int = session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
-	var kept: int = session.grid.place("b_cell", Vector2i(5, 3), session.wallet)
+	var kept: int = session.grid.place("b_cell", Vector2i(7, 3), session.wallet)
 	var no_macrophage: GameConfig = _variant(func(_r: Dictionary, s: Dictionary, _p: Dictionary) -> void:
 		s.erase("macrophage")
 	)

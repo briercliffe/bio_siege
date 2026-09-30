@@ -146,6 +146,30 @@ func test_recall_on_cell_with_2_units_leaves_1() -> void:
 	assert_eq(remaining[0], "rhinovirus")
 	assert_eq(session.army.reserve_count("bacteriophage"), 1)
 
+# Auto-placement at launch draws from the whole 2-tile band (both rows), not just the outer edge.
+func test_launch_auto_placement_uses_both_band_rows() -> void:
+	var cfg: GameConfig = _load_config()
+	var session: Session = _create_session(cfg)
+	session.army.reserve["rhinovirus"] = 200
+
+	var comps: Dictionary = _setup_components(session)
+	var hud: HudSpawn = comps["hud"]
+	hud.launch_requested.emit()
+
+	var outer: int = 0
+	var inner: int = 0
+	for dep: Dictionary in session.army.deployments:
+		var cell: Vector2i = dep["cell"]
+		assert_true(session.grid.is_deploy_zone(cell), "Deployed unit must be in the band")
+		var depth: int = mini(mini(cell.x, cell.y), mini(cfg.grid_width - 1 - cell.x, cfg.grid_height - 1 - cell.y))
+		if depth == 0:
+			outer += 1
+		else:
+			inner += 1
+	assert_eq(outer + inner, 200)
+	assert_gt(outer, 0, "Some units land on the outer row")
+	assert_gt(inner, 0, "Some units land on the inner row of the band")
+
 # 6. Launch with 3 rhinoviruses and 1 bacteriophage in reserve with default_seed 12345 (battle_count 1)
 func test_launch_auto_placement_and_battle_setup() -> void:
 	var cfg1: GameConfig = _load_config()
@@ -252,7 +276,7 @@ func test_rng_methods() -> void:
 func test_battle_setup_validation() -> void:
 	var cfg: GameConfig = _load_config()
 	var valid_setup: BattleSetup = BattleSetup.create(
-		[{"type": "nucleus", "origin": Vector2i(9, 9)}],
+		[{"type": "nucleus", "origin": Vector2i(18, 18)}],
 		[{"type": "rhinovirus", "cell": Vector2i(0, 0)}],
 		123
 	)
@@ -261,7 +285,7 @@ func test_battle_setup_validation() -> void:
 
 	# Unknown structure type
 	var bad_struct: BattleSetup = BattleSetup.create(
-		[{"type": "laser_cannon", "origin": Vector2i(9, 9)}],
+		[{"type": "laser_cannon", "origin": Vector2i(18, 18)}],
 		[],
 		123
 	)
@@ -280,8 +304,8 @@ func test_battle_setup_validation() -> void:
 	# Overlapping structures
 	var overlap_setup: BattleSetup = BattleSetup.create(
 		[
-			{"type": "nucleus", "origin": Vector2i(9, 9)},
-			{"type": "mucous_wall", "origin": Vector2i(9, 9)}
+			{"type": "nucleus", "origin": Vector2i(18, 18)},
+			{"type": "mucous_wall", "origin": Vector2i(18, 18)}
 		],
 		[],
 		123
@@ -292,7 +316,7 @@ func test_battle_setup_validation() -> void:
 	# Out of bounds structure
 	var oob_struct: BattleSetup = BattleSetup.create(
 		[
-			{"type": "nucleus", "origin": Vector2i(9, 9)},
+			{"type": "nucleus", "origin": Vector2i(18, 18)},
 			{"type": "mucous_wall", "origin": Vector2i(-1, 5)}
 		],
 		[],
@@ -303,7 +327,7 @@ func test_battle_setup_validation() -> void:
 
 	# Out of bounds unit
 	var oob_unit: BattleSetup = BattleSetup.create(
-		[{"type": "nucleus", "origin": Vector2i(9, 9)}],
+		[{"type": "nucleus", "origin": Vector2i(18, 18)}],
 		[{"type": "rhinovirus", "cell": Vector2i(100, 100)}],
 		123
 	)
@@ -312,7 +336,7 @@ func test_battle_setup_validation() -> void:
 
 	# Unknown pathogen type
 	var bad_unit: BattleSetup = BattleSetup.create(
-		[{"type": "nucleus", "origin": Vector2i(9, 9)}],
+		[{"type": "nucleus", "origin": Vector2i(18, 18)}],
 		[{"type": "alien_virus", "cell": Vector2i(0, 0)}],
 		123
 	)

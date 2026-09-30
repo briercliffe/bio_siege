@@ -1,12 +1,12 @@
 {
   "version": 1,
   "grid": {
-    "width": 20,
-    "height": 20,
-    "deploy_ring": 1,
-    "tile_px": 32
+    "width": 40,
+    "height": 40,
+    "deploy_ring": 2,
+    "tile_px": 14
   },
-  "grid_scale": 1,
+  "grid_scale": 2,
   "start_wallet": {
     "atp": 1000
   },

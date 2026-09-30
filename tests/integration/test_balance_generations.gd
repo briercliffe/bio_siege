@@ -80,8 +80,8 @@ func test_starting_memory_seeds_generation_one() -> void:
 	assert_eq(res[0]["memory_seed"], {"rhinovirus/wild": expected})
 
 
-func test_repeat_swarm_valid_at_20_and_40_grids() -> void:
-	for size: int in [20, 40]:
+func test_repeat_swarm_valid_at_40_and_48_grids() -> void:
+	for size: int in [40, 48]:
 		var res: ConfigLoadResult = GameConfig.load_from_dir("res://data")
 		var cfg: GameConfig = res.config
 		cfg.grid_width = size

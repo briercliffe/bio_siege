@@ -131,7 +131,7 @@ Everything below already exists in core unless marked **missing**.
 
 **Gait timing:** stride length is in tiles on the 40x40 grid, so feet don't slide and slows and speed effects look right without extra code.
 
-**Known dependency:** `BattleSim._update_towers()` and `_update_projectiles()` are currently empty (`pass`), and `TOWER_FIRED`, `SPLASH`, `PROJECTILE_SPAWNED`, `PROJECTILE_HIT` and `PROJECTILE_FIZZLED` are declared in `SimEvents` but never emitted. Tower attack animation and projectile visuals cannot be finished until a core issue implements tower fire. That issue needs GUT tests under CLAUDE.md rule 6 and is outside this plan.
+**Known dependency:** none. Tower fire and projectiles already landed in #18: `BattleSim._update_towers()` and `_update_projectiles()` emit `TOWER_FIRED`, `SPLASH` and `PROJECTILE_SPAWNED`, `PROJECTILE_HIT` and `PROJECTILE_FIZZLED`, so tower attack animation and projectile visuals are not blocked.
 
 ---
 
@@ -232,7 +232,7 @@ One PR per issue. Order matters: 1 to 4 prove the pipeline before any content wo
 | 5 | Bacteriophage and Staphylococcus | Painters and animation sets. Contact sheet review. | 4 |
 | 6 | Wall renderer | Connected segments, posts, damage tiers, break effects. Cached structure layer. | 1, 2 |
 | 7 | Macrophage, B-Cell, Nucleus painters | Idle, hit and death sets. Tower aim. Attack animation needs issue 8. | 4, 6 |
-| 8 | **Core: tower fire and projectiles** | Implement `_update_towers` and `_update_projectiles`, emit `TOWER_FIRED`, `SPLASH`, `PROJECTILE_*`. GUT tests. | none, and blocks tower attack visuals |
+| 8 | ~~Core: tower fire and projectiles~~ | Done in #18. `BattleSim._update_towers()` and `_update_projectiles()` emit `TOWER_FIRED`, `SPLASH` and `PROJECTILE_*`. No issue needed. | none |
 | 9 | Effect layer | Projectiles, splash ring, bursts, scorch, health bars, intent lines, Reduce flashes setting. | 7, 8 |
 | 10 | Polish and performance | Profile against the issue 4 baseline. Bake step only if needed. Cross-model timing review. | 9 |
 

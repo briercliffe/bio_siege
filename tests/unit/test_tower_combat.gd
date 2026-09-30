@@ -2,16 +2,16 @@ extends GutTest
 
 
 func test_splash_damage() -> void:
-	# Macrophage at (10,5) hits 3 rooted units, unit outside splash untouched, splash event emitted
+	# 3x3 Macrophage at (10,5) hits 3 rooted units, unit outside splash untouched, splash event emitted
 	var structs := [
 		{"type": "macrophage", "origin": Vector2i(10, 5)},
-		{"type": "nucleus", "origin": Vector2i(0, 0)}
+		{"type": "nucleus", "origin": Vector2i(30, 30)}
 	]
 	var units := [
-		{"type": "staphylococcus", "cell": Vector2i(10, 6)},
-		{"type": "staphylococcus", "cell": Vector2i(11, 6)},
-		{"type": "staphylococcus", "cell": Vector2i(10, 7)},
-		{"type": "staphylococcus", "cell": Vector2i(10, 9)}
+		{"type": "staphylococcus", "cell": Vector2i(14, 6)},
+		{"type": "staphylococcus", "cell": Vector2i(15, 6)},
+		{"type": "staphylococcus", "cell": Vector2i(14, 7)},
+		{"type": "staphylococcus", "cell": Vector2i(14, 10)}
 	]
 	var sim := SimFixtures.make_sim(structs, units)
 
@@ -38,7 +38,7 @@ func test_splash_damage() -> void:
 			splash_found = true
 			assert_eq(ev.get("structure_id"), 1)
 			assert_eq(ev.get("pos"), u1.pos)
-			assert_eq(ev.get("radius"), 1000)
+			assert_eq(ev.get("radius"), 2000)
 			var hits: Array = ev.get("hit_unit_ids", [])
 			assert_eq(hits, [1, 2, 3])
 			break
@@ -51,19 +51,19 @@ func test_splash_damage() -> void:
 
 
 func test_projectile_flight() -> void:
-	# B-Cell at (10,3) vs rooted unit at (10,8) 5000 mt away: alive at 9 steps, dead at 10 steps, projectile_hit emitted
+	# 3x3 B-Cell at (10,3) vs rooted unit at (11,14) 10000 mt away: alive at 9 steps, dead at 10 steps, projectile_hit emitted
 	var structs := [
 		{"type": "b_cell", "origin": Vector2i(10, 3)},
-		{"type": "nucleus", "origin": Vector2i(0, 0)}
+		{"type": "nucleus", "origin": Vector2i(30, 30)}
 	]
 	var units := [
-		{"type": "rhinovirus", "cell": Vector2i(10, 8)}
+		{"type": "rhinovirus", "cell": Vector2i(11, 14)}
 	]
 	var sim := SimFixtures.make_sim(structs, units)
 	sim.status.add(StatusEffects.key_pathogen(1), StatusEffects.Kind.ROOTED, 1, 100, "root")
 
 	var unit := sim.pathogen(1)
-	assert_eq(FixedMath.dist_sq(sim.structure(1).center, unit.pos), 25000000, "Distance should be exactly 5000 mt")
+	assert_eq(FixedMath.dist_sq(sim.structure(1).center, unit.pos), 100000000, "Distance should be exactly 10000 mt")
 
 	# Run 9 steps
 	for i in range(9):
@@ -94,10 +94,10 @@ func test_fizzle() -> void:
 	# Target dies while projectile in flight -> projectile_fizzled, no damage
 	var structs := [
 		{"type": "b_cell", "origin": Vector2i(10, 3)},
-		{"type": "nucleus", "origin": Vector2i(0, 0)}
+		{"type": "nucleus", "origin": Vector2i(30, 30)}
 	]
 	var units := [
-		{"type": "rhinovirus", "cell": Vector2i(10, 8)}
+		{"type": "rhinovirus", "cell": Vector2i(11, 14)}
 	]
 	var sim := SimFixtures.make_sim(structs, units)
 	sim.status.add(StatusEffects.key_pathogen(1), StatusEffects.Kind.ROOTED, 1, 100, "root")
@@ -136,10 +136,10 @@ func test_cooldown() -> void:
 	# B-Cell vs Staphylococcus: tower_fired at ticks 0, 24, 48 within 50 steps
 	var structs := [
 		{"type": "b_cell", "origin": Vector2i(10, 5)},
-		{"type": "nucleus", "origin": Vector2i(0, 0)}
+		{"type": "nucleus", "origin": Vector2i(30, 30)}
 	]
 	var units := [
-		{"type": "staphylococcus", "cell": Vector2i(10, 6)}
+		{"type": "staphylococcus", "cell": Vector2i(14, 6)}
 	]
 	var sim := SimFixtures.make_sim(structs, units)
 	sim.status.add(StatusEffects.key_pathogen(1), StatusEffects.Kind.ROOTED, 1, 100, "root")
@@ -158,11 +158,11 @@ func test_target_lock() -> void:
 	# Sticky targeting on nearer unit even when closer unit arrives
 	var structs := [
 		{"type": "b_cell", "origin": Vector2i(10, 10)},
-		{"type": "nucleus", "origin": Vector2i(0, 0)}
+		{"type": "nucleus", "origin": Vector2i(30, 30)}
 	]
 	var units := [
-		{"type": "staphylococcus", "cell": Vector2i(10, 13)}, # 3000 mt away (in range)
-		{"type": "staphylococcus", "cell": Vector2i(10, 18)}  # 8000 mt away (out of range)
+		{"type": "staphylococcus", "cell": Vector2i(11, 15)}, # 4000 mt away (in range)
+		{"type": "staphylococcus", "cell": Vector2i(11, 26)}  # 15000 mt away (out of range of 12000)
 	]
 	var sim := SimFixtures.make_sim(structs, units)
 	sim.status.add(StatusEffects.key_pathogen(1), StatusEffects.Kind.ROOTED, 1, 100, "root")
@@ -174,10 +174,10 @@ func test_target_lock() -> void:
 	sim.step()
 	assert_eq(tower.target_id, 1, "Tower should target unit 1")
 
-	# Now place unit 2 at (10, 11), only 1000 mt away (much closer than unit 1 at 3000 mt)
+	# Now place unit 2 at (11, 13), only 2000 mt away (much closer than unit 1 at 4000 mt)
 	var u2 := sim.pathogen(2)
-	u2.pos = FixedMath.cell_center(Vector2i(10, 11))
-	u2.cell = Vector2i(10, 11)
+	u2.pos = FixedMath.cell_center(Vector2i(11, 13))
+	u2.cell = Vector2i(11, 13)
 
 	# Step a few more times: tower must remain locked on unit 1
 	for i in range(5):
@@ -189,11 +189,11 @@ func test_out_of_range() -> void:
 	# Switching target when locked target leaves range
 	var structs := [
 		{"type": "b_cell", "origin": Vector2i(10, 10)},
-		{"type": "nucleus", "origin": Vector2i(0, 0)}
+		{"type": "nucleus", "origin": Vector2i(30, 30)}
 	]
 	var units := [
-		{"type": "staphylococcus", "cell": Vector2i(10, 12)}, # 2000 mt away
-		{"type": "staphylococcus", "cell": Vector2i(10, 14)}  # 4000 mt away
+		{"type": "staphylococcus", "cell": Vector2i(11, 13)}, # 2000 mt away
+		{"type": "staphylococcus", "cell": Vector2i(11, 17)}  # 6000 mt away
 	]
 	var sim := SimFixtures.make_sim(structs, units)
 	sim.status.add(StatusEffects.key_pathogen(1), StatusEffects.Kind.ROOTED, 1, 100, "root")
@@ -205,10 +205,10 @@ func test_out_of_range() -> void:
 	sim.step()
 	assert_eq(tower.target_id, 1, "Tower should initially target unit 1")
 
-	# Move unit 1 out of range (8000 mt away, > 6000 mt range)
+	# Move unit 1 out of range (15000 mt away, > 12000 mt range)
 	var u1 := sim.pathogen(1)
-	u1.pos = Vector2i(10500, 18500)
-	u1.cell = Vector2i(10, 18)
+	u1.pos = Vector2i(11500, 26500)
+	u1.cell = Vector2i(11, 26)
 
 	# Step: tower should retarget to unit 2
 	sim.step()
@@ -219,10 +219,10 @@ func test_disabled_status() -> void:
 	# Cooldown frozen / no firing during disabled duration
 	var structs := [
 		{"type": "b_cell", "origin": Vector2i(10, 5)},
-		{"type": "nucleus", "origin": Vector2i(0, 0)}
+		{"type": "nucleus", "origin": Vector2i(30, 30)}
 	]
 	var units := [
-		{"type": "staphylococcus", "cell": Vector2i(10, 6)}
+		{"type": "staphylococcus", "cell": Vector2i(14, 6)}
 	]
 	var sim := SimFixtures.make_sim(structs, units)
 	sim.status.add(StatusEffects.key_pathogen(1), StatusEffects.Kind.ROOTED, 1, 100, "root")
@@ -263,14 +263,14 @@ func test_disabled_status() -> void:
 func test_full_battle_smoke_test() -> void:
 	# 2 B-Cells, 1 Macrophage, 20 Rhinoviruses: ends before timeout, deterministic
 	var structs := [
-		{"type": "nucleus", "origin": Vector2i(9, 9)},
-		{"type": "b_cell", "origin": Vector2i(6, 9)},
-		{"type": "b_cell", "origin": Vector2i(12, 9)},
-		{"type": "macrophage", "origin": Vector2i(9, 7)}
+		{"type": "nucleus", "origin": Vector2i(18, 18)},
+		{"type": "b_cell", "origin": Vector2i(12, 18)},
+		{"type": "b_cell", "origin": Vector2i(24, 18)},
+		{"type": "macrophage", "origin": Vector2i(18, 14)}
 	]
 	var units: Array = []
 	for x in range(20):
-		units.append({"type": "rhinovirus", "cell": Vector2i(x, 0)})
+		units.append({"type": "rhinovirus", "cell": Vector2i(x * 2, 0)})
 
 	var sim1 := SimFixtures.make_sim(structs, units, 42)
 	var sim2 := SimFixtures.make_sim(structs, units, 42)

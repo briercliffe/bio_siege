@@ -80,8 +80,8 @@ func test_replay_verify_with_strains() -> void:
 	cfg.feature_flags["strains"] = true
 	var base: BattleSetup = Scenarios.walled_nucleus(7)
 	var units: Array = [
-		{"type": "rhinovirus", "cell": Vector2i(0, 10), "strain": "capsid_hardening"},
-		{"type": "rhinovirus", "cell": Vector2i(0, 10), "strain": "capsid_hardening"},
+		{"type": "rhinovirus", "cell": Vector2i(0, 20), "strain": "capsid_hardening"},
+		{"type": "rhinovirus", "cell": Vector2i(0, 20), "strain": "capsid_hardening"},
 		{"type": "staphylococcus", "cell": Vector2i(0, 9), "strain": "antigenic_masking"},
 	]
 	var setup: BattleSetup = BattleSetup.create(base.structures, units, 7)
@@ -98,12 +98,12 @@ func test_replay_verify_with_memory_seed() -> void:
 	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
 	cfg.feature_flags["bcell_analysis"] = true
 	var structs: Array = [
-		{"type": "nucleus", "origin": Vector2i(9, 9)},
+		{"type": "nucleus", "origin": Vector2i(18, 18)},
 		{"type": "b_cell", "origin": Vector2i(10, 3)},
 		{"type": "macrophage", "origin": Vector2i(6, 6)},
 	]
 	var units: Array = [
-		{"type": "rhinovirus", "cell": Vector2i(0, 10)},
+		{"type": "rhinovirus", "cell": Vector2i(0, 20)},
 		{"type": "staphylococcus", "cell": Vector2i(0, 9)},
 	]
 	var setup: BattleSetup = BattleSetup.create(structs, units, 11, {"rhinovirus/wild": 50, "staphylococcus/wild": 100})
