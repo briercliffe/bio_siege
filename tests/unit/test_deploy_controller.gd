@@ -318,3 +318,23 @@ func test_battle_setup_validation() -> void:
 	)
 	var bad_unit_errs: PackedStringArray = bad_unit.validate(cfg)
 	assert_true(bad_unit_errs.size() > 0)
+
+
+func test_launch_passes_memory_seed() -> void:
+	var cfg: GameConfig = _load_config()
+	cfg.feature_flags["immune_memory"] = true
+	cfg.feature_flags["bcell_analysis"] = true
+	var session: Session = _create_session(cfg)
+	session.memory.entries["rhinovirus/wild"] = {"level": 2, "absent": 0, "since": 1}
+	session.army.reserve["rhinovirus"] = 2
+	session.army.reserve["staphylococcus"] = 1
+	var comps: Dictionary = _setup_components(session)
+	(comps["hud"] as HudSpawn).launch_requested.emit()
+	assert_eq(session.battle_setup.memory_seed, {"rhinovirus/wild": 50})
+
+	var off_session: Session = _create_session(_load_config())
+	off_session.memory.entries["rhinovirus/wild"] = {"level": 2, "absent": 0, "since": 1}
+	off_session.army.reserve["rhinovirus"] = 1
+	var off_comps: Dictionary = _setup_components(off_session)
+	(off_comps["hud"] as HudSpawn).launch_requested.emit()
+	assert_true(off_session.battle_setup.memory_seed.is_empty())

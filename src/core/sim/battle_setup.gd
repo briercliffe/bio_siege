@@ -4,10 +4,12 @@ extends RefCounted
 var structures: Array[Dictionary] = []
 var units: Array[Dictionary] = []
 var seed: int = 0
+var memory_seed: Dictionary = {}  # strain_key -> int pct (0..100)
 
-static func create(p_structures: Array, p_units: Array, p_seed: int) -> BattleSetup:
+static func create(p_structures: Array, p_units: Array, p_seed: int, p_memory_seed: Dictionary = {}) -> BattleSetup:
 	var setup: BattleSetup = BattleSetup.new()
 	setup.seed = p_seed
+	setup.memory_seed = p_memory_seed.duplicate(true)
 	for item: Variant in p_structures:
 		if item is Dictionary:
 			setup.structures.append((item as Dictionary).duplicate(true))
@@ -17,26 +19,43 @@ static func create(p_structures: Array, p_units: Array, p_seed: int) -> BattleSe
 	return setup
 
 func duplicate_setup() -> BattleSetup:
-	return create(structures, units, seed)
+	return create(structures, units, seed, memory_seed)
 
 func to_dict() -> Dictionary:
-	return {
+	var d: Dictionary = {
 		"structures": structures.duplicate(true),
 		"units": units.duplicate(true),
 		"seed": seed,
 	}
+	if not memory_seed.is_empty():
+		d["memory_seed"] = memory_seed.duplicate(true)
+	return d
 
 static func from_dict(d: Dictionary) -> BattleSetup:
 	var s: Array = d.get("structures", [])
 	var u: Array = d.get("units", [])
 	var sd: int = int(d.get("seed", 0))
-	return create(s, u, sd)
+	var ms_val: Variant = d.get("memory_seed", {})
+	var ms: Dictionary = {}
+	if ms_val is Dictionary:
+		for mk: Variant in (ms_val as Dictionary).keys():
+			var mv: Variant = (ms_val as Dictionary)[mk]
+			# JSON numbers parse as floats; whole values are coerced back to int.
+			if typeof(mv) == TYPE_FLOAT and is_equal_approx(float(mv), roundf(float(mv))):
+				mv = int(mv)
+			ms[mk] = mv
+	return create(s, u, sd, ms)
 
 func validate(config: GameConfig) -> PackedStringArray:
 	var errors: PackedStringArray = PackedStringArray()
 	if config == null:
 		errors.append("Config is null")
 		return errors
+
+	for mk: Variant in memory_seed.keys():
+		var mv: Variant = memory_seed[mk]
+		if typeof(mk) != TYPE_STRING or typeof(mv) != TYPE_INT or int(mv) < 0 or int(mv) > 100:
+			errors.append("Invalid memory_seed entry '%s'" % [str(mk)])
 
 	var core_count: int = 0
 	var occupied_cells: Dictionary = {}

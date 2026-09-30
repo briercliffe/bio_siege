@@ -22,6 +22,7 @@ var btn_minus: Button = null
 var btn_plus: Button = null
 var strain_button: Button = null
 var strain_summary_label: Label = null
+var memory_hint_label: Label = null
 
 var _style_normal: StyleBoxFlat = null
 var _style_hover: StyleBoxFlat = null
@@ -224,7 +225,7 @@ func setup_recall() -> void:
 		icon_control.queue_redraw()
 
 ## Adds (once) and refreshes the StrainButton. Only called when the strains flag is on.
-func setup_strain(p_def: PathogenDef, strain: StrainDef) -> void:
+func setup_strain(p_def: PathogenDef, strain: StrainDef, remembered_level: int = 0) -> void:
 	_ensure_nodes()
 	if is_recall:
 		return
@@ -249,9 +250,19 @@ func setup_strain(p_def: PathogenDef, strain: StrainDef) -> void:
 		strain_summary_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		vbox.add_child(strain_summary_label)
 		vbox.move_child(strain_summary_label, strain_button.get_index() + 1)
+		memory_hint_label = Label.new()
+		memory_hint_label.name = "MemoryHintLabel"
+		memory_hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		memory_hint_label.add_theme_font_size_override("font_size", 10)
+		memory_hint_label.add_theme_color_override("font_color", Color("#48dbfb"))
+		memory_hint_label.visible = false
+		vbox.add_child(memory_hint_label)
+		vbox.move_child(memory_hint_label, strain_summary_label.get_index() + 1)
 		custom_minimum_size = Vector2(custom_minimum_size.x, 210.0)
 	strain_button.text = strain.display_name
 	strain_summary_label.text = strain.summary()
+	memory_hint_label.visible = remembered_level > 0
+	memory_hint_label.text = "Remembered L%d" % remembered_level if remembered_level > 0 else ""
 
 func set_unit_cost(atp: int) -> void:
 	cost_atp = atp

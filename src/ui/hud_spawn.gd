@@ -27,6 +27,7 @@ var btn_menu: Button = null
 var popup_menu: PopupMenu = null
 var import_dialog: ImportDialog = null
 var last_toast_message: String = ""
+var memory_panel: MemoryPanel = null
 
 var bottom_tray: PanelContainer = null
 var scroll_container: ScrollContainer = null
@@ -258,6 +259,18 @@ func setup(p_session: Session) -> void:
 
 	_populate_tray()
 	_update_army_ui()
+	_sync_memory_panel()
+
+## Shows the read-only MemoryPanel (top right, under the top bar) only when immune memory is enabled.
+func _sync_memory_panel() -> void:
+	var enabled: bool = session != null and session.config != null and session.config.memory_enabled()
+	if memory_panel == null and enabled:
+		memory_panel = MemoryPanel.new()
+		add_child(memory_panel)
+	if memory_panel != null:
+		memory_panel.visible = enabled
+		if enabled:
+			memory_panel.setup(session)
 
 func _populate_tray() -> void:
 	if cards_container == null or session == null or session.config == null:
@@ -369,7 +382,10 @@ func _update_army_ui() -> void:
 			var c_def: PathogenDef = session.config.pathogens.get(c.type_id) if session.config != null else null
 			if _strains_enabled() and c_def != null:
 				var c_strain: StrainDef = c_def.strain(session.army.strain_of(c.type_id))
-				c.setup_strain(c_def, c_strain if c_strain != null else StrainDef.wild())
+				var remembered: int = 0
+				if session.config.memory_enabled():
+					remembered = session.memory.effective_level("%s/%s" % [c.type_id, session.army.strain_of(c.type_id)], session.config)
+				c.setup_strain(c_def, c_strain if c_strain != null else StrainDef.wild(), remembered)
 		c.update_affordability(wallet_atp)
 
 func _on_card_buy_requested(type_id: String) -> void:

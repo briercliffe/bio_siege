@@ -121,6 +121,28 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 			"pos": p_state.pos,
 		})
 
+	if _analysis_on and not setup.memory_seed.is_empty():
+		_apply_memory_seed(setup.memory_seed)
+
+
+## Immune memory: pre-load every analysis tower with partial (or full) exposure.
+func _apply_memory_seed(memory_seed: Dictionary) -> void:
+	var keys: Array[String] = []
+	for k: Variant in memory_seed.keys():
+		keys.append(str(k))
+	keys.sort()
+	for s: StructureState in structures:
+		if not s.def.has_analysis:
+			continue
+		for key: String in keys:
+			var pct: int = int(memory_seed[key])
+			if pct <= 0:
+				continue
+			s.analysis_exposure[key] = s.def.analysis_threshold_ticks * pct
+			if pct >= 100:
+				s.analyzed[key] = true
+				_emit_event(SimEvents.ANALYSIS_COMPLETE, {"structure_id": s.id, "strain_key": key, "unit_type": key.get_slice("/", 0)})
+
 
 func step() -> void:
 	if finished:
@@ -378,6 +400,18 @@ func _accrue_analysis(s: StructureState) -> void:
 	if e >= s.def.analysis_threshold_ticks * 100:
 		s.analyzed[key] = true
 		_emit_event(SimEvents.ANALYSIS_COMPLETE, {"structure_id": s.id, "strain_key": key, "unit_type": tgt.type_id})
+
+
+## Sorted, unique strain keys of every pathogen in the battle.
+func seen_strain_keys() -> Array[String]:
+	var seen: Dictionary = {}
+	for p: PathogenState in pathogens:
+		seen[p.strain_key()] = true
+	var out: Array[String] = []
+	for k: Variant in seen.keys():
+		out.append(str(k))
+	out.sort()
+	return out
 
 
 ## Sorted, unique strain keys analyzed by any tower, alive or destroyed.
