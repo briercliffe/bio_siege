@@ -71,7 +71,7 @@ func test_infection_phase_last_result_populated() -> void:
 	assert_eq(fsm.phase, GameStateMachine.Phase.RESULTS, "FSM should transition to RESULTS phase")
 
 
-func test_node_pool_created_count_stays_at_100() -> void:
+func test_infection_phase_has_no_node_per_entity() -> void:
 	var session := Session.new(config)
 	var fsm := GameStateMachine.new()
 	add_child_autofree(fsm)
@@ -92,10 +92,17 @@ func test_node_pool_created_count_stays_at_100() -> void:
 	add_child_autofree(phase)
 	phase.setup(session, fsm)
 
-	assert_eq(phase.pathogen_pool.created_count, 100, "Initially created_count should be 100")
+	var base_children: int = phase.get_child_count()
+	assert_not_null(phase.unit_layer, "UnitLayer draws every structure and pathogen")
+	assert_eq(phase.unit_layer.get_child_count(), 0, "No child node per entity")
+	assert_eq(phase.unit_layer.get_parent(), phase)
+	assert_eq(phase.grid_view.get_child_count(), 0, "No flat-pixel entity container under GridView")
+	assert_lt(phase.grid_view.get_index(), phase.unit_layer.get_index(), "UnitLayer paints after the ground")
+	assert_lt(phase.unit_layer.get_index(), phase.hud_combat.get_index(), "UnitLayer paints under the HUD")
 
 	var tick_dt: float = 1.0 / float(config.tick_rate)
 	for i in range(30):
 		phase.runner._process(tick_dt)
 		phase._process(tick_dt)
-		assert_eq(phase.pathogen_pool.created_count, 100, "created_count should stay at 100 during battle")
+		assert_eq(phase.get_child_count(), base_children, "Child count must not grow during battle")
+		assert_eq(phase.unit_layer.get_child_count(), 0)

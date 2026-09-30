@@ -1,17 +1,22 @@
 class_name IntentLinesView
 extends Node2D
 
+## Intent lines between unit centres, in screen space (docs/MVP_UI_SPEC.md section 3). Toggled by
+## session.intent_lines_enabled. Read-only.
+
+const LIFT_T: float = 0.6
+
 var session: Session = null
 var runner: BattleRunner = null
-var active_pathogens: Dictionary = {}
-var structure_views: Dictionary = {}
+var snapshots: BattleSnapshotBuffer = null
+var projection: IsoProjection = null
 
 
-func setup(p_session: Session, p_runner: BattleRunner, p_active_pathogens: Dictionary, p_structure_views: Dictionary) -> void:
+func setup(p_session: Session, p_runner: BattleRunner, p_snapshots: BattleSnapshotBuffer, p_projection: IsoProjection) -> void:
 	session = p_session
 	runner = p_runner
-	active_pathogens = p_active_pathogens
-	structure_views = p_structure_views
+	snapshots = p_snapshots
+	projection = p_projection
 
 
 func _process(_delta: float) -> void:
@@ -21,43 +26,34 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	if not visible or runner == null or runner.sim == null:
+	if not visible or runner == null or runner.sim == null or projection == null:
 		return
+	var sim: BattleSim = runner.sim
+	var lift := Vector2(0.0, -LIFT_T * projection.tile_px)
+	var k: float = projection.tile_px / 14.0
+	var alpha: float = runner.alpha
 
-	var tile_px: int = session.config.tile_px if (session != null and session.config != null) else 32
-
-	for p: PathogenState in runner.sim.pathogens:
+	for p: PathogenState in sim.pathogens:
 		if p == null or not p.alive:
 			continue
-
-		var base_color: Color = Color.WHITE
-		if session != null and session.config != null and session.config.pathogens.has(p.type_id):
-			var p_def: PathogenDef = session.config.pathogens[p.type_id]
-			if p_def != null:
-				base_color = p_def.placeholder_color
-		elif active_pathogens.has(p.id) and is_instance_valid(active_pathogens[p.id]):
-			var pv = active_pathogens[p.id]
-			if pv.pathogen_def != null:
-				base_color = pv.pathogen_def.placeholder_color
-
-		var unit_pos: Vector2
-		if active_pathogens.has(p.id) and is_instance_valid(active_pathogens[p.id]):
-			unit_pos = active_pathogens[p.id].position
-		else:
-			unit_pos = Vector2(p.pos) * float(tile_px) / 1000.0
+		if p.target_id == 0 and p.blocker_id == 0:
+			continue
+		var base_color: Color = p.def.placeholder_color if p.def != null else Color.WHITE
+		var ground: Vector2 = Vector2(p.pos) / 1000.0
+		if snapshots != null and snapshots.has_unit(p.id):
+			ground = snapshots.unit_ground(p.id, alpha)
+		var unit_pos: Vector2 = projection.ground_to_screen(ground) + lift
 
 		if p.target_id != 0:
-			var target: StructureState = runner.sim.structure(p.target_id)
+			var target: StructureState = sim.structure(p.target_id)
 			if target != null and target.alive:
-				var target_center: Vector2 = Vector2(target.center) * float(tile_px) / 1000.0
-				var color_target := Color(base_color.r, base_color.g, base_color.b, 0.35)
-				if unit_pos.distance_squared_to(target_center) > 0.001:
-					draw_line(unit_pos, target_center, color_target, 1.5)
+				var target_pos: Vector2 = projection.mt_to_screen(target.center) + lift
+				if unit_pos.distance_squared_to(target_pos) > 0.001:
+					draw_line(unit_pos, target_pos, Color(base_color, 0.35), 1.5 * k)
 
 		if p.blocker_id != 0:
-			var blocker: StructureState = runner.sim.structure(p.blocker_id)
+			var blocker: StructureState = sim.structure(p.blocker_id)
 			if blocker != null and blocker.alive:
-				var blocker_center: Vector2 = Vector2(blocker.center) * float(tile_px) / 1000.0
-				var color_blocker := Color(base_color.r, base_color.g, base_color.b, 0.6)
-				if unit_pos.distance_squared_to(blocker_center) > 0.001:
-					draw_dashed_line(unit_pos, blocker_center, color_blocker, 1.5, 6.0)
+				var blocker_pos: Vector2 = projection.mt_to_screen(blocker.center) + lift
+				if unit_pos.distance_squared_to(blocker_pos) > 0.001:
+					draw_dashed_line(unit_pos, blocker_pos, Color(base_color, 0.6), 1.5 * k, 6.0 * k)
