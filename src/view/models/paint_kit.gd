@@ -11,6 +11,7 @@ extends RefCounted
 ## with x negated back. Do not copy the canvas's per-part flip; it breaks clip-path shapes.
 
 const ELLIPSE_POINTS: int = 24
+const CIRCLE_TOLERANCE_PX: float = 0.01
 
 const HEX_01: PackedVector2Array = [
 	Vector2(0.5, 0.0), Vector2(1.0, 0.25), Vector2(1.0, 0.75),
@@ -41,6 +42,11 @@ static func ellipse(ci: CanvasItem, rect: Rect2, color: Color) -> void:
 		return
 	var c: Vector2 = rect.get_center()
 	var r: Vector2 = rect.size * 0.5
+	# A circle takes the engine's fast path: draw_colored_polygon triangulates on the CPU every call, which
+	# dominated the 200-unit bench (docs/PERF_BASELINE.md).
+	if absf(r.x - r.y) < CIRCLE_TOLERANCE_PX:
+		ci.draw_circle(c, r.x, color)
+		return
 	if _scratch.size() != ELLIPSE_POINTS:
 		_scratch.resize(ELLIPSE_POINTS)
 	for i: int in range(ELLIPSE_POINTS):

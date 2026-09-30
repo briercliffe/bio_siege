@@ -594,10 +594,11 @@ func _draw_pad(ci: CanvasItem, proj: IsoProjection, tiles: float, is_night: bool
 
 func _draw_model(ci: CanvasItem, proj: IsoProjection, id: String, pose: ModelPose, face_right: bool) -> void:
 	var painter: ModelPainter = ModelRegistry.painter_for(id)
-	ci.draw_set_transform(proj.origin, 0.0, Vector2.ONE if face_right else Vector2(-1.0, 1.0))
-	painter.paint_ground(ci, Vector2.ZERO, pose, proj.tile_px)
-	painter.paint(ci, Vector2.ZERO, pose, proj.tile_px)
-	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# Like UnitLayer: painters take the real anchor and handle pose.facing_right themselves, because they
+	# set their own canvas transform (a transform set here would be replaced by theirs).
+	pose.facing_right = face_right
+	painter.paint_ground(ci, proj.origin, pose, proj.tile_px)
+	painter.paint(ci, proj.origin, pose, proj.tile_px)
 
 
 func _draw_anchor(ci: CanvasItem, at: Vector2) -> void:
