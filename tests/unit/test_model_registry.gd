@@ -25,6 +25,8 @@ func test_every_config_id_has_a_cached_painter() -> void:
 			assert_true(a is PhagePainter, "real painter registered: %s" % id)
 		elif id == "staphylococcus":
 			assert_true(a is StaphPainter, "real painter registered: %s" % id)
+		elif id == "mucous_wall":
+			assert_true(a is WallPainter, "lone-cell wall painter registered: %s" % id)
 		else:
 			assert_true(a is PlaceholderPainter, "placeholder until a real painter is registered: %s" % id)
 

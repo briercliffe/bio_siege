@@ -2,7 +2,8 @@ class_name ModelRegistry
 extends RefCounted
 
 ## type_id -> ModelPainter. Returns cached instances. Every id gets a PlaceholderPainter until a real
-## painter is registered here (#67 to #70); UnitLayer never changes when that happens.
+## painter is registered here (#67 to #70); UnitLayer never changes when that happens. Walls are the
+## exception: UnitLayer and GridView draw them with WallRenderer, never through this registry.
 
 ## Model heights in tiles, from docs/MVP_UI_SPEC.md section 4.
 const HEIGHT_T: Dictionary = {
@@ -49,6 +50,9 @@ static func _create(type_id: String) -> ModelPainter:
 			return PhagePainter.new()
 		"staphylococcus":
 			return StaphPainter.new()
+		"mucous_wall":
+			# A lone cell, for the viewer and icons. Battles and the island draw connected runs with WallRenderer.
+			return WallPainter.new()
 	var p := PlaceholderPainter.new()
 	p.size_t = Vector2(DEFAULT_PATHOGEN_WIDTH_T, float(HEIGHT_T.get(type_id, DEFAULT_HEIGHT_T)))
 	return p

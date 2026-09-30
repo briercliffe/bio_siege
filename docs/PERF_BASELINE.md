@@ -80,6 +80,24 @@ That took desktop from 125 ms to 29 ms and draw calls from 8316 to 2116. About 9
 
 The mixed army costs about 40% more per frame and about 950 more draw commands (about 14 painter commands per unit at 23 px, against 9 for the Rhinovirus). The Bacteriophage (legs, plate, sheath, collar and head) and the Staphylococcus (eight cocci, base and trail) have more parts than the Rhinovirus, even after the flat path below 28 px. That makes the bake step in the next section more pressing, not less.
 
+## Mucous Wall renderer (issue #69)
+
+The connected-segment walls replace three flat polygons per wall with extruded faces, a glossy top with its outline, ground shadows and posts. Same Linux VM as the previous section (Mesa llvmpipe under Xvfb), so again only comparable within the section. The run-to-run spread on this VM is 1 to 2 ms on the same build, so each row is the mean of runs interleaved before, after, before, after.
+
+| Scene | Build | Avg ms | p95 ms | Draw calls |
+|---|---|---|---|---|
+| `tests/perf/stress_battle.tscn`, 12 s after a 3 s warm-up, 8 runs | before #69 | 24.07 | 32.21 | 902 |
+| | after #69 | 24.45 | 34.39 | 809 |
+| `tests/perf/rhino_bench.tscn`, 15 s, 3 runs | before #69 | 48.39 | 53.37 | 2116 |
+| | after #69 | 49.71 | 55.15 | 2083 |
+
+In the stress scene the average frame time is at parity within the noise (+0.4 ms, and two of the eight interleaved pairs came out faster after the change), but the p95 regressed by about 2 ms on llvmpipe: 32.21 to 34.39 ms, with all eight after-runs above the before-median p95 of 31.71 ms. In the Rhino bench the walls cost about +1.3 ms average and +1.8 ms p95. #72 owns the frame budget, so these costs go into its accounting. The first full-detail build measured about 2 ms slower in the stress scene average, and on llvmpipe the cost followed the number of small triangles rather than the number of commands. These reductions brought the average back:
+
+- **This deviates from the issue, for performance.** The issue only skips the stripes and the post highlight below 10 px. Below 28 px per tile (the battle runs at 23 px), the geometry is built coarse: square top corners, no face stripes, 8-point ellipses, a 4-point highlight and a post cap shaded per vertex instead of from its focus. At 28 px and above everything returns (rounded tops, stripes, 18-point ellipses, the radial cap), as seen in the viewer at 40 and 56 px.
+- Each cell's geometry is one cached, indexed triangle list, so quads and fans share their corner vertices. The core's side faces that a neighbour's bridge always covers are not built.
+- A post that sorts right after its own segment is painted in the same command. All shadows are one command, and the cracks are cached triangles with the alpha taken from 33 cached colour steps.
+- `draw_mesh` is not used: on the GL Compatibility renderer it costs about 26 us per call, several times a polygon command.
+
 ## Budget for #72
 
 The target is 60 fps on desktop and at most 20 ms average frame time with 200 units on the web, with the p95 under 25 ms.
