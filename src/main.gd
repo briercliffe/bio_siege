@@ -10,6 +10,8 @@ extends Node
 @onready var screen_stack: ScreenStack = $ScreenStack
 
 func _ready() -> void:
+	add_to_group(SettingsApply.GROUP)
+	SettingsApply.apply_all(debug_overlay)
 	# The legacy overlay stands in for the How to play screen until #75 adds its scene.
 	screen_stack.fallbacks["how_to_play"] = how_to_play.open
 	if fsm != null:
@@ -27,6 +29,11 @@ func _ready() -> void:
 	if fsm != null:
 		fsm.config_applied.connect(_on_config_applied)
 		fsm.phase_changed.connect(_on_phase_changed)
+
+## SettingsApply.GROUP hook: the Settings screen saved a change.
+func on_settings_changed() -> void:
+	if error_panel == null or not error_panel.visible:
+		SettingsApply.apply_debug_overlay(debug_overlay)
 
 func _on_phase_changed(_from: GameStateMachine.Phase, _to: GameStateMachine.Phase) -> void:
 	screen_stack.clear()
@@ -71,7 +78,7 @@ func _show_config_error_ui() -> void:
 		fsm.phase_root.visible = false
 	if screen_stack != null:
 		screen_stack.visible = false
-	if debug_overlay != null:
+	if debug_overlay != null and is_instance_valid(debug_overlay):
 		debug_overlay.visible = false
 
 func _show_normal_ui() -> void:
@@ -83,5 +90,4 @@ func _show_normal_ui() -> void:
 		fsm.phase_root.visible = true
 	if screen_stack != null:
 		screen_stack.visible = true
-	if debug_overlay != null and OS.is_debug_build():
-		debug_overlay.visible = true
+	SettingsApply.apply_debug_overlay(debug_overlay)

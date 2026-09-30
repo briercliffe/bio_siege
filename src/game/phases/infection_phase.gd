@@ -40,6 +40,7 @@ func _resolve_nodes() -> void:
 
 
 func _ready() -> void:
+	add_to_group(SettingsApply.GROUP)
 	_resolve_nodes()
 	if get_viewport() != null and not get_viewport().size_changed.is_connected(_on_viewport_size_changed):
 		get_viewport().size_changed.connect(_on_viewport_size_changed)
@@ -73,6 +74,7 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 	grid_view.draw_structures = false
 
 	_init_layers()
+	unit_layer.reduce_flashes = SettingsApply.reduce_flashes(settings_path)
 
 	if runner == null:
 		runner = BattleRunner.new()
@@ -141,6 +143,12 @@ func _init_layers() -> void:
 		_insert_after(overlay, after)
 	else:
 		move_child(overlay, after.get_index() + 1)
+
+
+## SettingsApply.GROUP hook: the Settings screen (opened from Pause) saved a change.
+func on_settings_changed() -> void:
+	if unit_layer != null:
+		unit_layer.reduce_flashes = SettingsApply.reduce_flashes(settings_path)
 
 
 func _insert_after(node: Node, after: Node) -> void:

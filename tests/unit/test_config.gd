@@ -403,7 +403,7 @@ func test_main_ui_normal_and_error() -> void:
 	var main_scene: PackedScene = load("res://src/main.tscn")
 	assert_not_null(main_scene)
 	var main_node: Node = main_scene.instantiate()
-	add_child_autoqfree(main_node)
+	add_child_autofree(main_node)
 
 	var normal_ui: Control = main_node.get_node("NormalUI")
 	var error_panel: Panel = main_node.get_node("ErrorPanel")
