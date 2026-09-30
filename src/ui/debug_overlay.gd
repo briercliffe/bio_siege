@@ -4,6 +4,7 @@ extends Control
 @onready var dbg_button: Button = $DbgButton
 @onready var panel: Control = $Panel
 @onready var phase_label: Label = $Panel/VBoxContainer/PhaseLabel
+@onready var btn_title: Button = $Panel/VBoxContainer/BtnTitle
 @onready var btn_synthesis: Button = $Panel/VBoxContainer/BtnSynthesis
 @onready var btn_incubation: Button = $Panel/VBoxContainer/BtnIncubation
 @onready var btn_infection: Button = $Panel/VBoxContainer/BtnInfection
@@ -39,6 +40,8 @@ func _ready() -> void:
 	_ensure_nodes()
 	if dbg_button != null and not dbg_button.pressed.is_connected(toggle):
 		dbg_button.pressed.connect(toggle)
+	if btn_title != null and not btn_title.pressed.is_connected(_on_btn_title_pressed):
+		btn_title.pressed.connect(_on_btn_title_pressed)
 	if btn_synthesis != null and not btn_synthesis.pressed.is_connected(_on_btn_synthesis_pressed):
 		btn_synthesis.pressed.connect(_on_btn_synthesis_pressed)
 	if btn_incubation != null and not btn_incubation.pressed.is_connected(_on_btn_incubation_pressed):
@@ -87,6 +90,10 @@ func _handle_input_event(event: InputEvent) -> void:
 			if get_viewport() != null:
 				get_viewport().set_input_as_handled()
 
+func _on_btn_title_pressed() -> void:
+	if fsm != null:
+		fsm.force_transition(GameStateMachine.Phase.TITLE)
+
 func _on_btn_synthesis_pressed() -> void:
 	if fsm != null:
 		fsm.force_transition(GameStateMachine.Phase.SYNTHESIS)
@@ -134,6 +141,8 @@ func _ensure_nodes() -> void:
 		panel = get_node_or_null("Panel") as Control
 	if phase_label == null:
 		phase_label = get_node_or_null("Panel/VBoxContainer/PhaseLabel") as Label
+	if btn_title == null:
+		btn_title = get_node_or_null("Panel/VBoxContainer/BtnTitle") as Button
 	if btn_synthesis == null:
 		btn_synthesis = get_node_or_null("Panel/VBoxContainer/BtnSynthesis") as Button
 	if btn_incubation == null:

@@ -258,6 +258,7 @@ func test_loop_stability_5_cycles() -> void:
 	var fsm := GameStateMachine.new()
 	add_child_autoqfree(fsm)
 	fsm.start()
+	fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
 	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
 
 	var choices: Array[String] = ["re_raid", "edit_base", "new_base", "re_raid", "edit_base"]
