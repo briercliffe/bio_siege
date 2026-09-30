@@ -129,6 +129,7 @@ func height_tiles() -> float:
 
 
 ## Nucleolus pulse rate in Hz: 0.5 at full health rising to 2.0 at 0 HP, so the pulse quickens as it is hurt.
+## AnimDriver integrates it into pose.pulse_phase, so a change of rate never jumps the pulse.
 static func pulse_rate(hp_frac: float) -> float:
 	return PULSE_RATE_FULL_HZ + (PULSE_RATE_EMPTY_HZ - PULSE_RATE_FULL_HZ) * (1.0 - clampf(hp_frac, 0.0, 1.0))
 
@@ -196,7 +197,7 @@ func _paint_dome(ci: CanvasItem, t: float, pose: ModelPose, d: float, flat: bool
 			ci.draw_line(Vector2(s.x, s.y) * t, Vector2(s.z, s.w) * t, _ca(C_STREAK, STREAK_ALPHA[i]), maxf(1.0, STREAK_THICK[i] * t))
 
 	# The nucleolus pulses faster as the Nucleus loses health.
-	var nr: float = NUCLEOLUS_R * t * (1.0 + PULSE_AMOUNT * sin(TAU * pose.time * pulse_rate(pose.hp_frac)))
+	var nr: float = NUCLEOLUS_R * t * (1.0 + PULSE_AMOUNT * sin(TAU * pose.pulse_phase))
 	var nc: Vector2 = NUCLEOLUS_C * t
 	var glow: Color = _cols[C_NUC_GLOW]
 	for i: int in range(NUCLEOLUS_GLOW_T.size()):

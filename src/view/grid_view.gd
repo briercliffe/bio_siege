@@ -798,6 +798,8 @@ func _draw_item(item: StructureItem) -> void:
 		_walls.paint_cell(self, item.cell, 1.0, _still_pose)
 		return
 	item.pose.time = anim_time + ViewRng.hash01(item.id, 1) * AnimDriver.IDLE_DESYNC_SECONDS
+	# The island never damages a structure, so the pulse rate is constant and the phase is a plain product.
+	item.pose.pulse_phase = fposmod(item.pose.time * NucleusPainter.pulse_rate(item.pose.hp_frac), 1.0)
 	item.painter.paint(self, item.foot, item.pose, projection.tile_px)
 
 func _draw_ghost(k: float) -> void:

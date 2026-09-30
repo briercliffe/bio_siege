@@ -167,7 +167,9 @@ func paint(ci: CanvasItem, anchor: Vector2, pose: ModelPose, t: float) -> void:
 	halo_a = lerpf(halo_a, CHARGED_ALPHA, charge)
 	var glow_a: float = lerpf(GLOW_ALPHA, CHARGED_ALPHA, charge)
 	var y_alpha: float = 1.0
-	var tilt: float = aim_angle(pose.aim)
+	# aim_lock eases the tilt in and the spinning arms shut as a target is acquired, and back as it is lost.
+	var lock: float = Easing.ease_out_quad(clampf(pose.aim_lock, 0.0, 1.0))
+	var tilt: float = aim_angle(pose.aim) * lock
 	var fall: Vector2 = Vector2.ZERO
 	if dead:
 		var u: float = clampf(d / Y_FALL_END, 0.0, 1.0)
@@ -188,7 +190,7 @@ func paint(ci: CanvasItem, anchor: Vector2, pose: ModelPose, t: float) -> void:
 	if detail:
 		var hd: float = lerpf(HALO_D, HALO_D_CHARGED, charge)
 		_paint_halo(ci, HALO_C * t + off, hd * 0.5 * HALO_FILL * t, _ca(C_HALO, halo_a), flat)
-	var spin: float = cos(TAU * pose.time / SPIN_PERIOD_S) if pose.aim.length_squared() < 0.000001 and not dead else 1.0
+	var spin: float = 1.0 if dead else lerpf(cos(TAU * pose.time / SPIN_PERIOD_S), 1.0, lock)
 	var y_col: Color = _ca(C_Y, y_alpha)
 	var fork: Vector2 = Y_FORK * t + off
 	var tip_l: Vector2 = Vector2(-Y_ARM.x * spin, Y_ARM.y) * t + off

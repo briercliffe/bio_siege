@@ -701,6 +701,8 @@ func pose_for(id: String, state: int, time: float) -> ModelPose:
 	pose.time = time
 	pose.seed = absi(id.hash())
 	pose.hp_frac = hp_frac
+	# The scrubber needs a pure function of time, so the viewer skips the battle's integrated pulse phase.
+	pose.pulse_phase = fposmod(time * NucleusPainter.pulse_rate(hp_frac), 1.0)
 	var ticks: int = int(floorf(time * TICKS_PER_S))
 	var interval: int = _attack_interval_ticks(id)
 	if _is_tower(id) and _tower_pose(pose, id, state, ticks, interval):
@@ -760,6 +762,7 @@ func _tower_pose(pose: ModelPose, id: String, state: int, ticks: int, interval: 
 	pose.anim = int(res.x) as ModelPose.Anim
 	pose.attack_t = res.y
 	pose.aim = _tower_aim(facing_right)
+	pose.aim_lock = 1.0
 	return true
 
 
@@ -782,6 +785,8 @@ func sheet_pose(id: String, state: int) -> ModelPose:
 	var bcell: bool = id == AnimDriver.B_CELL_ID
 	if _is_tower(id) and (state == ModelPose.Anim.WINDUP or state == ModelPose.Anim.STRIKE):
 		pose.aim = _tower_aim(true)
+		pose.aim_lock = 1.0
+	pose.pulse_phase = fposmod(pose.time * NucleusPainter.pulse_rate(pose.hp_frac), 1.0)
 	match state:
 		ModelPose.Anim.MOVE:
 			pose.gait_phase = CELL_GAIT
