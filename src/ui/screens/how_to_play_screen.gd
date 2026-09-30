@@ -54,6 +54,7 @@ const START_PX: int = 18
 const CHIP_BLUE: Color = Color("#1e5aa8")
 const CHIP_GREEN: Color = Color("#178a4b")
 const CHIP_GREY: Color = Color("#576574")
+const BODY_TEXT: Color = Color("#576574")
 
 enum Scene { BUILD, DEPLOY, SIEGE, ITERATE }
 
@@ -62,19 +63,22 @@ const MULTIPLIER_WORDS: Dictionary = {2: "Double", 3: "Triple"}
 const PHAGE_ID: String = "bacteriophage"
 const DEFENSE_TAG: String = "defense"
 
-## Deploy markers on card 2, placed along the island's front-right edge at these fractions of its depth.
+## Deploy markers on card 2, on the front-right edge of the band toward the front corner. Each spot is a
+## fraction of the grid's (width - 1, height - 1), so it stays on the band whatever the grid size. Listed
+## back to front; the deployed units are also painted over their markers so they read at this size.
 const DEPLOY_TYPES: Array[String] = ["rhinovirus", "bacteriophage", "staphylococcus"]
-const DEPLOY_FRACTIONS: Array[float] = [0.45, 0.62, 0.8]
-## Card 3: pathogens outside the gap on the right of the demo wall ring (TitleScreen.DEMO_GAP_X).
+const DEPLOY_SPOTS: Array[Vector2] = [Vector2(1.0, 0.55), Vector2(1.0, 0.7), Vector2(1.0, 0.85)]
+## Card 3: a trail of pathogens running from the gap on the right of the demo wall ring
+## (TitleScreen.DEMO_GAP_X) out toward the island's right corner, which on screen is roughly level.
 ## Listed back to front (ascending x + y), the island's depth order.
 const SIEGE_UNITS: Array[Dictionary] = [
-	{"type": "rhinovirus", "cell": Vector2i(28, 17)},
-	{"type": "bacteriophage", "cell": Vector2i(30, 17)},
-	{"type": "rhinovirus", "cell": Vector2i(29, 19)},
-	{"type": "rhinovirus", "cell": Vector2i(28, 21)},
-	{"type": "rhinovirus", "cell": Vector2i(31, 20)},
-	{"type": "staphylococcus", "cell": Vector2i(30, 22)},
-	{"type": "rhinovirus", "cell": Vector2i(29, 24)},
+	{"type": "bacteriophage", "cell": Vector2i(29, 20)},
+	{"type": "rhinovirus", "cell": Vector2i(30, 21)},
+	{"type": "staphylococcus", "cell": Vector2i(32, 20)},
+	{"type": "rhinovirus", "cell": Vector2i(34, 19)},
+	{"type": "rhinovirus", "cell": Vector2i(36, 18)},
+	{"type": "rhinovirus", "cell": Vector2i(38, 17)},
+	{"type": "rhinovirus", "cell": Vector2i(35, 21)},
 ]
 ## Card 4: wall cells on the front edge of the demo ring that are knocked out.
 const BREACH_CELLS: Array[Vector2i] = [Vector2i(18, 27), Vector2i(19, 27), Vector2i(20, 27)]
@@ -118,8 +122,8 @@ class StepChip extends Control:
 		KitDraw.draw_text_centered(self, text, rect, CHIP_PX, 800, Color.WHITE)
 
 
-## Static pathogens standing next to the wall on the Siege card, drawn over the island.
-class SiegeUnits extends Node2D:
+## Static pathogens drawn over a mini island with their model painters.
+class PathogenSprites extends Node2D:
 	var grid_view: GridView = null
 	var units: Array[Dictionary] = []
 
@@ -231,7 +235,8 @@ static func build_deploy_army(cfg: GameConfig, grid: GridModel) -> Army:
 		costs.append(army.unit_cost(type_id))
 	var wallet := Wallet.new(Wallet.sum_costs(costs))
 	for i: int in range(DEPLOY_TYPES.size()):
-		var cell := Vector2i(grid.width - 1, roundi(float(grid.height - 1) * DEPLOY_FRACTIONS[i]))
+		var spot: Vector2 = DEPLOY_SPOTS[i]
+		var cell := Vector2i(roundi(float(grid.width - 1) * spot.x), roundi(float(grid.height - 1) * spot.y))
 		if army.buy(DEPLOY_TYPES[i], wallet):
 			army.deploy(DEPLOY_TYPES[i], cell)
 	return army
@@ -261,7 +266,7 @@ func setup(path: String = GameSettings.DEFAULT_PATH, p_fsm: GameStateMachine = n
 	fsm = p_fsm
 	if cfg == null and fsm != null and fsm.session != null:
 		cfg = fsm.session.config
-	if cfg != null:
+	if cfg != null and cfg != config:
 		_apply_config(cfg)
 
 
@@ -298,8 +303,13 @@ func _apply_config(cfg: GameConfig) -> void:
 		view.set_night(scene != Scene.BUILD)
 		view.deploy_mode = scene == Scene.DEPLOY
 		view.fit_to_rect(Rect2(Vector2.ZERO, ISLAND_SIZE))
-		if scene == Scene.SIEGE:
-			var overlay: SiegeUnits = view.get_node("SiegeUnits") as SiegeUnits
+		var overlay: PathogenSprites = view.get_node_or_null("DeployUnits") as PathogenSprites
+		if overlay != null and army != null:
+			overlay.units.clear()
+			for dep: Dictionary in army.deployments:
+				overlay.units.append({"type": dep["type"], "cell": dep["cell"]})
+		overlay = view.get_node_or_null("SiegeUnits") as PathogenSprites
+		if overlay != null:
 			overlay.queue_redraw()
 
 
@@ -410,11 +420,12 @@ func _build_card(index: int, info: Dictionary, pal: Dictionary) -> void:
 	var view: GridView = (load("res://src/view/grid_view.tscn") as PackedScene).instantiate() as GridView
 	island.add_child(view)
 	grid_views.append(view)
-	if index == Scene.SIEGE:
-		var overlay := SiegeUnits.new()
-		overlay.name = "SiegeUnits"
+	if index == Scene.DEPLOY or index == Scene.SIEGE:
+		var overlay := PathogenSprites.new()
+		overlay.name = "SiegeUnits" if index == Scene.SIEGE else "DeployUnits"
 		overlay.grid_view = view
-		overlay.units = SIEGE_UNITS
+		if index == Scene.SIEGE:
+			overlay.units = SIEGE_UNITS.duplicate()
 		view.add_child(overlay)
 
 	var title := _make_label("Title", str(info["title"]), STEP_TITLE_PX, 800, pal["ink"] as Color)
@@ -422,7 +433,7 @@ func _build_card(index: int, info: Dictionary, pal: Dictionary) -> void:
 	box.add_child(title)
 	step_titles.append(title)
 
-	var body := _make_label("Body", str(info["body"]), STEP_BODY_PX, 400, CHIP_GREY)
+	var body := _make_label("Body", str(info["body"]), STEP_BODY_PX, 400, BODY_TEXT)
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.custom_minimum_size = Vector2(CARD_SIZE.x - CARD_PAD * 2.0, 0.0)

@@ -197,7 +197,22 @@ func test_mini_islands_are_static_demo_bases() -> void:
 	assert_eq(army.deployments.size(), 3)
 	var grid: GridModel = screen.grid_views[1].grid
 	for dep: Dictionary in army.deployments:
-		assert_true(grid.is_deploy_zone(dep["cell"] as Vector2i), "markers sit on the band")
+		var cell: Vector2i = dep["cell"]
+		assert_true(grid.is_deploy_zone(cell), "markers sit on the band")
+		assert_gt(cell.x + cell.y, grid.width + grid.height - 2 - grid.width / 2, "near the front corner")
+	var deployed: HowToPlayScreen.PathogenSprites = screen.grid_views[1].get_node_or_null("DeployUnits") as HowToPlayScreen.PathogenSprites
+	assert_not_null(deployed, "the deployed units are painted over their markers")
+	assert_eq(deployed.units.size(), 3)
+	for i: int in range(3):
+		assert_eq(deployed.units[i]["cell"], army.deployments[i]["cell"])
+	var siege: HowToPlayScreen.PathogenSprites = screen.grid_views[2].get_node_or_null("SiegeUnits") as HowToPlayScreen.PathogenSprites
+	assert_not_null(siege, "the Siege island draws its pathogens")
+	assert_eq(siege.units.size(), 7)
+	assert_eq(siege.grid_view, screen.grid_views[2])
+	for i: int in [0, 1, 3]:
+		assert_null(screen.grid_views[i].get_node_or_null("SiegeUnits"))
+	for i: int in [0, 2, 3]:
+		assert_null(screen.grid_views[i].get_node_or_null("DeployUnits"))
 
 
 func test_islands_do_not_touch_the_session() -> void:
@@ -217,3 +232,19 @@ func test_siege_units_stand_outside_the_wall_in_depth_order() -> void:
 		assert_eq(grid.structure_id_at(cell), 0, "%s is on open ground" % cell)
 		assert_gte(cell.x + cell.y, last, "back to front")
 		last = cell.x + cell.y
+	var first: Vector2i = HowToPlayScreen.SIEGE_UNITS[0]["cell"]
+	var far_x: int = first.x
+	for entry: Dictionary in HowToPlayScreen.SIEGE_UNITS:
+		far_x = maxi(far_x, (entry["cell"] as Vector2i).x)
+	assert_eq(first.x, TitleScreen.DEMO_GAP_X + 2, "the trail starts at the wall gap")
+	assert_gte(far_x - first.x, 8, "and stretches toward the island edge")
+
+
+func test_setup_with_the_same_config_does_not_rebuild_the_islands() -> void:
+	var cfg := _config()
+	var screen := _make_screen(cfg)
+	var grid: GridModel = screen.grid_views[0].grid
+	screen.setup(TEST_PATH, null, cfg)
+	assert_eq(screen.grid_views[0].grid, grid)
+	screen.setup(TEST_PATH, null, _config())
+	assert_ne(screen.grid_views[0].grid, grid, "a new config rebuilds them")

@@ -2,7 +2,7 @@ class_name GameSettings
 extends RefCounted
 
 ## Tiny persistent key/value store for player preferences (user://settings.cfg).
-## Every call re-reads the file, so independent writers (Sfx, HowToPlay) never
+## Every call re-reads the file, so independent writers (Sfx, HowToPlayScreen) never
 ## overwrite each other's keys.
 
 const DEFAULT_PATH: String = "user://settings.cfg"
