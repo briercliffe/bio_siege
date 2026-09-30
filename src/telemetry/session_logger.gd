@@ -38,12 +38,7 @@ func _init_session_file() -> void:
 	if gd != null and "config" in gd and gd.config != null:
 		config_hash = str(gd.config.content_hash)
 
-	var build_str: String = "dev"
-	if FileAccess.file_exists("res://build_info.txt"):
-		var f := FileAccess.open("res://build_info.txt", FileAccess.READ)
-		if f != null:
-			build_str = f.get_as_text().strip_edges()
-			f.close()
+	var build_str: String = BuildInfo.read()
 
 	log_event("session_start", {
 		"config_hash": config_hash,
