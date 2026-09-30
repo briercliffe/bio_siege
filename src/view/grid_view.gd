@@ -26,9 +26,6 @@ const BLOB_RING_ALPHA: float = 0.22
 const DECOR_SEED: int = 11
 const NO_CELL: Vector2i = Vector2i(-99999, -99999)
 
-const MODEL_HEIGHT_T: Dictionary = {"nucleus": 4.1, "macrophage": 3.0, "b_cell": 4.3}
-const DEFAULT_MODEL_HEIGHT_T: float = 3.0
-
 # Day and night theme colours, from the canvas mockup (Field.dc.html).
 const SHADOW_DAY: Color = Color("#7f9fbd")
 const SHADOW_NIGHT: Color = Color("#2c0e15")

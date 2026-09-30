@@ -117,7 +117,7 @@ static func structure_size_px(s: StructureState, proj: IsoProjection) -> Vector2
 	var t: float = proj.tile_px
 	if s.def != null and s.def.has_tag("wall"):
 		return Vector2(2.0 * t * proj.scale, WallRenderer.height_tiles(s.hp, s.max_hp) * t)
-	var h_t: float = float(GridView.MODEL_HEIGHT_T.get(s.type_id, GridView.DEFAULT_MODEL_HEIGHT_T))
+	var h_t: float = ModelRegistry.painter_for(s.type_id).height_tiles()
 	return Vector2(float(s.footprint.x) * t * proj.scale * STRUCTURE_WIDTH_SCALE, h_t * t)
 
 
