@@ -97,10 +97,10 @@ func test_walls_entry_starts_on_the_sheet_layout() -> void:
 	assert_true(viewer.TILE_SIZES.has(40), "T = 40 is selectable for the stripes check")
 	viewer.select_model("walls")
 	await wait_process_frames(2)
-	assert_eq(viewer._walls.cell_count(), cells.size() - 1, "the gap is not built")
-	assert_false(viewer._walls.has_cell(Vector2i(15, 16)))
-	assert_true(viewer._walls.has_post(Vector2i(17, 16)), "T-junction")
-	assert_true(viewer._walls.has_post(Vector2i(14, 16)), "end beside the gap")
+	assert_eq(viewer._walls.renderer.cell_count(), cells.size() - 1, "the gap is not built")
+	assert_false(viewer._walls.renderer.has_cell(Vector2i(15, 16)))
+	assert_true(viewer._walls.renderer.has_post(Vector2i(17, 16)), "T-junction")
+	assert_true(viewer._walls.renderer.has_post(Vector2i(14, 16)), "end beside the gap")
 
 
 func test_wall_tap_modes_toggle_hurt_destroyed_and_attacked() -> void:
@@ -120,8 +120,8 @@ func test_wall_tap_modes_toggle_hurt_destroyed_and_attacked() -> void:
 	assert_true(viewer.wall_attacked.has(Vector2i(13, 16)))
 	assert_false(viewer.tap_wall_cell(Vector2i(0, 0)), "cells outside the layout are ignored")
 	await wait_process_frames(2)
-	assert_false(viewer._walls.has_cell(Vector2i(18, 16)))
-	assert_true(viewer._walls.has_cell(Vector2i(15, 16)))
+	assert_false(viewer._walls.renderer.has_cell(Vector2i(18, 16)))
+	assert_true(viewer._walls.renderer.has_cell(Vector2i(15, 16)))
 	viewer.reset_walls()
 	assert_eq(viewer.wall_gone.keys(), [Vector2i(15, 16)])
 	assert_true(viewer.wall_attacked.is_empty())
@@ -138,6 +138,22 @@ func test_touch_on_the_stage_taps_the_cell_under_it() -> void:
 	ev.position = proj.cell_center(Vector2i(18, 16)) + viewer.stage.position
 	viewer._on_holder_input(ev)
 	assert_true(viewer.wall_hurt.has(Vector2i(18, 16)))
+
+
+func test_stage_and_sheet_walls_keep_their_own_caches() -> void:
+	var viewer: Control = _make_viewer()
+	var stage_proj: IsoProjection = viewer._walls_projection(float(viewer.tile_px))
+	var sheet_proj: IsoProjection = viewer._walls_projection(viewer.WALLS_CELL_TILE_PX)
+	for i: int in range(3):
+		viewer._ensure_walls(viewer._walls, stage_proj)
+		viewer._ensure_walls(viewer._sheet_walls, sheet_proj)
+	assert_eq(viewer._walls.rebuilds, 1, "alternating with the sheet does not rebuild the stage")
+	assert_eq(viewer._sheet_walls.rebuilds, 1)
+	assert_eq(viewer._sheet_walls.renderer.tile_px(), viewer.WALLS_CELL_TILE_PX)
+	viewer.set_wall_tap_mode("hurt")
+	viewer.tap_wall_cell(Vector2i(18, 16))
+	viewer._ensure_walls(viewer._walls, stage_proj)
+	assert_eq(viewer._walls.rebuilds, 2, "a layout change rebuilds")
 
 
 func test_walls_draw_in_every_state() -> void:

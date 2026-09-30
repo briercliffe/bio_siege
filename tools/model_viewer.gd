@@ -135,10 +135,20 @@ var _bg: ColorRect = null
 var _updating_ui: bool = false
 var _exporting: bool = false
 var _post_painter: WallPainter = WallPainter.new(true)
-var _walls: WallRenderer = WallRenderer.new()
+## One cache per projection, so the stage, the contact sheet cells and the walls sheet do not rebuild each
+## other's geometry every frame.
+var _walls: WallsCache = WallsCache.new()
+var _sheet_walls: WallsCache = WallsCache.new()
+var _walls_sheet_walls: WallsCache = WallsCache.new()
 var _walls_order: Array[Vector2i] = []
-var _walls_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
 var _walls_version: int = 0
+
+
+## A WallRenderer and the projection and layout version it was last rebuilt for.
+class WallsCache extends RefCounted:
+	var renderer: WallRenderer = WallRenderer.new()
+	var key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
+	var rebuilds: int = 0
 
 
 ## Size in px of a contact sheet: states are columns, models are rows.
@@ -512,16 +522,17 @@ func _walls_projection(t: float) -> IsoProjection:
 	return proj
 
 
-func _ensure_walls(proj: IsoProjection) -> void:
+func _ensure_walls(cache: WallsCache, proj: IsoProjection) -> void:
 	var key := Vector4(proj.tile_px, proj.origin.x, proj.origin.y, float(_walls_version))
-	if key == _walls_key:
+	if key == cache.key:
 		return
-	_walls_key = key
+	cache.key = key
+	cache.rebuilds += 1
 	var alive: Dictionary = {}
 	for c: Vector2i in wall_cells:
 		if not wall_gone.has(c):
 			alive[c] = true
-	_walls.rebuild(alive, proj)
+	cache.renderer.rebuild(alive, proj)
 	_walls_order.clear()
 	for c: Vector2i in wall_cells:
 		_walls_order.append(c)
@@ -529,24 +540,30 @@ func _ensure_walls(proj: IsoProjection) -> void:
 
 
 ## The layout in depth order. Hit shakes every segment; the death state plays the break on destroyed cells.
-func _draw_walls(ci: CanvasItem, proj: IsoProjection, pose: ModelPose) -> void:
-	_ensure_walls(proj)
+func _draw_walls(ci: CanvasItem, cache: WallsCache, proj: IsoProjection, pose: ModelPose) -> void:
+	_ensure_walls(cache, proj)
+	var walls: WallRenderer = cache.renderer
 	var dead: bool = pose.anim == ModelPose.Anim.DEAD
 	if dead:
 		for c: Vector2i in _walls_order:
 			if wall_gone.has(c):
-				_walls.paint_goo(ci, c, pose.death_t)
-	_walls.paint_shadows(ci)
+				walls.paint_goo(ci, c, pose.death_t)
+	walls.paint_shadows(ci)
 	var crack_alpha: float = UnitLayer.crack_pulse_alpha(pose.time)
 	for c: Vector2i in _walls_order:
 		if wall_gone.has(c):
 			if dead:
-				_walls.paint_break(ci, c, pose.death_t)
+				walls.paint_break(ci, c, pose.death_t)
 			continue
 		var hurt: bool = wall_hurt.has(c)
-		_walls.paint_cell(ci, c, WALL_HURT_FRAC if hurt else 1.0, pose)
 		if wall_attacked.has(c):
-			_walls.paint_cracks(ci, c, hurt, crack_alpha, pose)
+			# The battle order: body, post at full health, then the pulsing cracks in place of the resting ones.
+			walls.paint_body(ci, c, hurt, pose)
+			if not hurt:
+				walls.paint_post(ci, c, pose)
+			walls.paint_cracks(ci, c, hurt, crack_alpha, pose)
+		else:
+			walls.paint_cell(ci, c, WALL_HURT_FRAC if hurt else 1.0, pose)
 
 
 ## Selects a model by id (also updates the option button).
@@ -725,7 +742,7 @@ func _draw_stage(ci: CanvasItem) -> void:
 	var pose: ModelPose = pose_for(model_id, state_index, time_s)
 	if model_id == WALLS_ID:
 		_draw_pad(ci, proj, WALLS_PAD_TILES, night)
-		_draw_walls(ci, _walls_projection(float(tile_px)), pose)
+		_draw_walls(ci, _walls, _walls_projection(float(tile_px)), pose)
 		if show_anchor:
 			_draw_anchor(ci, proj.origin)
 		return
@@ -801,7 +818,7 @@ func _sheet_cell_draw(cell: Control, id: String, state: int) -> void:
 	if id == WALLS_ID:
 		var wp: IsoProjection = _walls_projection(WALLS_CELL_TILE_PX)
 		wp.origin += Vector2(CELL_SIZE) * 0.5 + Vector2(0.0, 20.0)
-		_draw_walls(cell, wp, sheet_pose(id, state))
+		_draw_walls(cell, _sheet_walls, wp, sheet_pose(id, state))
 	else:
 		_draw_pad(cell, proj, CELL_PAD_TILES, night)
 		_draw_model(cell, proj, id, sheet_pose(id, state), true)
@@ -886,7 +903,7 @@ func render_walls_sheet() -> Image:
 		_draw_pad(ci, IsoProjection.new(WALLS_SHEET_TILE_PX, centre), WALLS_PAD_TILES, night)
 		var wp: IsoProjection = _walls_projection(WALLS_SHEET_TILE_PX)
 		wp.origin += centre
-		_draw_walls(ci, wp, pose_for(WALLS_ID, ModelPose.Anim.IDLE, 0.0))
+		_draw_walls(ci, _walls_sheet_walls, wp, pose_for(WALLS_ID, ModelPose.Anim.IDLE, 0.0))
 	vp.add_child(cell)
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
