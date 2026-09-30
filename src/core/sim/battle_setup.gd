@@ -87,6 +87,10 @@ func validate(config: GameConfig) -> PackedStringArray:
 		var type_id: String = str(u.get("type", ""))
 		if type_id.is_empty() or not config.pathogens.has(type_id):
 			errors.append("Unknown pathogen type: '%s'" % type_id)
+		elif u.has("strain"):
+			var strain_val: Variant = u["strain"]
+			if typeof(strain_val) != TYPE_STRING or config.pathogens[type_id].strain(str(strain_val)) == null:
+				errors.append("Unknown strain '%s' for pathogen '%s'" % [str(strain_val), type_id])
 
 		var cell: Vector2i = Vector2i.ZERO
 		var cell_val: Variant = u.get("cell")

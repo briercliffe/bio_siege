@@ -254,14 +254,22 @@ func _on_hud_launch_requested() -> void:
 		"army_counts": army_counts
 	}
 
+	var launch_event: Dictionary = {
+		"seed": session.seed,
+		"army_counts": army_counts,
+		"base_atp": session.last_launch.base_atp,
+		"army_atp": session.last_launch.army_atp,
+		"unspent_atp": session.last_launch.unspent_atp
+	}
+	if session.config != null and session.config.flag("strains"):
+		var strains_used: Dictionary = {}
+		for t_id: Variant in army_counts.keys():
+			strains_used[str(t_id)] = session.army.strain_of(str(t_id))
+		session.last_launch["strains"] = strains_used
+		launch_event["strains"] = strains_used
+
 	if SessionLogger != null and SessionLogger.has_method("log_event"):
-		SessionLogger.log_event("launch", {
-			"seed": session.seed,
-			"army_counts": army_counts,
-			"base_atp": session.last_launch.base_atp,
-			"army_atp": session.last_launch.army_atp,
-			"unspent_atp": session.last_launch.unspent_atp
-		})
+		SessionLogger.log_event("launch", launch_event)
 
 	# 5. fsm.request_transition(GameStateMachine.Phase.INFECTION)
 	if fsm != null:

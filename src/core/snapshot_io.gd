@@ -42,10 +42,14 @@ static func army_to_dict(deployments: Array) -> Dictionary:
 			elif c_val is Array and (c_val as Array).size() >= 2:
 				cx = int((c_val as Array)[0])
 				cy = int((c_val as Array)[1])
-			units_arr.append({
+			var unit_dict: Dictionary = {
 				"type": t,
 				"cell": [cx, cy],
-			})
+			}
+			var strain_id: String = str(d.get("strain", "wild"))
+			if strain_id != "wild":
+				unit_dict["strain"] = strain_id
+			units_arr.append(unit_dict)
 	return {
 		"format": "bio_siege.army",
 		"version": 1,
@@ -328,6 +332,7 @@ static func parse_army(text: String, config: GameConfig) -> Dictionary:
 
 	var units_arr: Array = units_val as Array
 	var units: Array = []
+	var type_strains: Dictionary = {}
 	for i in range(units_arr.size()):
 		var u_item: Variant = units_arr[i]
 		if not (u_item is Dictionary):
@@ -384,10 +389,42 @@ static func parse_army(text: String, config: GameConfig) -> Dictionary:
 					"units": [],
 				}
 
-		units.append({
+		var unit_out: Dictionary = {
 			"type": type_id,
 			"cell": cell,
-		})
+		}
+		if u_dict.has("strain"):
+			var strain_val: Variant = u_dict["strain"]
+			if typeof(strain_val) != TYPE_STRING:
+				return {
+					"ok": false,
+					"error": "Unknown strain '%s' for %s" % [str(strain_val), type_id],
+					"units": [],
+				}
+			var strain_id: String = str(strain_val)
+			if config != null and config.pathogens[type_id].strain(strain_id) == null:
+				return {
+					"ok": false,
+					"error": "Unknown strain '%s' for %s" % [strain_id, type_id],
+					"units": [],
+				}
+			if type_strains.has(type_id) and str(type_strains[type_id]) != strain_id:
+				return {
+					"ok": false,
+					"error": "An army can use only one strain per pathogen type (%s)" % type_id,
+					"units": [],
+				}
+			if strain_id != "wild":
+				unit_out["strain"] = strain_id
+		var eff_strain: String = str(unit_out.get("strain", "wild"))
+		if type_strains.has(type_id) and str(type_strains[type_id]) != eff_strain:
+			return {
+				"ok": false,
+				"error": "An army can use only one strain per pathogen type (%s)" % type_id,
+				"units": [],
+			}
+		type_strains[type_id] = eff_strain
+		units.append(unit_out)
 
 	return {
 		"ok": true,
@@ -533,6 +570,9 @@ static func setup_from_battle(d: Dictionary) -> BattleSetup:
 				cell = c_val
 			elif c_val is Array and (c_val as Array).size() >= 2:
 				cell = Vector2i(int((c_val as Array)[0]), int((c_val as Array)[1]))
-			units_arr.append({"type": t, "cell": cell})
+			var unit_entry: Dictionary = {"type": t, "cell": cell}
+			if u.has("strain"):
+				unit_entry["strain"] = str(u["strain"])
+			units_arr.append(unit_entry)
 
 	return BattleSetup.create(structs_arr, units_arr, seed_val)

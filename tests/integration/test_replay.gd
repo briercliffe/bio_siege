@@ -73,3 +73,22 @@ func test_replay_tampered_config_hash() -> void:
 	var verify_res: Dictionary = Replay.verify(battle_json, config)
 	assert_true(verify_res["ok"])
 	assert_false(verify_res["config_matches"], "Tampered config hash must result in config_matches: false")
+
+
+func test_replay_verify_with_strains() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	cfg.feature_flags["strains"] = true
+	var base: BattleSetup = Scenarios.walled_nucleus(7)
+	var units: Array = [
+		{"type": "rhinovirus", "cell": Vector2i(0, 10), "strain": "capsid_hardening"},
+		{"type": "rhinovirus", "cell": Vector2i(0, 10), "strain": "capsid_hardening"},
+		{"type": "staphylococcus", "cell": Vector2i(0, 9), "strain": "antigenic_masking"},
+	]
+	var setup: BattleSetup = BattleSetup.create(base.structures, units, 7)
+	var sim := BattleSim.new(cfg, setup)
+	while not sim.finished:
+		sim.step()
+	var json: String = SnapshotIO.to_json(SnapshotIO.battle_to_dict(cfg, setup, sim))
+	var res: Dictionary = Replay.verify(json, cfg)
+	assert_true(res["ok"])
+	assert_true(res["match"], "strained battle must reproduce")

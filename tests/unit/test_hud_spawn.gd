@@ -409,3 +409,42 @@ func test_predict_button_and_workflow() -> void:
 	assert_eq(gv.predicted_structure_id, tower_id)
 	assert_false(hud.predict_active)
 
+
+
+func _strain_session(flag_on: bool) -> Session:
+	var cfg: GameConfig = _load_config()
+	cfg.feature_flags["strains"] = flag_on
+	return Session.new(cfg)
+
+func test_no_strain_button_when_flag_off() -> void:
+	var hud: HudSpawn = _setup_hud(_strain_session(false))
+	for c: HudSpawnCard in hud.cards:
+		assert_null(c.find_child("StrainButton", true, false))
+
+func test_strain_button_cycles() -> void:
+	var session: Session = _strain_session(true)
+	var hud: HudSpawn = _setup_hud(session)
+	var card: HudSpawnCard = hud.get_card("rhinovirus")
+	var btn: Button = card.find_child("StrainButton", true, false) as Button
+	assert_not_null(btn)
+	assert_true(btn.custom_minimum_size.y >= 48.0)
+	var def: PathogenDef = session.config.pathogens["rhinovirus"]
+	var expected: Array[String] = ["capsid_hardening", "rapid_replication", "antigenic_masking", "wild"]
+	for v: String in expected:
+		btn.pressed.emit()
+		assert_eq(session.army.strain_of("rhinovirus"), v)
+		assert_eq(btn.text, def.strain(v).display_name)
+
+func test_strain_button_refused_with_units_and_cost_label() -> void:
+	var session: Session = _strain_session(true)
+	var hud: HudSpawn = _setup_hud(session)
+	var card: HudSpawnCard = hud.get_card("rhinovirus")
+	var btn: Button = card.find_child("StrainButton", true, false) as Button
+	btn.pressed.emit()
+	btn.pressed.emit()
+	assert_eq(session.army.strain_of("rhinovirus"), "rapid_replication")
+	assert_eq(card.cost_label.text, "%d ATP" % int(session.army.unit_cost("rhinovirus")["atp"]))
+	assert_true(session.army.buy("rhinovirus", session.wallet))
+	btn.pressed.emit()
+	assert_eq(session.army.strain_of("rhinovirus"), "rapid_replication")
+	assert_eq(hud.last_toast_message, "Remove all %ss to change strain" % session.config.pathogens["rhinovirus"].display_name)

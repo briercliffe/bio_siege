@@ -242,3 +242,55 @@ func test_army_session_integration() -> void:
 	assert_true(ok)
 	assert_eq(session.army.total_count(), 1)
 	assert_eq(session.wallet.get_amount("atp"), 1000 - 10)
+
+
+func _strain_cfg() -> GameConfig:
+	var cfg: GameConfig = _load_config()
+	cfg.feature_flags["strains"] = true
+	return cfg
+
+func test_strain_default_and_set() -> void:
+	var army := Army.new(_strain_cfg())
+	assert_eq(army.strain_of("rhinovirus"), "wild")
+	assert_true(army.set_strain("rhinovirus", "capsid_hardening"))
+	assert_eq(army.strain_of("rhinovirus"), "capsid_hardening")
+	assert_true(army.set_strain("rhinovirus", "wild"))
+	assert_false(army.strain_by_type.has("rhinovirus"))
+
+func test_set_strain_refused() -> void:
+	var cfg: GameConfig = _strain_cfg()
+	var army := Army.new(cfg)
+	var wallet := Wallet.new({"atp": 1000})
+	assert_false(army.set_strain("rhinovirus", "nope"))
+	assert_false(army.set_strain("nope", "wild"))
+	army.buy("rhinovirus", wallet)
+	assert_false(army.set_strain("rhinovirus", "capsid_hardening"), "reserve unit blocks change")
+	army.deploy("rhinovirus", Vector2i(0, 0))
+	assert_false(army.set_strain("rhinovirus", "capsid_hardening"), "deployed unit blocks change")
+	assert_true(army.set_strain("bacteriophage", "capsid_hardening"), "other types are unaffected")
+
+func test_strain_unit_cost_buy_refund() -> void:
+	var cfg: GameConfig = _strain_cfg()
+	var army := Army.new(cfg)
+	var wallet := Wallet.new({"atp": 1000})
+	var def: PathogenDef = cfg.pathogens["rhinovirus"]
+	var expected: int = maxi(1, FixedMath.apply_pct(int(def.cost["atp"]), 80))
+	army.set_strain("rhinovirus", "rapid_replication")
+	assert_eq(army.unit_cost("rhinovirus"), {"atp": expected})
+	army.buy("rhinovirus", wallet)
+	assert_eq(wallet.get_amount("atp"), 1000 - expected)
+	assert_eq(army.total_cost(), {"atp": expected})
+	army.refund_all(wallet)
+	assert_eq(wallet.get_amount("atp"), 1000)
+	assert_eq(army.strain_of("rhinovirus"), "rapid_replication", "refund_all keeps the strain")
+
+func test_strain_deploy_records_strain() -> void:
+	var cfg: GameConfig = _strain_cfg()
+	var army := Army.new(cfg)
+	var wallet := Wallet.new({"atp": 1000})
+	army.set_strain("rhinovirus", "antigenic_masking")
+	army.buy("rhinovirus", wallet)
+	army.deploy("rhinovirus", Vector2i(2, 2))
+	assert_eq(army.deployments[0]["strain"], "antigenic_masking")
+	army.refund_all(wallet)
+	assert_true(army.strain_by_type.has("rhinovirus"))

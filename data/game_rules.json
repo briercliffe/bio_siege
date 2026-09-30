@@ -22,6 +22,7 @@
     "bcell_analysis": false,
     "biofilm": false,
     "phage_hijack": false,
+    "strains": false,
     "intent_lines_default": true
   }
 }

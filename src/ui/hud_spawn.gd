@@ -279,13 +279,35 @@ func _populate_tray() -> void:
 		card.pressed.connect(func(): _on_card_pressed(card))
 		card.buy_requested.connect(_on_card_buy_requested)
 		card.unbuy_requested.connect(_on_card_unbuy_requested)
+		card.strain_cycle_requested.connect(_on_card_strain_cycle_requested)
 		cards.append(card)
+
+	if _strains_enabled() and bottom_tray != null:
+		bottom_tray.custom_minimum_size = Vector2(bottom_tray.custom_minimum_size.x, 260.0)
+		bottom_tray.offset_top = -260.0
+		if scroll_container != null:
+			scroll_container.custom_minimum_size = Vector2(0.0, 232.0)
 
 	var recall_card: HudSpawnCard = (CARD_SCENE.instantiate() as HudSpawnCard) if CARD_SCENE != null else HudSpawnCard.new()
 	cards_container.add_child(recall_card)
 	recall_card.setup_recall()
 	recall_card.pressed.connect(func(): _on_card_pressed(recall_card))
 	cards.append(recall_card)
+
+func _strains_enabled() -> bool:
+	return session != null and session.config != null and session.config.flag("strains")
+
+func _on_card_strain_cycle_requested(type_id: String) -> void:
+	if not _strains_enabled() or session.army == null:
+		return
+	var p_def: PathogenDef = session.config.pathogens.get(type_id)
+	if p_def == null:
+		return
+	var ids: Array[String] = p_def.strain_ids()
+	var idx: int = ids.find(session.army.strain_of(type_id))
+	var next_id: String = ids[(idx + 1) % ids.size()]
+	if not session.army.set_strain(type_id, next_id):
+		_show_toast("Remove all %ss to change strain" % p_def.display_name)
 
 func _sorted_pathogen_ids() -> Array[String]:
 	var p_ids: Array[String] = session.config.pathogen_ids()
@@ -342,6 +364,12 @@ func _update_army_ui() -> void:
 		var res_cnt: int = session.army.reserve_count(c.type_id) if (session != null and session.army != null) else 0
 		var dep_cnt: int = session.army.deployed_count(c.type_id) if (session != null and session.army != null) else 0
 		c.update_counts(res_cnt, dep_cnt)
+		if session != null and session.army != null:
+			c.set_unit_cost(int(session.army.unit_cost(c.type_id).get("atp", 0)))
+			var c_def: PathogenDef = session.config.pathogens.get(c.type_id) if session.config != null else null
+			if _strains_enabled() and c_def != null:
+				var c_strain: StrainDef = c_def.strain(session.army.strain_of(c.type_id))
+				c.setup_strain(c_def, c_strain if c_strain != null else StrainDef.wild())
 		c.update_affordability(wallet_atp)
 
 func _on_card_buy_requested(type_id: String) -> void:
@@ -507,6 +535,14 @@ func import_army(json_text: String) -> bool:
 
 	session.army.refund_all(session.wallet)
 	var units: Array = res.get("units", [])
+	if _strains_enabled():
+		var seen_types: Dictionary = {}
+		for su: Variant in units:
+			if su is Dictionary:
+				var su_type: String = str(su.get("type", ""))
+				if not seen_types.has(su_type):
+					seen_types[su_type] = true
+					session.army.set_strain(su_type, str(su.get("strain", "wild")))
 	var total_units: int = units.size()
 	var deployed_count: int = 0
 	for item: Variant in units:

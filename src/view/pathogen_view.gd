@@ -135,6 +135,15 @@ func _draw() -> void:
 		var frac: float = 1.0 - float(pathogen_state.channel_ticks_left) / float(pathogen_def.hijack_channel_ticks)
 		draw_arc(Vector2.ZERO, entity_size * 0.85, -PI * 0.5, -PI * 0.5 + TAU * clampf(frac, 0.0, 1.0), 32, Color("#e67e22"), 3.0)
 
+	if pathogen_state != null and pathogen_state.strain_id != "wild" and pathogen_def != null:
+		var dots: int = pathogen_def.strain_ids().find(pathogen_state.strain_id)
+		if dots > 0:
+			var dot_y: float = -entity_size * 0.5 - 12.0
+			var spacing: float = 6.0
+			var dot_x0: float = -float(dots - 1) * spacing * 0.5
+			for i: int in range(dots):
+				draw_circle(Vector2(dot_x0 + float(i) * spacing, dot_y), 2.0, Color(1.0, 1.0, 1.0, 0.9))
+
 	# Health bar: shown only when hp < max_hp and hp > 0
 	if hp < max_hp and hp > 0:
 		var bar_w: float = entity_size * 0.8
