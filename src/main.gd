@@ -10,6 +10,8 @@ extends Node
 
 ## Player preferences file. Tests set it before adding Main to the tree.
 var settings_path: String = GameSettings.DEFAULT_PATH
+## Save library folder. Tests set it before adding Main to the tree.
+var saves_root: String = SaveLibrary.DEFAULT_ROOT
 
 func _ready() -> void:
 	add_to_group(SettingsApply.GROUP)
@@ -18,6 +20,7 @@ func _ready() -> void:
 	if fsm != null:
 		fsm.screen_stack = screen_stack
 		fsm.settings_path = settings_path
+		fsm.saves_root = saves_root
 	check_config_errors()
 	if GameData.load_errors.is_empty() and fsm != null:
 		fsm.start()
@@ -25,6 +28,7 @@ func _ready() -> void:
 		debug_overlay.setup(fsm)
 	if fsm != null:
 		fsm.how_to_play_requested.connect(screen_stack.push.bind("how_to_play"))
+		fsm.library_requested.connect(open_library)
 	_show_how_to_play_on_first_launch()
 	GameData.config_reload_failed.connect(_on_config_reload_failed)
 	GameData.config_reloaded.connect(_on_config_reloaded)
@@ -45,6 +49,16 @@ func _on_screen_opened(_id: String) -> void:
 	var how_to_play: HowToPlayScreen = top as HowToPlayScreen
 	if how_to_play != null:
 		how_to_play.setup(settings_path, fsm)
+	var saved: SavedScreen = top as SavedScreen
+	if saved != null:
+		saved.setup(saves_root, fsm)
+
+## Opens the Saved bases and armies screen on one tab ("base" or "army").
+func open_library(kind: String) -> void:
+	screen_stack.push("saved")
+	var saved: SavedScreen = screen_stack.top_screen() as SavedScreen
+	if saved != null:
+		saved.open_tab(kind)
 
 func _on_phase_changed(_from: GameStateMachine.Phase, _to: GameStateMachine.Phase) -> void:
 	screen_stack.clear()

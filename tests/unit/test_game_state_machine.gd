@@ -1,6 +1,8 @@
 extends GutTest
 
 const TEST_SETTINGS_PATH: String = "user://test_gsm_settings.cfg"
+## Never written: the Saved screen only lists it, so the player's library is not touched.
+const TEST_SAVES_ROOT: String = "user://test_gsm_saves"
 
 
 func before_each() -> void:
@@ -388,6 +390,7 @@ func test_main_scene_integration() -> void:
 
 func test_phase_change_clears_open_screens() -> void:
 	var main_node: Node = (load("res://src/main.tscn") as PackedScene).instantiate()
+	main_node.set("saves_root", TEST_SAVES_ROOT)
 	add_child_autoqfree(main_node)
 	var fsm: GameStateMachine = main_node.get_node("GameStateMachine") as GameStateMachine
 	var stack: ScreenStack = main_node.get_node("ScreenStack") as ScreenStack
