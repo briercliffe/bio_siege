@@ -11,6 +11,7 @@ var panel: PanelContainer = null
 var scroll_container: ScrollContainer = null
 var title_label: Label = null
 var reason_label: Label = null
+var score_label: Label = null
 var stats_container: VBoxContainer = null
 
 # Stat value labels
@@ -73,6 +74,8 @@ func _resolve_nodes() -> void:
 		title_label = find_child("TitleLabel", true, false) as Label
 	if reason_label == null:
 		reason_label = find_child("ReasonLabel", true, false) as Label
+	if score_label == null:
+		score_label = find_child("ScoreLabel", true, false) as Label
 	if stats_container == null:
 		stats_container = find_child("StatsContainer", true, false) as VBoxContainer
 
@@ -177,6 +180,14 @@ func _build_ui_fallback() -> void:
 	reason_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	reason_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(reason_label)
+
+	score_label = Label.new()
+	score_label.name = "ScoreLabel"
+	score_label.add_theme_font_size_override("font_size", 22)
+	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	score_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	score_label.visible = false
+	content.add_child(score_label)
 
 	content.add_child(HSeparator.new())
 
@@ -412,6 +423,8 @@ func _populate() -> void:
 	if val_prediction != null and val_prediction.visible:
 		stats["Prediction"] = val_prediction.text
 
+	_populate_score(res, is_attacker_win)
+
 	# 4. ATP split bar
 	base_atp = 0
 	army_atp = 0
@@ -471,6 +484,30 @@ func _populate() -> void:
 
 	_populate_survey()
 	_populate_export()
+
+
+## Raid-score row (raid_score flag). Hidden and absent from stats when the flag is off.
+func _populate_score(res: Dictionary, is_attacker_win: bool) -> void:
+	var enabled: bool = session != null and session.config != null and session.config.flag("raid_score") and res.has("score")
+	if not enabled:
+		if score_label != null:
+			score_label.visible = false
+			score_label.text = ""
+		return
+	var score: int = int(res.get("score", 0))
+	var base_value: int = int(res.get("base_value", 0))
+	var best: int = int(res.get("best_score", session.best_score))
+	stats["score"] = str(score)
+	stats["best_score"] = str(best)
+	if score_label != null:
+		var line: String
+		if is_attacker_win:
+			line = "Score %d: you broke a %d ATP base" % [score, base_value]
+		else:
+			line = "Score %d: the %d ATP base held" % [score, base_value]
+		score_label.text = "%s
+Best this session: %d" % [line, best]
+		score_label.visible = true
 
 
 func _update_new_base_label() -> void:
@@ -728,6 +765,7 @@ static func apply_choice(choice: String, session: Session, fsm: GameStateMachine
 			if fsm != null:
 				fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
 		"new_base":
+			session.best_score = 0
 			if session.wallet != null and session.config != null:
 				session.wallet.reset(session.config.start_wallet)
 			if session.grid != null:

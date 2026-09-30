@@ -385,3 +385,95 @@ func test_export_slot_button() -> void:
 	assert_true(ui.btn_export_logs.custom_minimum_size.y >= 48.0)
 	assert_eq(ui.btn_export_logs.text, "Export playtest logs")
 
+
+
+func _score_result(outcome: String) -> Dictionary:
+	return {
+		"outcome": outcome,
+		"end_reason": "nucleus_destroyed" if outcome == "attacker" else "timeout",
+		"battle_s": 45.0,
+		"score": 760 if outcome == "attacker" else 0,
+		"base_value": 760,
+		"best_score": 900,
+	}
+
+
+func test_score_hidden_when_flag_off() -> void:
+	var session := Session.new(_config)
+	session.last_result = _score_result("attacker")
+	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
+	var ui: ResultsPhase = scene.instantiate() as ResultsPhase
+	add_child_autoqfree(ui)
+	ui.setup(session)
+	assert_eq(ui.get_stat("score"), "")
+	assert_true(ui.score_label == null or not ui.score_label.visible)
+
+
+func test_score_shown_when_flag_on() -> void:
+	var res: ConfigLoadResult = GameConfig.load_from_dir("res://data")
+	var cfg: GameConfig = res.config
+	cfg.feature_flags["raid_score"] = true
+	var session := Session.new(cfg)
+	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
+
+	session.last_result = _score_result("attacker")
+	var ui: ResultsPhase = scene.instantiate() as ResultsPhase
+	add_child_autoqfree(ui)
+	ui.setup(session)
+	assert_true(ui.score_label.visible)
+	assert_true(ui.score_label.text.contains(str(session.last_result["score"])))
+	assert_true(ui.score_label.text.contains("you broke"))
+	assert_true(ui.score_label.text.contains("Best this session: %d" % int(session.last_result["best_score"])))
+	assert_eq(ui.get_stat("score"), str(session.last_result["score"]))
+	assert_eq(ui.get_stat("best_score"), str(session.last_result["best_score"]))
+
+	session.last_result = _score_result("defender")
+	var ui2: ResultsPhase = scene.instantiate() as ResultsPhase
+	add_child_autoqfree(ui2)
+	ui2.setup(session)
+	assert_true(ui2.score_label.visible)
+	assert_true(ui2.score_label.text.contains("held"))
+	assert_eq(ui2.get_stat("score"), "0")
+
+
+func test_best_score_reset_only_on_new_base() -> void:
+	var session := Session.new(_config)
+	var fsm := GameStateMachine.new()
+	add_child_autoqfree(fsm)
+	fsm.session = session
+	session.best_score = 500
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("re_raid", session, fsm)
+	assert_eq(session.best_score, 500)
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("edit_base", session, fsm)
+	assert_eq(session.best_score, 500)
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("new_base", session, fsm)
+	assert_eq(session.best_score, 0)
+
+
+func test_infection_phase_writes_score_only_when_flag_on() -> void:
+	for flag_on: bool in [false, true]:
+		var res: ConfigLoadResult = GameConfig.load_from_dir("res://data")
+		var cfg: GameConfig = res.config
+		cfg.feature_flags["raid_score"] = flag_on
+		var session := Session.new(cfg)
+		session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
+		var layout: Array[Dictionary] = session.grid.to_layout()
+		session.battle_setup = BattleSetup.create(layout, [], session.seed)
+		var sim: BattleSim = SimFixtures.make_sim(layout, [], session.seed, cfg)
+		sim.run_to_end()
+		var inf := InfectionPhase.new()
+		add_child_autoqfree(inf)
+		inf.session = session
+		inf._on_battle_finished(sim)
+		var result: Dictionary = session.last_result
+		assert_eq(result.has("score"), flag_on)
+		assert_eq(result.has("base_value"), flag_on)
+		assert_eq(result.has("best_score"), flag_on)
+		if flag_on:
+			var expected: int = RaidScore.compute(cfg, layout, sim.outcome)
+			assert_eq(int(result["score"]), expected)
+			assert_eq(int(result["base_value"]), int(cfg.structures["macrophage"].cost.get("atp", 0)))
+			assert_eq(session.best_score, expected)
