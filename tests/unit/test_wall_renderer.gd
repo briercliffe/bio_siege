@@ -198,6 +198,51 @@ func test_cached_geometry_shares_vertices_and_stays_in_range() -> void:
 			assert_gt(geo.cracks_hurt[0].y, geo.cracks[0].y, "hurt cracks sit on the lower top face")
 
 
+func _has_point(points: PackedVector2Array, p: Vector2) -> bool:
+	for q: Vector2 in points:
+		if q.distance_to(p) < 0.001:
+			return true
+	return false
+
+
+func _has_stripe(colors: PackedColorArray) -> bool:
+	return colors.has(WallRenderer.LEFT_STRIPE) or colors.has(WallRenderer.RIGHT_STRIPE)
+
+
+func test_cached_tops_sit_at_the_full_and_damaged_heights() -> void:
+	var t: float = 23.0
+	var proj := IsoProjection.new(t, Vector2(300.0, 40.0))
+	var r := WallRenderer.new()
+	var cell := Vector2i(4, 6)
+	r.rebuild(_cells_set([cell]), proj)
+	var geo: WallRenderer.CellGeo = r.cell_geo(cell)
+	# The coarse top is square, so the core's ground corner is a top vertex, lifted by the extrusion.
+	var corner: Vector2 = proj.ground_to_screen(Vector2(cell) + Vector2(WallRenderer.INSET_T, WallRenderer.INSET_T))
+	var full := corner + Vector2(0.0, -0.8 * t)
+	var damaged := corner + Vector2(0.0, -0.55 * t)
+	assert_true(_has_point(geo.body.points, full), "full-height top at -0.8 T")
+	assert_false(_has_point(geo.body.points, damaged))
+	assert_true(_has_point(geo.body_hurt.points, damaged), "damaged top at -0.55 T")
+	assert_false(_has_point(geo.body_hurt.points, full))
+	var front: Vector2 = proj.ground_to_screen(Vector2(cell) + Vector2(WallRenderer.INSET_T + WallRenderer.THICK_T, WallRenderer.INSET_T + WallRenderer.THICK_T))
+	assert_true(_has_point(geo.body.points, front), "the faces reach the ground at the front corner")
+	assert_true(_has_point(geo.body.points, front + Vector2(0.0, -0.8 * t)))
+	var crack_lift: float = geo.cracks[0].y - geo.cracks_hurt[0].y
+	assert_almost_eq(crack_lift, -(0.8 - 0.55) * t, 0.001, "cracks follow the top down")
+
+
+func test_stripes_only_in_the_fine_build() -> void:
+	var walls: Dictionary = _run(Vector2i(0, 0), Vector2i(3, 0))
+	var coarse := WallRenderer.new()
+	coarse.rebuild(walls, IsoProjection.new(23.0, Vector2.ZERO))
+	var fine := WallRenderer.new()
+	fine.rebuild(walls, IsoProjection.new(40.0, Vector2.ZERO))
+	for cell_var: Variant in walls:
+		assert_false(_has_stripe(coarse.cell_geo(cell_var).body.colors), "no stripe quads at T = 23")
+		assert_false(_has_stripe(coarse.cell_geo(cell_var).body_hurt.colors))
+		assert_true(_has_stripe(fine.cell_geo(cell_var).body.colors), "stripes at T = 40")
+
+
 func test_coarse_build_below_fine_size_uses_fewer_triangles() -> void:
 	var walls: Dictionary = _run(Vector2i(0, 0), Vector2i(4, 0))
 	var coarse := WallRenderer.new()
@@ -326,6 +371,17 @@ func test_destroyed_wall_leaves_a_gap_goo_and_a_short_break() -> void:
 	assert_eq(layer._goo.size(), 1, "goo stays")
 
 
+func test_wall_that_dies_without_an_event_updates_posts_in_the_same_frame() -> void:
+	var sim: BattleSim = _wall_sim([Vector2i(5, 5), Vector2i(6, 5), Vector2i(7, 5)], [])
+	var layer: UnitLayer = _layer(sim)
+	var mid: StructureState = _wall_at(sim, Vector2i(6, 5))
+	assert_false(layer.build_draw_order().has(Vector2i(UnitLayer.KIND_WALL_POST, mid.id)), "straight middle")
+	_wall_at(sim, Vector2i(7, 5)).alive = false
+	var order: Array[Vector2i] = layer.build_draw_order()
+	assert_true(order.has(Vector2i(UnitLayer.KIND_WALL_POST, mid.id)), "the new end has its post on the first frame")
+	assert_false(layer.walls.has_cell(Vector2i(7, 5)))
+
+
 func test_unit_layer_draws_walls_without_errors() -> void:
 	var sim: BattleSim = _wall_sim([Vector2i(5, 5), Vector2i(6, 5), Vector2i(6, 6)], [{"type": "rhinovirus", "cell": Vector2i(3, 5)}])
 	var layer: UnitLayer = _layer(sim)
@@ -364,4 +420,52 @@ func test_grid_view_rebuilds_walls_on_place_and_remove() -> void:
 	gv.set_ghost("mucous_wall", Vector2i(10, 10), true)
 	gv.queue_redraw()
 	await wait_process_frames(2)
-	assert_true(gv._ghost_walls.has_cell(Vector2i(10, 10)))
+	assert_true(gv._ghost_canvas.walls.has_cell(Vector2i(10, 10)))
+
+
+func test_grid_view_ghost_wall_is_baked_opaque_and_faded_as_one_group() -> void:
+	var session := Session.new(config)
+	var gv := GridView.new()
+	add_child_autofree(gv)
+	gv.setup(session.grid, session.config)
+	gv.fit_to_rect(Rect2(0, 0, 640, 520))
+	gv.set_ghost("mucous_wall", Vector2i(10, 10), true)
+	gv.queue_redraw()
+	await wait_process_frames(2)
+	assert_true(gv._ghost_group.visible)
+	assert_eq(gv._ghost_group.self_modulate.a, PlaceholderBillboard.GHOST_OPACITY, "one fade for the whole wall")
+	var geo: WallRenderer.CellGeo = gv._ghost_canvas.walls.cell_geo(Vector2i(10, 10))
+	assert_true(geo.body.colors.has(WallRenderer.OUTLINE), "the outline is baked opaque, not pre-faded")
+	assert_true(geo.post_tris.colors.has(WallRenderer.POST_M))
+	assert_eq(gv._ghost_group.get_child_count(), 1)
+	assert_eq(gv.get_child_count(), 0, "the group is an internal child")
+	gv.set_ghost("macrophage", Vector2i(10, 10), true)
+	gv.queue_redraw()
+	await wait_process_frames(2)
+	assert_false(gv._ghost_group.visible, "a tower ghost hides the wall ghost")
+	gv.set_ghost("mucous_wall", Vector2i(11, 10), true)
+	gv.queue_redraw()
+	await wait_process_frames(2)
+	assert_true(gv._ghost_group.visible)
+	gv.clear_ghost()
+	assert_false(gv._ghost_group.visible)
+
+
+func test_grid_view_rebuilds_walls_when_the_projection_changes() -> void:
+	var session := Session.new(config)
+	var gv := GridView.new()
+	add_child_autofree(gv)
+	gv.setup(session.grid, session.config)
+	assert_gt(session.grid.place("mucous_wall", Vector2i(8, 8), Wallet.new({"atp": 1000})), 0)
+	gv.fit_to_rect(Rect2(0, 0, 640, 520))
+	gv._rebuild_items()
+	var small_t: float = gv._walls.tile_px()
+	assert_eq(small_t, gv.projection.tile_px)
+	var foot_before: Vector2 = gv._walls.cell_geo(Vector2i(8, 8)).foot
+	gv._walls_dirty = false
+	gv.fit_to_rect(Rect2(0, 0, 1280, 1040))
+	gv._rebuild_items()
+	assert_ne(gv._walls.tile_px(), small_t, "a new fit rebuilds the walls at the new tile size")
+	assert_eq(gv._walls.tile_px(), gv.projection.tile_px)
+	assert_eq(gv._walls.cell_geo(Vector2i(8, 8)).foot, gv.projection.cell_center(Vector2i(8, 8)))
+	assert_ne(gv._walls.cell_geo(Vector2i(8, 8)).foot, foot_before)

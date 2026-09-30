@@ -196,13 +196,15 @@ func _collect() -> void:
 	_breached.clear()
 	if sim == null or projection == null:
 		return
+	# A wall that died without an event reaching the view still leaves its gap, before any post is read.
+	if not _wall_cache_matches_sim():
+		_walls_dirty = true
 	_refresh_wall_cache()
 	for p: PathogenState in sim.pathogens:
 		if p.alive:
 			_take_item(KIND_PATHOGEN, p.id, IsoProjection.depth_key(pathogen_anchor(p)), -1.0)
 			if p.blocker_id != 0:
 				_breached[p.blocker_id] = true
-	var live_walls: int = 0
 	for s: StructureState in sim.structures:
 		if not s.alive:
 			continue
@@ -210,15 +212,11 @@ func _collect() -> void:
 		_take_item(KIND_STRUCTURE, s.id, key, -1.0)
 		if s.def == null or not s.def.has_tag("wall"):
 			continue
-		live_walls += 1
 		var hurt: bool = s.hp * 2 < s.max_hp
 		if not hurt and walls.has_post(s.origin):
 			_take_item(KIND_WALL_POST, s.id, key + WALL_POST_BIAS, -1.0)
 		if hurt or _breached.has(s.id):
 			_take_item(KIND_WALL_CRACKS, s.id, key + WALL_CRACKS_BIAS, -1.0)
-	# A wall that died without an event reaching the view still leaves its gap on the next frame.
-	if live_walls != _wall_cells.size():
-		_walls_dirty = true
 
 	_expired.clear()
 	for sid_var: Variant in _dying_s:
@@ -287,6 +285,17 @@ func _draw() -> void:
 				var cs: StructureState = sim.structure(item.id)
 				var alpha: float = crack_pulse_alpha(view_time) if _breached.has(cs.id) else WallRenderer.CRACK_ALPHA
 				walls.paint_cracks(self, cs.origin, cs.hp * 2 < cs.max_hp, alpha, _wall_part_pose(cs))
+
+
+## True when the cached wall cells are exactly the live wall cells of the sim.
+func _wall_cache_matches_sim() -> bool:
+	var live: int = 0
+	for s: StructureState in sim.structures:
+		if s.alive and s.def != null and s.def.has_tag("wall"):
+			live += 1
+			if not _wall_cells.has(s.origin):
+				return false
+	return live == _wall_cells.size()
 
 
 func _refresh_wall_cache() -> void:

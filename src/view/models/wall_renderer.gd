@@ -120,8 +120,6 @@ class CellGeo extends RefCounted:
 	var cracks_hurt: PackedVector2Array = PackedVector2Array()
 
 
-## Tints the baked colours, for ghost previews. Applied by rebuild(); opaque white is a no-op.
-var modulate: Color = Color.WHITE
 ## Screen offset added to every draw, for painters that bake a lone cell around the local origin.
 var offset: Vector2 = Vector2.ZERO
 
@@ -355,9 +353,6 @@ func _commit() -> Tris:
 	tris.points = _verts
 	tris.colors = _cols
 	tris.indices = _idx
-	if modulate != Color.WHITE:
-		for i: int in range(tris.colors.size()):
-			tris.colors[i] *= modulate
 	return tris
 
 
@@ -580,7 +575,7 @@ func _build_crack_colours() -> void:
 	_crack_cols.clear()
 	for step: int in range(CRACK_ALPHA_STEPS + 1):
 		var a: float = float(step) / float(CRACK_ALPHA_STEPS)
-		_crack_cols.append(PackedColorArray([Color(CRACK.r * modulate.r, CRACK.g * modulate.g, CRACK.b * modulate.b, a * modulate.a)]))
+		_crack_cols.append(PackedColorArray([Color(CRACK, a)]))
 
 
 ## Two diagonal bands across the crack square on the top face at `lift_px`, as one triangle list.

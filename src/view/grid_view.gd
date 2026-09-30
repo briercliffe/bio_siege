@@ -150,10 +150,34 @@ var _g_item: StructureItem = null
 # Walls are connected segments, cached by WallRenderer and rebuilt only when a wall is placed or removed or
 # the projection changes. The ghost preview has its own lone-cell renderer.
 var _walls: WallRenderer = WallRenderer.new()
-var _ghost_walls: WallRenderer = WallRenderer.new()
 var _walls_dirty: bool = true
 var _walls_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
 var _still_pose: ModelPose = ModelPose.new()
+## The ghost wall is painted opaque inside a CanvasGroup whose self_modulate fades the composited result
+## once. Per-vertex alpha would let the outline under the top and the post's hidden parts show through.
+## Children paint after _draw(), so the ghost wall sits above the markers and the prediction.
+var _ghost_group: CanvasGroup = null
+var _ghost_canvas: GhostWallCanvas = null
+
+
+class GhostWallCanvas extends Node2D:
+	var walls: WallRenderer = WallRenderer.new()
+	var cell: Vector2i = Vector2i.ZERO
+	var pose: ModelPose = ModelPose.new()
+
+	func _draw() -> void:
+		walls.paint_shadows(self)
+		walls.paint_cell(self, cell, 1.0, pose)
+
+
+func _init() -> void:
+	_ghost_group = CanvasGroup.new()
+	_ghost_group.name = "GhostWall"
+	_ghost_group.visible = false
+	_ghost_group.self_modulate = Color(1.0, 1.0, 1.0, PlaceholderBillboard.GHOST_OPACITY)
+	_ghost_canvas = GhostWallCanvas.new()
+	_ghost_group.add_child(_ghost_canvas)
+	add_child(_ghost_group, false, Node.INTERNAL_MODE_BACK)
 
 func set_draw_structures(val: bool) -> void:
 	draw_structures = val
@@ -281,6 +305,7 @@ func clear_ghost() -> void:
 		_has_ghost = false
 		_ghost_type_id = ""
 		_g_item = null
+		_hide_ghost_wall()
 		queue_redraw()
 
 func cell_to_local_center(cell: Vector2i) -> Vector2:
@@ -574,6 +599,7 @@ func _rebuild_ghost() -> void:
 	_g_range_fill.clear()
 	_g_range_dashes = PackedVector2Array()
 	if not _has_ghost or _ghost_type_id.is_empty() or grid == null:
+		_hide_ghost_wall()
 		return
 	_ensure_island()
 	var sdef: StructureDef = config.structures.get(_ghost_type_id) if config != null else null
@@ -585,8 +611,9 @@ func _rebuild_ghost() -> void:
 	_g_border = _closed(_g_fill)
 	_g_item = _make_item(0, _ghost_type_id, _ghost_origin, footprint)
 	if _g_item.kind == 1:
-		_ghost_walls.modulate = Color(1.0, 1.0, 1.0, PlaceholderBillboard.GHOST_OPACITY)
-		_ghost_walls.rebuild({_ghost_origin: true}, projection)
+		_show_ghost_wall(_ghost_origin)
+	else:
+		_hide_ghost_wall()
 
 	var reach: int = int(ceilf(DOT_RADIUS_TILES))
 	var cx: int = int(floorf(center_g.x))
@@ -718,16 +745,25 @@ func _draw_plates(k: float) -> void:
 			draw_colored_polygon(item.plate, NUCLEUS_PLATE)
 			draw_polyline(item.plate_rim, NUCLEUS_PLATE_RIM, 2.0 * k, true)
 
+func _show_ghost_wall(cell: Vector2i) -> void:
+	_ghost_canvas.cell = cell
+	_ghost_canvas.walls.rebuild({cell: true}, projection)
+	_ghost_group.visible = true
+	_ghost_canvas.queue_redraw()
+
+
+func _hide_ghost_wall() -> void:
+	_ghost_group.visible = false
+
+
 func _draw_structure_items() -> void:
 	for item: StructureItem in _items:
 		_draw_item(item, false)
 
 func _draw_item(item: StructureItem, ghost: bool) -> void:
 	if item.kind == 1:
-		if ghost:
-			_ghost_walls.paint_shadows(self)
-			_ghost_walls.paint_cell(self, item.cell, 1.0, _still_pose)
-		else:
+		# The ghost wall is painted by _ghost_canvas.
+		if not ghost:
 			_walls.paint_cell(self, item.cell, 1.0, _still_pose)
 		return
 	var col: Color = item.color
