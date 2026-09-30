@@ -20,6 +20,8 @@ var path_version: int = -1    # grid_version the path was computed for
 var attack_cooldown: int = 0
 var strain_id: String = "wild"     # ID-03 fills this from the setup
 var analysis_rate_pct: int = 100   # how fast B-Cells analyze this strain (100 = x1)
+var channel_target_id: int = 0     # structure being hijacked, 0 = none
+var channel_ticks_left: int = 0
 
 static func create(p_id: int, p_type_id: String, p_def: PathogenDef, p_cell: Vector2i) -> PathogenState:
 	var s := PathogenState.new()

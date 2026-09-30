@@ -250,6 +250,14 @@ func _route_event(ev: Dictionary) -> void:
 			for g_var: Variant in ev.get("groups", []):
 				_biofilm_max_group = maxi(_biofilm_max_group, (g_var as Array).size())
 
+		SimEvents.HIJACK_COMPLETE:
+			var hsid: int = int(ev.get("structure_id", 0))
+			if _structure_views.has(hsid):
+				var hsv: StructureView = _structure_views[hsid]
+				if is_instance_valid(hsv):
+					var hrate: int = session.config.tick_rate if (session != null and session.config != null and session.config.tick_rate > 0) else 20
+					hsv.set_hijacked(float(int(ev.get("duration_ticks", 0))) / float(hrate))
+
 		SimEvents.TOWER_FIRED:
 			Sfx.play("tower_fire")
 
@@ -383,6 +391,11 @@ func _on_battle_finished(sim: BattleSim) -> void:
 		if session.config != null and session.config.flag("biofilm"):
 			session.last_result["biofilm_max_group"] = _biofilm_max_group
 			session.last_result["biofilm_changes"] = _biofilm_changes
+
+		if session.config != null and session.config.flag("phage_hijack"):
+			session.last_result["hijacks_completed"] = sim.hijacks_completed
+			session.last_result["hijacks_interrupted"] = sim.hijacks_interrupted
+			session.last_result["pathogens_consumed"] = sim.pathogens_consumed
 
 		var pred_id: int = session.prediction_structure_id if session != null else 0
 		# Kept with the result so a config applied on leaving INFECTION cannot erase it.

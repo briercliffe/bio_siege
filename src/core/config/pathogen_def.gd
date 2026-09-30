@@ -22,6 +22,10 @@ var biofilm_link_mt: int = 0
 var biofilm_break_mt: int = 0
 var biofilm_damage_taken_pct: int = 100
 var biofilm_regroup_ticks: int = 0
+var has_hijack: bool = false
+var hijack_channel_ticks: int = 0
+var hijack_disable_ticks: int = 0
+var hijack_target_tags: PackedStringArray = PackedStringArray()
 
 func has_tag(t: String) -> bool:
 	return tags.has(t)

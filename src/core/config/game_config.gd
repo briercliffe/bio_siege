@@ -314,6 +314,16 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 			p.biofilm_damage_taken_pct = roundi(float(bf.get("damage_taken_multiplier", 1.0)) * 100.0)
 			p.biofilm_regroup_ticks = maxi(1, roundi(float(bf.get("regroup_interval_s", 1.0)) * float(config.tick_rate)))
 
+		var hj_cfg: Variant = p_data.get("hijack", null)
+		if hj_cfg is Dictionary:
+			var hj: Dictionary = hj_cfg
+			p.has_hijack = true
+			p.hijack_channel_ticks = maxi(1, roundi(float(hj.get("channel_s", 1.0)) * float(config.tick_rate)))
+			p.hijack_disable_ticks = maxi(1, roundi(float(hj.get("disable_s", 1.0)) * float(config.tick_rate)))
+			p.hijack_target_tags = PackedStringArray()
+			for t_var: Variant in hj.get("target_tags", []):
+				p.hijack_target_tags.append(str(t_var))
+
 		config.pathogens[id] = p
 
 	result.config = config
@@ -350,6 +360,37 @@ static func _validate_biofilm(id: String, bf_val: Variant, errors: PackedStringA
 		errors.append("pathogens.json: %s.biofilm.damage_taken_multiplier: must be > 0 and <= 1 (got %s)" % [id, _format_val(bf["damage_taken_multiplier"])])
 	if float(bf["regroup_interval_s"]) <= 0.0:
 		errors.append("pathogens.json: %s.biofilm.regroup_interval_s: must be > 0 (got %s)" % [id, _format_val(bf["regroup_interval_s"])])
+
+static func _validate_hijack(id: String, hj_val: Variant, errors: PackedStringArray) -> void:
+	if typeof(hj_val) != TYPE_DICTIONARY:
+		errors.append("pathogens.json: %s.hijack: must be a JSON object (got %s)" % [id, _format_val(hj_val)])
+		return
+	var hj: Dictionary = hj_val
+	var hj_keys: Array[String] = ["channel_s", "disable_s", "target_tags"]
+	for hk_var: Variant in hj.keys():
+		var hk: String = str(hk_var)
+		if not hj_keys.has(hk):
+			errors.append("pathogens.json: %s.hijack.%s: unknown key (got %s)" % [id, hk, hk])
+	for num_key: String in ["channel_s", "disable_s"]:
+		if not hj.has(num_key):
+			errors.append("pathogens.json: %s.hijack.%s: missing required field (got null)" % [id, num_key])
+		elif not _is_number(hj[num_key]):
+			errors.append("pathogens.json: %s.hijack.%s: must be a number (got %s)" % [id, num_key, _format_val(hj[num_key])])
+		elif float(hj[num_key]) <= 0.0:
+			errors.append("pathogens.json: %s.hijack.%s: must be > 0 (got %s)" % [id, num_key, _format_val(hj[num_key])])
+	if not hj.has("target_tags"):
+		errors.append("pathogens.json: %s.hijack.target_tags: missing required field (got null)" % [id])
+	elif typeof(hj["target_tags"]) != TYPE_ARRAY:
+		errors.append("pathogens.json: %s.hijack.target_tags: must be an array of strings (got %s)" % [id, _format_val(hj["target_tags"])])
+	else:
+		var tags: Array = hj["target_tags"]
+		if tags.is_empty():
+			errors.append("pathogens.json: %s.hijack.target_tags: cannot be empty (got empty)" % [id])
+		for t_var: Variant in tags:
+			if typeof(t_var) != TYPE_STRING:
+				errors.append("pathogens.json: %s.hijack.target_tags: tag must be a string (got %s)" % [id, _format_val(t_var)])
+			elif not KNOWN_TAGS.has(str(t_var)):
+				errors.append("pathogens.json: %s.hijack.target_tags: unknown tag (got %s)" % [id, str(t_var)])
 
 static func _validate_analysis(id: String, s_data: Dictionary, errors: PackedStringArray) -> void:
 	var an_val: Variant = s_data["analysis"]
@@ -783,7 +824,7 @@ static func _validate_pathogens(data: Dictionary, errors: PackedStringArray) -> 
 		"display_name", "role", "cost", "hp", "speed_tiles_s", "attack",
 		"tags", "targeting", "damage_multipliers", "placeholder", "levels"
 	]
-	var optional_keys: Array[String] = ["biofilm"]
+	var optional_keys: Array[String] = ["biofilm", "hijack"]
 
 	for id_var: Variant in data.keys():
 		var id: String = str(id_var)
@@ -808,6 +849,8 @@ static func _validate_pathogens(data: Dictionary, errors: PackedStringArray) -> 
 
 		if p_data.has("biofilm"):
 			_validate_biofilm(id, p_data["biofilm"], errors)
+		if p_data.has("hijack"):
+			_validate_hijack(id, p_data["hijack"], errors)
 
 		if p_data.has("display_name"):
 			var dn: Variant = p_data["display_name"]

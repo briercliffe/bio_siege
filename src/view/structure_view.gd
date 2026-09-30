@@ -13,6 +13,8 @@ var is_breached: bool = false
 var _flash_tween: Tween = null
 var _badge_colors: Array[Color] = []
 var _drawn_ring_pct: int = -1
+var _hijack_left_s: float = 0.0
+var _drawn_hijack_s: int = 0
 
 
 func setup(p_state: StructureState, p_def: StructureDef, p_tile_px: int, p_vfx_pool: NodePool) -> void:
@@ -27,6 +29,8 @@ func setup(p_state: StructureState, p_def: StructureDef, p_tile_px: int, p_vfx_p
 	is_breached = false
 	_badge_colors.clear()
 	_drawn_ring_pct = -1
+	_hijack_left_s = 0.0
+	_drawn_hijack_s = 0
 
 	position = Vector2(p_state.origin) * float(tile_px)
 	modulate = Color.WHITE
@@ -38,6 +42,11 @@ func set_breached(val: bool) -> void:
 	if is_breached != val:
 		is_breached = val
 		queue_redraw()
+
+
+func set_hijacked(duration_s: float) -> void:
+	_hijack_left_s = maxf(duration_s, 0.0)
+	queue_redraw()
 
 
 func on_damaged(amount: int, new_hp: int) -> void:
@@ -53,6 +62,7 @@ func on_damaged(amount: int, new_hp: int) -> void:
 
 func on_destroyed() -> void:
 	hp = 0
+	_hijack_left_s = 0.0
 	visible = false
 
 	if _flash_tween != null and _flash_tween.is_valid():
@@ -91,7 +101,12 @@ func _analysis_ring_pct() -> int:
 	return structure_state.analysis_progress_pct(key)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _hijack_left_s > 0.0:
+		_hijack_left_s = maxf(0.0, _hijack_left_s - delta)
+		queue_redraw()
+	elif _drawn_hijack_s != 0:
+		queue_redraw()
 	if is_breached:
 		queue_redraw()
 	elif _analysis_ring_pct() != _drawn_ring_pct:
@@ -178,6 +193,20 @@ func _draw() -> void:
 		draw_rect(Rect2(bar_x, bar_y, bar_w * ratio, bar_h), fill_color, true)
 
 	_draw_analysis(w, h)
+	_draw_hijack(w, h)
+
+
+func _draw_hijack(w: float, h: float) -> void:
+	if _hijack_left_s <= 0.0:
+		_drawn_hijack_s = 0
+		return
+	draw_rect(Rect2(0.0, 0.0, w, h), Color("#8e44ad", 0.4), true)
+	_drawn_hijack_s = ceili(_hijack_left_s)
+	var font: Font = ThemeDB.fallback_font
+	var fs: int = 16
+	var txt: String = "%d" % _drawn_hijack_s
+	var tsize: Vector2 = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_CENTER, -1, fs)
+	draw_string(font, Vector2((w - tsize.x) * 0.5, (h + tsize.y * 0.5) * 0.5 + 2.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
 
 
 func _draw_analysis(w: float, h: float) -> void:
