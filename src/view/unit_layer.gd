@@ -330,4 +330,8 @@ func _draw_pathogen(p: PathogenState) -> void:
 			target_ground = structure_anchor(ts)
 	var moved: float = driver.moved_since_last(p.id, ground) if p.alive else 0.0
 	var pose: ModelPose = driver.pose_for_pathogen(p, sim.tick, ground, target_ground, moved, view_time)
-	ModelRegistry.painter_for(p.type_id).paint(self, projection.ground_to_screen(ground), pose, projection.tile_px)
+	var painter: ModelPainter = ModelRegistry.painter_for(p.type_id)
+	var foot: Vector2 = projection.ground_to_screen(ground)
+	# A painter's ground decals (trail, shockwave) go down just before the unit, so they sort with it.
+	painter.paint_ground(self, foot, pose, projection.tile_px)
+	painter.paint(self, foot, pose, projection.tile_px)

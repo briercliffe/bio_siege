@@ -37,6 +37,10 @@ static func _create(type_id: String) -> ModelPainter:
 	match type_id:
 		"rhinovirus":
 			return RhinoPainter.new()
+		"bacteriophage":
+			return PhagePainter.new()
+		"staphylococcus":
+			return StaphPainter.new()
 	var p := PlaceholderPainter.new()
 	p.size_t = Vector2(DEFAULT_PATHOGEN_WIDTH_T, float(HEIGHT_T.get(type_id, DEFAULT_HEIGHT_T)))
 	return p

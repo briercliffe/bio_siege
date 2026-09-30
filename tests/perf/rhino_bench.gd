@@ -7,6 +7,7 @@ extends Control
 ##
 ## Command line, for a scripted run on the desktop (needs a renderer, so not --headless):
 ##   godot --path . tests/perf/rhino_bench.tscn -- --bench-seconds=15 --bench-out=<absolute path to a .txt>
+## Add --bench-mix=rhinovirus,bacteriophage,staphylococcus to cycle the army through those types instead.
 ## After the warm-up and the requested seconds it writes the summary to the file and quits.
 
 const UNIT_COUNT: int = 200
@@ -29,16 +30,17 @@ var _since_refresh: float = 0.0
 var _clock: float = 0.0
 var _run_s: float = -1.0
 var _out_path: String = ""
+var _mix: Array[String] = ["rhinovirus"]
 var _summary: Dictionary = {}
 
 
 ## Walled Nucleus with `count` Rhinoviruses spread evenly over `ring`. Pure: the same inputs give the same setup.
-static func build_setup(ring: Array[Vector2i], count: int, seed: int) -> BattleSetup:
+static func build_setup(ring: Array[Vector2i], count: int, seed: int, types: Array[String] = ["rhinovirus"]) -> BattleSetup:
 	var base: BattleSetup = Scenarios.walled_nucleus(seed)
 	var units: Array = []
 	if not ring.is_empty():
 		for i: int in range(count):
-			units.append({"type": "rhinovirus", "cell": ring[i * ring.size() / count]})
+			units.append({"type": types[i % types.size()], "cell": ring[i * ring.size() / count]})
 	return BattleSetup.create(base.structures, units, seed)
 
 
@@ -64,15 +66,15 @@ func _ready() -> void:
 	if cfg == null:
 		cfg = GameConfig.load_from_dir("res://data").config
 	session = Session.new(cfg)
+	_parse_cli()
 	_start_battle()
 	if btn_back != null and not btn_back.pressed.is_connected(_on_btn_back_pressed):
 		btn_back.pressed.connect(_on_btn_back_pressed)
-	_parse_cli()
 	_refresh()
 
 
 func _start_battle() -> void:
-	session.battle_setup = build_setup(session.grid.ring_cells(), UNIT_COUNT, BENCH_SEED)
+	session.battle_setup = build_setup(session.grid.ring_cells(), UNIT_COUNT, BENCH_SEED, _mix)
 	infection_phase.setup(session, null)
 
 
@@ -82,6 +84,12 @@ func _parse_cli() -> void:
 			_run_s = arg.get_slice("=", 1).to_float()
 		elif arg.begins_with("--bench-out="):
 			_out_path = arg.get_slice("=", 1)
+		elif arg.begins_with("--bench-mix="):
+			_mix = []
+			for id: String in arg.get_slice("=", 1).split(",", false):
+				_mix.append(id)
+			if _mix.is_empty():
+				_mix = ["rhinovirus"]
 
 
 func _process(delta: float) -> void:
