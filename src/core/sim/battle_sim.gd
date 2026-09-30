@@ -23,12 +23,20 @@ var _events: Array[Dictionary] = []
 var _occupancy: Dictionary = {}  # Vector2i -> int
 var _next_projectile_id: int = 0
 var _analysis_on: bool = false
+var biofilm: Biofilm = Biofilm.new()
+var _biofilm_on: bool = false
+var _biofilm_regroup_ticks: int = 0
 
 
 func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 	config = p_config
 	status = StatusEffects.new()
 	_analysis_on = p_config != null and p_config.flag("bcell_analysis")
+	_biofilm_on = p_config != null and p_config.flag("biofilm")
+	if _biofilm_on:
+		for pd: PathogenDef in p_config.pathogens.values():
+			if pd.has_biofilm and (_biofilm_regroup_ticks == 0 or pd.biofilm_regroup_ticks < _biofilm_regroup_ticks):
+				_biofilm_regroup_ticks = pd.biofilm_regroup_ticks
 	if setup != null:
 		seed = setup.seed
 
@@ -109,6 +117,10 @@ func step() -> void:
 
 	path_service.begin_tick()
 	status.tick()
+
+	if _biofilm_on and _biofilm_regroup_ticks > 0 and tick % _biofilm_regroup_ticks == 0:
+		if biofilm.regroup(pathogens):
+			_emit_biofilm_changed()
 
 	for p: PathogenState in pathogens:
 		if p.alive:
@@ -201,11 +213,44 @@ func state_hash() -> String:
 			proj.pos.y,
 			1 if proj.alive else 0,
 		])
+	if not biofilm.group_of.is_empty():
+		var bkeys: Array = biofilm.group_of.keys()
+		bkeys.sort()
+		for bk: Variant in bkeys:
+			lines.append("B:%d:%d" % [int(bk), int(biofilm.group_of[bk])])
 	var combined: String = "\n".join(lines)
 	return combined.sha256_text()
 
 
 func damage_pathogen(p: PathogenState, amount: int, source_structure_id: int) -> void:
+	if p == null or not p.alive:
+		return
+	var ids: Array[int] = []
+	if _biofilm_on:
+		ids = biofilm.members(p.id)
+	if ids.size() < 2:
+		_apply_pathogen_damage(p, amount, source_structure_id)
+		return
+	var total: int = maxi(1, FixedMath.apply_pct(amount, p.def.biofilm_damage_taken_pct))
+	var share: int = total / ids.size()
+	var rem: int = total % ids.size()
+	for id: int in ids:
+		var dmg: int = share + (rem if id == p.id else 0)
+		var m: PathogenState = pathogen(id)
+		if dmg > 0 and m != null and m.alive:
+			_apply_pathogen_damage(m, dmg, source_structure_id)
+
+
+func _emit_biofilm_changed() -> void:
+	var roots: Array = biofilm.groups.keys()
+	roots.sort()
+	var out: Array = []
+	for r: Variant in roots:
+		out.append((biofilm.groups[r] as Array).duplicate())
+	_emit_event(SimEvents.BIOFILM_CHANGED, {"groups": out})
+
+
+func _apply_pathogen_damage(p: PathogenState, amount: int, source_structure_id: int) -> void:
 	if p == null or not p.alive:
 		return
 	p.hp = maxi(0, p.hp - amount)
@@ -218,6 +263,7 @@ func damage_pathogen(p: PathogenState, amount: int, source_structure_id: int) ->
 	if p.hp == 0:
 		p.alive = false
 		p.state = PathogenState.State.DEAD
+		biofilm.remove(p.id)
 		pathogens_killed += 1
 		var key: String = StatusEffects.key_pathogen(p.id)
 		status.clear_entity(key)
@@ -427,7 +473,7 @@ func _update_pathogen(p: PathogenState) -> void:
 
 	# 6. Move
 	if not status.has_flag(key, StatusEffects.Kind.ROOTED):
-		var budget: int = FixedMath.apply_pct(p.def.speed_mt_per_tick, status.pct(key, StatusEffects.Kind.SPEED_PCT))
+		var budget: int = _move_budget(p)
 		while budget > 0 and p.path_index < p.path.size():
 			var next: Vector2i = p.path[p.path_index]
 			var occ: int = structure_id_at(next)
@@ -457,6 +503,22 @@ func _update_pathogen(p: PathogenState) -> void:
 		if p.path_index >= p.path.size():
 			p.path = []
 			p.state = PathogenState.State.SEEKING
+
+
+func _unit_move_budget(p: PathogenState) -> int:
+	return FixedMath.apply_pct(p.def.speed_mt_per_tick, status.pct(StatusEffects.key_pathogen(p.id), StatusEffects.Kind.SPEED_PCT))
+
+
+## A biofilm group moves at the speed of its slowest alive member.
+func _move_budget(p: PathogenState) -> int:
+	var budget: int = _unit_move_budget(p)
+	if not _biofilm_on or not biofilm.group_of.has(p.id):
+		return budget
+	for id: int in biofilm.members(p.id):
+		var m: PathogenState = pathogen(id)
+		if m != null and m.alive:
+			budget = mini(budget, _unit_move_budget(m))
+	return budget
 
 
 func _pathogen_attack(p: PathogenState, victim: StructureState) -> void:
