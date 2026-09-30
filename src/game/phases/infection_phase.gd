@@ -341,6 +341,14 @@ func _on_battle_finished(sim: BattleSim) -> void:
 			"final_state_hash": sim.state_hash(),
 		}
 
+		if session.config != null and session.config.flag("raid_score"):
+			var structures: Array = session.battle_setup.structures if session.battle_setup != null else []
+			var score: int = RaidScore.compute(session.config, structures, sim.outcome)
+			session.best_score = maxi(session.best_score, score)
+			session.last_result["score"] = score
+			session.last_result["base_value"] = RaidScore.base_value(session.config, structures)
+			session.last_result["best_score"] = session.best_score
+
 		var pred_id: int = session.prediction_structure_id if session != null else 0
 		# Kept with the result so a config applied on leaving INFECTION cannot erase it.
 		session.last_result["prediction_structure_id"] = pred_id

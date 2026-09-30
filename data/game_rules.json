@@ -18,6 +18,7 @@
   "default_seed": 12345,
   "feature_flags": {
     "move_nucleus": false,
+    "raid_score": false,
     "intent_lines_default": true
   }
 }

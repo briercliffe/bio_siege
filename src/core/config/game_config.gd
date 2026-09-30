@@ -66,6 +66,10 @@ func core_structure_id() -> String:
 			return s.id
 	return ""
 
+## True when the named feature flag is set in data/game_rules.json (missing = false).
+func flag(flag_name: String) -> bool:
+	return bool(feature_flags.get(flag_name, false))
+
 func move_nucleus_enabled() -> bool:
 	return bool(feature_flags.get("move_nucleus", false))
 

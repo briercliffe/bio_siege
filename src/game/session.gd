@@ -11,6 +11,7 @@ var battle_setup: BattleSetup = null
 var last_result: Dictionary = {}          # filled by #20, shown by #22
 var last_launch: Dictionary = {}
 var prediction_structure_id: int = 0      # filled by #25
+var best_score: int = 0                   # raid_score flag: best score this session (not persisted)
 var intent_lines_enabled: bool = true
 var pending_config: GameConfig = null     # hot-reloaded config queued during INFECTION (#27)
 
