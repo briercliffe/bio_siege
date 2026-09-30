@@ -139,6 +139,8 @@ Everything below already exists in core unless marked **missing**.
 
 Timings are in sim ticks (20 per second). Attack intervals come from `data/pathogens.json` and `data/structures.json`: Rhinovirus 10 ticks, Bacteriophage 20, Staphylococcus 30, Macrophage 20, B-Cell 24. Stride lengths are proposals for the 40x40 grid.
 
+**Windup timing decision (#65):** the formula `windup_ticks = min(12, interval * 2 / 5)` is the rule. It gives Rhinovirus 4, Bacteriophage 8, Staphylococcus 12, Macrophage 8 and B-Cell 9 ticks. Where the tables below list different numbers (Rhinovirus 3, Macrophage 6), the formula wins.
+
 ### Pathogens
 
 | | Idle | Move | Attack | Death |

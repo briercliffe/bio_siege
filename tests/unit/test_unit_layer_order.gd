@@ -78,7 +78,7 @@ func test_dead_units_leave_the_order_after_the_fade() -> void:
 	p.alive = false
 	layer.on_event({"type": SimEvents.PATHOGEN_KILLED, "unit_id": p.id})
 	assert_true(layer.build_draw_order().has(Vector2i(UnitLayer.KIND_PATHOGEN, p.id)), "fading copy still drawn")
-	sim.tick += UnitLayer.DEATH_TICKS
+	sim.tick += AnimDriver.DEATH_TICKS["rhinovirus"]
 	assert_false(layer.build_draw_order().has(Vector2i(UnitLayer.KIND_PATHOGEN, p.id)), "dropped after the fade")
 
 
