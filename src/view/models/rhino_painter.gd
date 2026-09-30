@@ -173,7 +173,7 @@ func _paint_body(ci: CanvasItem, t: float, ring: float, knob_k: float, roll: flo
 	if t < LOW_DETAIL_T_PX:
 		return
 	if t < FLAT_BALL_T_PX:
-		# Small but readable: keep the gloss, drop the rim and facet.
+		# 10 to 28 px: keep the gloss; the knobs, rim and facet are skipped (perf, see docs/PERF_BASELINE.md).
 		ci.draw_circle(GLOSS_RECT.get_center() * t, GLOSS_RECT.size.y * 0.5 * t, _c_gloss)
 		return
 
@@ -182,11 +182,8 @@ func _paint_body(ci: CanvasItem, t: float, ring: float, knob_k: float, roll: flo
 	var size: float = KNOB_SIZE * knob_k
 	for d: float in KNOB_ANGLES_DEG:
 		var a: float = deg_to_rad(d) + roll
-		if t < FLAT_BALL_T_PX:
-			ci.draw_circle(Vector2(cos(a) * KNOB_RING, BODY_CY + sin(a) * KNOB_RING) * t, size * 0.5 * t, _c_knob_m)
-		else:
-			PaintKit.sphere(ci, PaintKit.part_rect(Vector2.ZERO, t, cos(a) * KNOB_RING - size * 0.5, BODY_CY + sin(a) * KNOB_RING - size * 0.5, size, size),
-				_c_knob_l, _c_knob_m, _c_knob_d)
+		PaintKit.sphere(ci, PaintKit.part_rect(Vector2.ZERO, t, cos(a) * KNOB_RING - size * 0.5, BODY_CY + sin(a) * KNOB_RING - size * 0.5, size, size),
+			_c_knob_l, _c_knob_m, _c_knob_d)
 	PaintKit.ellipse(ci, PaintKit.part_rect(Vector2.ZERO, t, GLOSS_RECT.position.x, GLOSS_RECT.position.y, GLOSS_RECT.size.x, GLOSS_RECT.size.y), _c_gloss)
 
 

@@ -63,12 +63,11 @@ Reading the two tables together:
 
 The first version of the painter, with a four-layer sphere for every spike and knob, measured 125 ms average and 8300 draw calls per frame on desktop. Every draw command costs roughly 10 to 15 microseconds here, so the fix was fewer commands:
 
-- Below 28 px per tile, spikes, knobs and the body use one flat circle (two for the body) instead of a four-layer sphere. At 23 px a knob is 4 px wide, so the shading was not visible.
-- Below 28 px the rim ring and hexagonal facet are skipped too. The issue only skips the facet, knobs and gloss below 10 px. The facet is a 17% white overlay, so this changes the picture very little at that size. Full detail returns at 28 px and above (the contact sheet and the viewer at 56 px).
+- **This deviates from the issue, for performance.** The issue only drops the facet, knobs and gloss below 10 px. The code drops more, below 28 px per tile: the three front knobs, the rim ring and the hexagonal facet are not drawn at all, the spikes are one flat circle each instead of a four-layer sphere, and the body is two circles. What remains below 28 px is the shadow, the five back spikes, the two-circle body and (from 10 px up) the gloss. Below 10 px the gloss is dropped too. The bench runs at 23 px per tile, so **no knobs are drawn in the bench**. At 28 px and above the knobs (with their strike flare), rim, facet and four-layer spheres all return, as seen on the contact sheet and in the viewer at 56 px.
 - Circles use `draw_circle` (`PaintKit.ellipse` now takes that path when the rect is round), and the ground shadow is a circle under a squashed transform.
 - Every colour is computed once per `paint()` call, not once per part.
 
-That took desktop from 125 ms to 29 ms and draw calls from 8316 to 2116. About 10 commands per unit remain.
+That took desktop from 125 ms to 29 ms and draw calls from 8316 to 2116. About 9 painter commands per unit remain at 23 px (1 shadow, 5 spikes, 2 body, 1 gloss). The bench draw-call total is higher than 9 per unit because it also counts the rest of the view: the placeholder run, which has no painter detail, already reports 1116.
 
 ## Budget for #72
 
@@ -81,7 +80,7 @@ Measured against that target:
 
 Two decisions follow for #72, and they should be made before the other three painters are written:
 
-1. **Enable the bake step (plan section 6, option C).** Procedural GDScript painting does not fit the web budget at 200 units, even after trimming. Bake each model into a `SubViewport` atlas at load (idle 8, move 8, attack 6, hit 3, death 8 frames) and draw one `draw_texture_rect_region` per unit. That is about one draw command per unit instead of ten to forty-five, with no per-unit GDScript painting.
+1. **Enable the bake step (plan section 6, option C).** Procedural GDScript painting does not fit the web budget at 200 units, even after trimming. Bake each model into a `SubViewport` atlas at load (idle 8, move 8, attack 6, hit 3, death 8 frames) and draw one `draw_texture_rect_region` per unit. That is about one draw command per unit instead of nine (at 23 px) to about forty-five (at 56 px), with no per-unit GDScript painting.
 2. **Budget the rest of the view separately.** About 12 ms desktop and 39 ms web with 200 units is spent outside the painters (intent lines, sim, grid and HUD). Baking will not fix that part, so #72 should measure it on its own and decide whether the intent lines need a cheaper path.
 
 The bench stays as the regression check: re-run it after each painter or bake change and update the tables above.
