@@ -8,11 +8,13 @@ extends Control
 ## without a display wrap it in xvfb-run):
 ##   godot --path . tools/model_viewer.tscn -- --contact-sheet=<absolute path to a .png>
 ## The PNG is written and the editor quits. Never commit contact sheets: attach them to PRs.
+## --walls-sheet=<absolute path to a .png> writes the "walls" layout alone at T = 40 instead.
 
 const POST_ID: String = "post"
+const WALLS_ID: String = "walls"
 const STATE_NAMES: Array[String] = ["IDLE", "MOVE", "WINDUP", "STRIKE", "RECOVER", "HIT", "DEAD", "Attack loop"]
 const STATE_ATTACK_LOOP: int = 7
-const TILE_SIZES: Array[int] = [14, 28, 56]
+const TILE_SIZES: Array[int] = [14, 28, 40, 56]
 const SCRUB_MAX_S: float = 2.0
 const TICKS_PER_S: float = 20.0
 const SPEEDS: Array[float] = [0.25, 1.0]
@@ -30,6 +32,20 @@ const CELL_GAIT: float = 0.25
 const DEFAULT_ATTACK_INTERVAL_TICKS: int = 20
 const ANCHOR_CROSS_PX: float = 10.0
 const MIN_CYCLE_TICKS: int = 2
+
+## The walls_sheet.png layout: a straight run, two columns hanging off it, a hurt pair and a gap.
+const WALL_RUN: Vector4i = Vector4i(12, 16, 22, 16)
+const WALL_COLUMNS: Array[Vector4i] = [Vector4i(17, 17, 17, 20), Vector4i(12, 17, 12, 20)]
+const WALL_HURT: Array[Vector2i] = [Vector2i(20, 16), Vector2i(21, 16)]
+const WALL_GONE: Array[Vector2i] = [Vector2i(15, 16)]
+## Ground point drawn at the stage centre, so the layout sits in the middle.
+const WALLS_FOCUS: Vector2 = Vector2(16.0, 17.0)
+const WALLS_PAD_TILES: float = 16.0
+const WALLS_CELL_TILE_PX: float = 16.0
+const WALLS_SHEET_TILE_PX: float = 40.0
+const WALLS_SHEET_SIZE: Vector2i = Vector2i(1000, 460)
+const WALL_HURT_FRAC: float = 0.3
+const WALL_TAP_MODES: Array[String] = ["hurt", "destroy", "attack"]
 
 ## Columns of the contact sheet, in order.
 const SHEET_STATES: Array[int] = [
@@ -92,6 +108,15 @@ var show_footprint: bool = false
 var show_gait: bool = false
 var show_bounds: bool = false
 
+## Walls entry state: layout cells, and the cells marked hurt, destroyed or under attack (cell -> true).
+var wall_cells: Array[Vector2i] = []
+var wall_hurt: Dictionary = {}
+var wall_gone: Dictionary = {}
+var wall_attacked: Dictionary = {}
+## What a tap on the stage does to a wall cell: "" (nothing), "hurt", "destroy" or "attack".
+var wall_tap_mode: String = ""
+var wall_tap_buttons: Array[Button] = []
+
 var stage: Stage = null
 var model_option: OptionButton = null
 var state_option: OptionButton = null
@@ -109,6 +134,11 @@ var _holder: Control = null
 var _bg: ColorRect = null
 var _updating_ui: bool = false
 var _exporting: bool = false
+var _post_painter: WallPainter = WallPainter.new(true)
+var _walls: WallRenderer = WallRenderer.new()
+var _walls_order: Array[Vector2i] = []
+var _walls_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
+var _walls_version: int = 0
 
 
 ## Size in px of a contact sheet: states are columns, models are rows.
@@ -123,12 +153,17 @@ func _ready() -> void:
 	ModelRegistry.configure(config)
 	model_ids = _collect_model_ids()
 	model_id = model_ids[0]
+	wall_cells = _layout_cells()
+	reset_walls()
 	_build_ui()
 	_apply_theme()
 	_refresh()
-	var sheet_path: String = _cli_contact_sheet_path()
+	var sheet_path: String = _cli_arg("--contact-sheet=")
 	if sheet_path != "":
 		_run_cli_export.call_deferred(sheet_path)
+	var walls_path: String = _cli_arg("--walls-sheet=")
+	if walls_path != "":
+		_run_cli_walls_export.call_deferred(walls_path)
 
 
 func _collect_model_ids() -> Array[String]:
@@ -139,6 +174,7 @@ func _collect_model_ids() -> Array[String]:
 		for id_var: Variant in config.structures:
 			ids.append(str(id_var))
 	ids.append(POST_ID)
+	ids.append(WALLS_ID)
 	return ids
 
 
@@ -173,6 +209,7 @@ func _build_ui() -> void:
 	_holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_holder.clip_contents = true
 	_holder.resized.connect(_on_holder_resized)
+	_holder.gui_input.connect(_on_holder_input)
 	upper.add_child(_holder)
 	stage = Stage.new()
 	stage.draw_cb = _draw_stage
@@ -247,6 +284,18 @@ func _build_right_panel() -> Control:
 		var prop: String = str(spec[1])
 		b.toggled.connect(func(on: bool) -> void: _on_debug_toggled(prop, on))
 		box.add_child(b)
+
+	box.add_child(_caption("Walls: tap a cell to"))
+	wall_tap_buttons = []
+	for mode: String in WALL_TAP_MODES:
+		var b: Button = _button(mode.capitalize(), true)
+		var m: String = mode
+		b.pressed.connect(func() -> void: set_wall_tap_mode("" if wall_tap_mode == m else m))
+		wall_tap_buttons.append(b)
+		box.add_child(b)
+	var reset: Button = _button("Reset walls", false)
+	reset.pressed.connect(func() -> void: reset_walls())
+	box.add_child(reset)
 	return panel
 
 
@@ -392,10 +441,112 @@ func _on_scrub(value: float) -> void:
 	_refresh()
 
 
+func _on_holder_input(event: InputEvent) -> void:
+	if not event is InputEventScreenTouch:
+		return
+	var touch: InputEventScreenTouch = event
+	if touch.pressed or model_id != WALLS_ID or wall_tap_mode == "":
+		return
+	tap_wall_cell(_walls_projection(float(tile_px)).screen_to_cell(touch.position - stage.position))
+
+
 func _on_holder_resized() -> void:
 	if stage != null and _holder != null:
 		stage.position = (_holder.size * 0.5).round()
 		stage.queue_redraw()
+
+
+# --- walls entry --------------------------------------------------------------
+
+func _layout_cells() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for c: int in range(WALL_RUN.x, WALL_RUN.z + 1):
+		out.append(Vector2i(c, WALL_RUN.y))
+	for col: Vector4i in WALL_COLUMNS:
+		for r: int in range(col.y, col.w + 1):
+			out.append(Vector2i(col.x, r))
+	return out
+
+
+## Back to the sheet: the hurt pair and the gap, nothing under attack.
+func reset_walls() -> void:
+	wall_hurt.clear()
+	wall_gone.clear()
+	wall_attacked.clear()
+	for c: Vector2i in WALL_HURT:
+		wall_hurt[c] = true
+	for c: Vector2i in WALL_GONE:
+		wall_gone[c] = true
+	_walls_version += 1
+	_refresh()
+
+
+func set_wall_tap_mode(mode: String) -> void:
+	wall_tap_mode = mode if WALL_TAP_MODES.has(mode) else ""
+	for i: int in range(wall_tap_buttons.size()):
+		wall_tap_buttons[i].set_pressed_no_signal(WALL_TAP_MODES[i] == wall_tap_mode)
+
+
+## Toggles the tapped layout cell for the current tap mode. Returns false when the cell is not in the layout.
+func tap_wall_cell(cell: Vector2i) -> bool:
+	if not wall_cells.has(cell) or wall_tap_mode == "":
+		return false
+	var target: Dictionary = wall_hurt
+	match wall_tap_mode:
+		"destroy":
+			target = wall_gone
+		"attack":
+			target = wall_attacked
+	if target.has(cell):
+		target.erase(cell)
+	else:
+		target[cell] = true
+	_walls_version += 1
+	_refresh()
+	return true
+
+
+func _walls_projection(t: float) -> IsoProjection:
+	var proj := IsoProjection.new(t, Vector2.ZERO)
+	proj.origin = -proj.ground_to_screen(WALLS_FOCUS)
+	return proj
+
+
+func _ensure_walls(proj: IsoProjection) -> void:
+	var key := Vector4(proj.tile_px, proj.origin.x, proj.origin.y, float(_walls_version))
+	if key == _walls_key:
+		return
+	_walls_key = key
+	var alive: Dictionary = {}
+	for c: Vector2i in wall_cells:
+		if not wall_gone.has(c):
+			alive[c] = true
+	_walls.rebuild(alive, proj)
+	_walls_order.clear()
+	for c: Vector2i in wall_cells:
+		_walls_order.append(c)
+	_walls_order.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.x + a.y < b.x + b.y or (a.x + a.y == b.x + b.y and a.x < b.x))
+
+
+## The layout in depth order. Hit shakes every segment; the death state plays the break on destroyed cells.
+func _draw_walls(ci: CanvasItem, proj: IsoProjection, pose: ModelPose) -> void:
+	_ensure_walls(proj)
+	var dead: bool = pose.anim == ModelPose.Anim.DEAD
+	if dead:
+		for c: Vector2i in _walls_order:
+			if wall_gone.has(c):
+				_walls.paint_goo(ci, c, pose.death_t)
+	_walls.paint_shadows(ci)
+	var crack_alpha: float = UnitLayer.crack_pulse_alpha(pose.time)
+	for c: Vector2i in _walls_order:
+		if wall_gone.has(c):
+			if dead:
+				_walls.paint_break(ci, c, pose.death_t)
+			continue
+		var hurt: bool = wall_hurt.has(c)
+		_walls.paint_cell(ci, c, WALL_HURT_FRAC if hurt else 1.0, pose)
+		if wall_attacked.has(c):
+			_walls.paint_cracks(ci, c, hurt, crack_alpha, pose)
 
 
 ## Selects a model by id (also updates the option button).
@@ -509,10 +660,10 @@ func pose_for(id: String, state: int, time: float) -> ModelPose:
 		ModelPose.Anim.HIT:
 			pose.anim = ModelPose.Anim.HIT
 			pose.hit_t = AnimDriver.flash_amount(ticks, false)
-			pose.shake = AnimDriver.shake_amount(ticks, false)
+			pose.shake = AnimDriver.shake_amount(ticks, false, _shake_ticks(id))
 		ModelPose.Anim.DEAD:
 			pose.anim = ModelPose.Anim.DEAD
-			pose.death_t = AnimDriver.death_t(ticks, AnimDriver.death_ticks_for(id))
+			pose.death_t = AnimDriver.death_t(ticks, AnimDriver.death_ticks_for(_anim_id(id)))
 		STATE_ATTACK_LOOP:
 			var k: int = ticks % maxi(interval, MIN_CYCLE_TICKS)
 			var res: Vector2 = AnimDriver.pathogen_attack(PathogenState.State.ATTACKING, interval - k, interval, k)
@@ -521,6 +672,15 @@ func pose_for(id: String, state: int, time: float) -> ModelPose:
 		_:
 			pose.anim = ModelPose.Anim.IDLE
 	return pose
+
+
+## Wall entries share the Mucous Wall's timings.
+func _anim_id(id: String) -> String:
+	return "mucous_wall" if id == WALLS_ID or id == POST_ID else id
+
+
+func _shake_ticks(id: String) -> int:
+	return AnimDriver.WALL_SHAKE_TICKS if _anim_id(id) == "mucous_wall" else AnimDriver.HIT_DECAY_TICKS
 
 
 ## The fixed poses used by the contact sheet columns.
@@ -562,8 +722,14 @@ func _width_tiles(id: String) -> float:
 
 func _draw_stage(ci: CanvasItem) -> void:
 	var proj := IsoProjection.new(float(tile_px), Vector2.ZERO)
-	_draw_pad(ci, proj, STAGE_PAD_TILES, night)
 	var pose: ModelPose = pose_for(model_id, state_index, time_s)
+	if model_id == WALLS_ID:
+		_draw_pad(ci, proj, WALLS_PAD_TILES, night)
+		_draw_walls(ci, _walls_projection(float(tile_px)), pose)
+		if show_anchor:
+			_draw_anchor(ci, proj.origin)
+		return
+	_draw_pad(ci, proj, STAGE_PAD_TILES, night)
 	_draw_model(ci, proj, model_id, pose, facing_right)
 	if show_footprint:
 		_draw_footprint(ci, proj, model_id)
@@ -592,8 +758,12 @@ func _draw_pad(ci: CanvasItem, proj: IsoProjection, tiles: float, is_night: bool
 	ci.draw_polyline(closed, PAD_RIM_NIGHT if is_night else PAD_RIM_DAY, maxf(1.0, proj.tile_px * 0.1), true)
 
 
+func _painter_for(id: String) -> ModelPainter:
+	return _post_painter if id == POST_ID else ModelRegistry.painter_for(id)
+
+
 func _draw_model(ci: CanvasItem, proj: IsoProjection, id: String, pose: ModelPose, face_right: bool) -> void:
-	var painter: ModelPainter = ModelRegistry.painter_for(id)
+	var painter: ModelPainter = _painter_for(id)
 	# Like UnitLayer: painters take the real anchor and handle pose.facing_right themselves, because they
 	# set their own canvas transform (a transform set here would be replaced by theirs).
 	pose.facing_right = face_right
@@ -619,7 +789,7 @@ func _draw_footprint(ci: CanvasItem, proj: IsoProjection, id: String) -> void:
 
 func _draw_bounds(ci: CanvasItem, proj: IsoProjection, id: String) -> void:
 	var w: float = _width_tiles(id) * proj.tile_px
-	var h: float = ModelRegistry.painter_for(id).height_tiles() * proj.tile_px
+	var h: float = _painter_for(id).height_tiles() * proj.tile_px
 	ci.draw_rect(Rect2(proj.origin + Vector2(-w * 0.5, -h), Vector2(w, h)), DEBUG_BOX, false, 1.0)
 
 
@@ -628,8 +798,13 @@ func _draw_bounds(ci: CanvasItem, proj: IsoProjection, id: String) -> void:
 func _sheet_cell_draw(cell: Control, id: String, state: int) -> void:
 	var proj := IsoProjection.new(CELL_TILE_PX, CELL_ANCHOR)
 	cell.draw_rect(Rect2(Vector2.ZERO, Vector2(CELL_SIZE)), NIGHT_BG if night else DAY_BG)
-	_draw_pad(cell, proj, CELL_PAD_TILES, night)
-	_draw_model(cell, proj, id, sheet_pose(id, state), true)
+	if id == WALLS_ID:
+		var wp: IsoProjection = _walls_projection(WALLS_CELL_TILE_PX)
+		wp.origin += Vector2(CELL_SIZE) * 0.5 + Vector2(0.0, 20.0)
+		_draw_walls(cell, wp, sheet_pose(id, state))
+	else:
+		_draw_pad(cell, proj, CELL_PAD_TILES, night)
+		_draw_model(cell, proj, id, sheet_pose(id, state), true)
 	var font: Font = ThemeDB.fallback_font
 	var ink: Color = LABEL_NIGHT if night else LABEL_DAY
 	cell.draw_string(font, Vector2(8.0, 18.0), id, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15, ink)
@@ -684,13 +859,43 @@ func export_contact_sheet(path: String = "") -> String:
 	return abs_path
 
 
-func _cli_contact_sheet_path() -> String:
+func _cli_arg(prefix: String) -> String:
 	for a: String in OS.get_cmdline_user_args():
-		if a.begins_with("--contact-sheet="):
-			return a.substr("--contact-sheet=".length())
+		if a.begins_with(prefix):
+			return a.substr(prefix.length())
 	return ""
 
 
 func _run_cli_export(path: String) -> void:
 	var done: String = await export_contact_sheet(path)
 	get_tree().quit(0 if done != "" else 1)
+
+
+## The walls layout alone at T = 40 on a pad, the framing of walls_sheet.png. Needs a renderer.
+func render_walls_sheet() -> Image:
+	var vp := SubViewport.new()
+	vp.size = WALLS_SHEET_SIZE
+	vp.transparent_bg = false
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(vp)
+	var cell := Cell.new()
+	cell.size = Vector2(WALLS_SHEET_SIZE)
+	cell.draw_cb = func(ci: Control) -> void:
+		var centre: Vector2 = Vector2(WALLS_SHEET_SIZE) * 0.5
+		ci.draw_rect(Rect2(Vector2.ZERO, Vector2(WALLS_SHEET_SIZE)), NIGHT_BG if night else DAY_BG)
+		_draw_pad(ci, IsoProjection.new(WALLS_SHEET_TILE_PX, centre), WALLS_PAD_TILES, night)
+		var wp: IsoProjection = _walls_projection(WALLS_SHEET_TILE_PX)
+		wp.origin += centre
+		_draw_walls(ci, wp, pose_for(WALLS_ID, ModelPose.Anim.IDLE, 0.0))
+	vp.add_child(cell)
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var img: Image = vp.get_texture().get_image()
+	vp.queue_free()
+	return img
+
+
+func _run_cli_walls_export(path: String) -> void:
+	var img: Image = await render_walls_sheet()
+	var err: int = img.save_png(path) if img != null else ERR_UNAVAILABLE
+	get_tree().quit(0 if err == OK else 1)
