@@ -541,3 +541,183 @@ func test_results_memory_line() -> void:
 	assert_true(ui.memory_label.visible)
 	assert_eq(ui.memory_label.text, expected)
 	assert_eq(ui.get_stat("memory"), expected)
+
+
+const OUTBREAK_SETTINGS_PATH: String = "user://test_outbreak_settings.cfg"
+
+
+func _outbreak_cfg() -> GameConfig:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	cfg.feature_flags["outbreak_mode"] = true
+	return cfg
+
+
+func _results_ui(session: Session) -> ResultsPhase:
+	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
+	var ui: ResultsPhase = scene.instantiate() as ResultsPhase
+	add_child_autoqfree(ui)
+	ui.setup(session)
+	return ui
+
+
+func test_outbreak_ui_absent_when_flag_off() -> void:
+	var session := Session.new(_config)
+	session.last_result = _score_result("attacker")
+	var ui: ResultsPhase = _results_ui(session)
+	assert_false(ui.outbreak_label.visible)
+	assert_eq(ui.btn_re_raid.text, "Raid the same base again")
+	assert_eq(ui.btn_edit_base.text, "Go back and change your defenses")
+	assert_eq(ui.btn_new_base.text, "Start over with %d ATP" % int(_config.start_wallet.get("atp", 0)))
+	assert_false(ui.btn_new_outbreak.visible)
+	assert_false(ui.btn_retry_base.visible)
+	assert_eq(ui.get_stat("outbreak_total"), "")
+
+
+func test_outbreak_active_run_relabels_buttons() -> void:
+	var session := Session.new(_outbreak_cfg())
+	session.record_outbreak("attacker", 720)
+	session.record_outbreak("attacker", 760)
+	session.last_result = _score_result("attacker")
+	session.last_result["outbreak"] = session.outbreak.to_dict()
+	var ui: ResultsPhase = _results_ui(session)
+	assert_true(ui.outbreak_label.visible)
+	assert_eq(ui.outbreak_label.text, "Generation 2 cleared · +760 · Run total 1,480")
+	assert_eq(ui.btn_re_raid.text, "Next generation: raid again")
+	assert_eq(ui.btn_edit_base.text, "Next generation: edit base first")
+	assert_eq(ui.btn_new_base.text, "Abandon outbreak")
+	assert_true(ui.btn_re_raid.visible)
+	assert_true(ui.btn_edit_base.visible)
+	assert_false(ui.btn_new_outbreak.visible)
+	assert_eq(ui.get_stat("outbreak_total"), "1480")
+	assert_eq(ui.get_stat("outbreak_ended"), "false")
+
+
+func test_outbreak_ended_run_shows_new_buttons() -> void:
+	var session := Session.new(_outbreak_cfg())
+	session.record_outbreak("attacker", 1200)
+	session.record_outbreak("attacker", 1010)
+	session.record_outbreak("attacker", 0)
+	session.record_outbreak("defender", 0)
+	session.last_result = _score_result("defender")
+	session.last_result["outbreak"] = session.outbreak.to_dict()
+	session.last_result["outbreak_best"] = 2650
+	var ui: ResultsPhase = _results_ui(session)
+	assert_eq(ui.outbreak_label.text, "Outbreak contained after 3 generations · Run score 2,210 · Best 2,650")
+	assert_false(ui.btn_re_raid.visible)
+	assert_false(ui.btn_edit_base.visible)
+	assert_true(ui.btn_new_outbreak.visible)
+	assert_true(ui.btn_retry_base.visible)
+	assert_eq(ui.btn_new_outbreak.text, "New outbreak")
+	assert_eq(ui.btn_retry_base.text, "Retry this base")
+	assert_gte(ui.btn_new_outbreak.custom_minimum_size.y, 48.0)
+	assert_gte(ui.btn_retry_base.custom_minimum_size.y, 48.0)
+	assert_eq(ui.get_stat("outbreak_ended"), "true")
+	assert_eq(ui.get_stat("outbreak_generation"), "4")
+
+
+func test_outbreak_ended_ui_fallback_builds_buttons() -> void:
+	var session := Session.new(_outbreak_cfg())
+	session.record_outbreak("defender", 0)
+	session.last_result = _score_result("defender")
+	session.last_result["outbreak"] = session.outbreak.to_dict()
+	var ui := ResultsPhase.new()
+	add_child_autoqfree(ui)
+	ui.setup(session)
+	assert_not_null(ui.btn_new_outbreak)
+	assert_not_null(ui.btn_retry_base)
+	assert_true(ui.btn_new_outbreak.visible)
+	assert_gte(ui.btn_retry_base.custom_minimum_size.y, 48.0)
+
+
+func test_apply_new_outbreak_resets_everything() -> void:
+	var cfg: GameConfig = _outbreak_cfg()
+	cfg.feature_flags["immune_memory"] = true
+	cfg.feature_flags["bcell_analysis"] = true
+	var session := Session.new(cfg)
+	session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
+	session.memory.entries["rhinovirus/wild"] = {"level": 2, "absent": 0, "since": 1}
+	session.record_outbreak("attacker", 500)
+	var old_run: OutbreakRun = session.outbreak
+	var fsm := GameStateMachine.new()
+	add_child_autoqfree(fsm)
+	fsm.session = session
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("new_outbreak", session, fsm)
+	assert_eq(session.grid.total_cost().get("atp", 0), 0)
+	assert_eq(session.wallet.get_amount("atp"), int(cfg.start_wallet.get("atp", 0)))
+	assert_ne(session.outbreak, old_run)
+	assert_eq(session.outbreak.generation, 1)
+	assert_true(session.memory.is_empty())
+	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
+
+
+func test_apply_retry_base_keeps_layout() -> void:
+	var cfg: GameConfig = _outbreak_cfg()
+	var session := Session.new(cfg)
+	session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
+	assert_true(session.army.buy("rhinovirus", session.wallet))
+	var layout: Array = session.grid.to_layout()
+	var wallet_before: int = session.wallet.get_amount("atp")
+	session.record_outbreak("defender", 0)
+	var fsm := GameStateMachine.new()
+	add_child_autoqfree(fsm)
+	fsm.session = session
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("retry_base", session, fsm)
+	assert_eq(session.grid.to_layout(), layout)
+	assert_eq(session.army.total_count(), 0)
+	assert_gt(session.wallet.get_amount("atp"), wallet_before)
+	assert_false(session.outbreak.ended)
+	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
+
+
+func test_apply_new_base_resets_outbreak_run() -> void:
+	var session := Session.new(_outbreak_cfg())
+	session.record_outbreak("attacker", 500)
+	ResultsPhase.apply_choice("new_base", session, null)
+	assert_eq(session.outbreak.generation, 1)
+	assert_eq(session.outbreak.total_score, 0)
+
+
+func test_apply_new_base_keeps_outbreak_null_in_lab_mode() -> void:
+	var session := Session.new(_config)
+	ResultsPhase.apply_choice("new_base", session, null)
+	assert_null(session.outbreak)
+
+
+func test_infection_phase_records_outbreak_generation() -> void:
+	if FileAccess.file_exists(OUTBREAK_SETTINGS_PATH):
+		DirAccess.remove_absolute(OUTBREAK_SETTINGS_PATH)
+	var cfg: GameConfig = _outbreak_cfg()
+	var session := Session.new(cfg)
+	var structs: Array = [
+		{"type": "nucleus", "origin": Vector2i(9, 9)},
+		{"type": "b_cell", "origin": Vector2i(10, 3)},
+	]
+	var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 10)}]
+	session.battle_setup = BattleSetup.create(structs, units, session.seed)
+	var sim: BattleSim = SimFixtures.make_sim(structs, units, session.seed, cfg)
+	sim.run_to_end()
+	var inf := InfectionPhase.new()
+	add_child_autoqfree(inf)
+	inf.session = session
+	inf.settings_path = OUTBREAK_SETTINGS_PATH
+	inf._on_battle_finished(sim)
+	assert_true(session.last_result.has("outbreak"))
+	var run: Dictionary = session.last_result["outbreak"]
+	assert_eq(bool(run["ended"]), sim.outcome != "attacker")
+	assert_eq(session.last_result.has("outbreak_best"), sim.outcome != "attacker")
+
+	# Force a defender hold on a fresh run: the run ends and the best score persists.
+	session.outbreak = OutbreakRun.new()
+	session.outbreak.record("attacker", 50)
+	var held: BattleSim = SimFixtures.make_sim(structs, [], session.seed, cfg)
+	held.run_to_end()
+	assert_ne(held.outcome, "attacker")
+	inf._on_battle_finished(held)
+	assert_true(bool(session.last_result["outbreak"]["ended"]))
+	var best: int = GameSettings.get_int(GameSettings.SECTION_GAME, GameSettings.KEY_BEST_OUTBREAK, 0, OUTBREAK_SETTINGS_PATH)
+	assert_eq(best, int(session.last_result["outbreak_best"]))
+	assert_gte(best, 50)
+	if FileAccess.file_exists(OUTBREAK_SETTINGS_PATH):
+		DirAccess.remove_absolute(OUTBREAK_SETTINGS_PATH)

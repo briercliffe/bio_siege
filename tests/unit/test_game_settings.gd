@@ -41,3 +41,10 @@ func test_file_is_a_plain_config_file_with_the_documented_key() -> void:
 	assert_eq(cfg.load(TEST_PATH), OK)
 	assert_eq(cfg.get_value("game", "seen_how_to_play"), true)
 	assert_eq(GameSettings.DEFAULT_PATH, "user://settings.cfg")
+
+
+func test_int_round_trips_and_missing_returns_default() -> void:
+	assert_eq(GameSettings.get_int("game", GameSettings.KEY_BEST_OUTBREAK, 7, TEST_PATH), 7)
+	assert_true(GameSettings.set_int("game", GameSettings.KEY_BEST_OUTBREAK, 2650, TEST_PATH))
+	assert_eq(GameSettings.get_int("game", GameSettings.KEY_BEST_OUTBREAK, 0, TEST_PATH), 2650)
+	assert_eq(GameSettings.get_int("game", "other_key", 3, TEST_PATH), 3)

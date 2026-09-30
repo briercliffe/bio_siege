@@ -13,6 +13,7 @@ var title_label: Label = null
 var reason_label: Label = null
 var score_label: Label = null
 var memory_label: Label = null
+var outbreak_label: Label = null
 var stats_container: VBoxContainer = null
 
 # Stat value labels
@@ -41,6 +42,8 @@ var split_widths: Dictionary = {}
 var btn_re_raid: Button = null
 var btn_edit_base: Button = null
 var btn_new_base: Button = null
+var btn_new_outbreak: Button = null
+var btn_retry_base: Button = null
 
 # Telemetry slots and controls
 var survey_slot: VBoxContainer = null
@@ -79,6 +82,8 @@ func _resolve_nodes() -> void:
 		score_label = find_child("ScoreLabel", true, false) as Label
 	if memory_label == null:
 		memory_label = find_child("MemoryLabel", true, false) as Label
+	if outbreak_label == null:
+		outbreak_label = find_child("OutbreakLabel", true, false) as Label
 	if stats_container == null:
 		stats_container = find_child("StatsContainer", true, false) as VBoxContainer
 
@@ -114,6 +119,11 @@ func _resolve_nodes() -> void:
 		btn_edit_base = find_child("BtnEditBase", true, false) as Button
 	if btn_new_base == null:
 		btn_new_base = find_child("BtnNewBase", true, false) as Button
+
+	if btn_new_outbreak == null:
+		btn_new_outbreak = find_child("BtnNewOutbreak", true, false) as Button
+	if btn_retry_base == null:
+		btn_retry_base = find_child("BtnRetryBase", true, false) as Button
 
 	if survey_slot == null:
 		survey_slot = find_child("SurveySlot", true, false) as VBoxContainer
@@ -199,6 +209,14 @@ func _build_ui_fallback() -> void:
 	memory_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	memory_label.visible = false
 	content.add_child(memory_label)
+
+	outbreak_label = Label.new()
+	outbreak_label.name = "OutbreakLabel"
+	outbreak_label.add_theme_font_size_override("font_size", 20)
+	outbreak_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	outbreak_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	outbreak_label.visible = false
+	content.add_child(outbreak_label)
 
 	content.add_child(HSeparator.new())
 
@@ -291,6 +309,20 @@ func _build_ui_fallback() -> void:
 	btn_new_base.text = "Start over with 1000 ATP"
 	btns_box.add_child(btn_new_base)
 
+	btn_new_outbreak = Button.new()
+	btn_new_outbreak.name = "BtnNewOutbreak"
+	btn_new_outbreak.custom_minimum_size = Vector2(0, 48)
+	btn_new_outbreak.text = "New outbreak"
+	btn_new_outbreak.visible = false
+	btns_box.add_child(btn_new_outbreak)
+
+	btn_retry_base = Button.new()
+	btn_retry_base.name = "BtnRetryBase"
+	btn_retry_base.custom_minimum_size = Vector2(0, 48)
+	btn_retry_base.text = "Retry this base"
+	btn_retry_base.visible = false
+	btns_box.add_child(btn_retry_base)
+
 
 func _add_stat_row(parent_box: VBoxContainer, label_text: String, default_val: String, val_node_name: String) -> Label:
 	var row := HBoxContainer.new()
@@ -316,6 +348,10 @@ func _wire_buttons() -> void:
 		btn_edit_base.pressed.connect(_on_edit_base_pressed)
 	if btn_new_base != null and not btn_new_base.pressed.is_connected(_on_new_base_pressed):
 		btn_new_base.pressed.connect(_on_new_base_pressed)
+	if btn_new_outbreak != null and not btn_new_outbreak.pressed.is_connected(_on_new_outbreak_pressed):
+		btn_new_outbreak.pressed.connect(_on_new_outbreak_pressed)
+	if btn_retry_base != null and not btn_retry_base.pressed.is_connected(_on_retry_base_pressed):
+		btn_retry_base.pressed.connect(_on_retry_base_pressed)
 
 
 func setup(p_session: Session, p_fsm: GameStateMachine = null) -> void:
@@ -493,6 +529,7 @@ func _populate() -> void:
 	if btn_edit_base != null:
 		btn_edit_base.text = "Go back and change your defenses"
 	_update_new_base_label()
+	_populate_outbreak(res)
 
 	_populate_survey()
 	_populate_export()
@@ -556,11 +593,75 @@ Best this session: %d" % [line, best]
 		score_label.visible = true
 
 
+## Outbreak header line and button set (outbreak_mode flag). Identical to Lab mode when there is no run.
+func _populate_outbreak(res: Dictionary) -> void:
+	var run: Dictionary = {}
+	if res.has("outbreak") and res["outbreak"] is Dictionary:
+		run = res["outbreak"]
+	var active: bool = not run.is_empty()
+	var ended: bool = active and bool(run.get("ended", false))
+	if outbreak_label != null:
+		outbreak_label.visible = active
+		outbreak_label.text = ""
+	if btn_new_outbreak != null:
+		btn_new_outbreak.visible = ended
+	if btn_retry_base != null:
+		btn_retry_base.visible = ended
+	if btn_re_raid != null:
+		btn_re_raid.visible = true
+	if btn_edit_base != null:
+		btn_edit_base.visible = true
+	if not active:
+		return
+
+	var total: int = int(run.get("total_score", 0))
+	var text: String
+	if ended:
+		var cleared: int = (run.get("generation_scores", []) as Array).size()
+		var best: int = int(res.get("outbreak_best", total))
+		text = "Outbreak contained after %d %s · Run score %s · Best %s" % [
+			cleared, "generation" if cleared == 1 else "generations", _group(total), _group(best)]
+		if btn_re_raid != null:
+			btn_re_raid.visible = false
+		if btn_edit_base != null:
+			btn_edit_base.visible = false
+		if btn_new_base != null:
+			btn_new_base.text = "Abandon outbreak"
+	else:
+		var scores: Array = run.get("generation_scores", [])
+		var last_score: int = int(scores[scores.size() - 1]) if not scores.is_empty() else 0
+		text = "Generation %d cleared · +%s · Run total %s" % [int(run.get("generation", 1)) - 1, _group(last_score), _group(total)]
+		if btn_re_raid != null:
+			btn_re_raid.visible = true
+			btn_re_raid.text = "Next generation: raid again"
+		if btn_edit_base != null:
+			btn_edit_base.visible = true
+			btn_edit_base.text = "Next generation: edit base first"
+		if btn_new_base != null:
+			btn_new_base.text = "Abandon outbreak"
+	if outbreak_label != null:
+		outbreak_label.text = text
+	stats["outbreak_generation"] = str(int(run.get("generation", 1)))
+	stats["outbreak_total"] = str(total)
+	stats["outbreak_ended"] = str(ended)
+
+
+## 1480 -> "1,480"
+static func _group(value: int) -> String:
+	var digits: String = str(absi(value))
+	var out: String = ""
+	while digits.length() > 3:
+		out = "," + digits.substr(digits.length() - 3) + out
+		digits = digits.substr(0, digits.length() - 3)
+	return ("-" if value < 0 else "") + digits + out
+
+
 func _update_new_base_label() -> void:
 	var start_atp: int = 1000
 	if session != null and session.config != null:
 		start_atp = int(session.config.start_wallet.get("atp", 1000))
-	if btn_new_base != null:
+	var in_run: bool = outbreak_label != null and outbreak_label.visible
+	if btn_new_base != null and not in_run:
 		btn_new_base.text = "Start over with %d ATP" % start_atp
 
 
@@ -795,6 +896,14 @@ func _on_new_base_pressed() -> void:
 	make_choice("new_base")
 
 
+func _on_new_outbreak_pressed() -> void:
+	make_choice("new_outbreak")
+
+
+func _on_retry_base_pressed() -> void:
+	make_choice("retry_base")
+
+
 static func apply_choice(choice: String, session: Session, fsm: GameStateMachine = null) -> void:
 	if session == null:
 		return
@@ -810,9 +919,18 @@ static func apply_choice(choice: String, session: Session, fsm: GameStateMachine
 				session.army.refund_all(session.wallet)
 			if fsm != null:
 				fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
-		"new_base":
+		"retry_base":
+			if session.army != null:
+				session.army.refund_all(session.wallet)
+			session.memory = ImmuneMemory.new()
+			session.outbreak = OutbreakRun.new()
+			if fsm != null:
+				fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
+		"new_base", "new_outbreak":
 			session.best_score = 0
 			session.memory = ImmuneMemory.new()
+			if choice == "new_outbreak" or session.outbreak != null:
+				session.outbreak = OutbreakRun.new()
 			if session.wallet != null and session.config != null:
 				session.wallet.reset(session.config.start_wallet)
 			if session.grid != null:

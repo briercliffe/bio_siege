@@ -303,3 +303,24 @@ func test_main_scene_integration() -> void:
 	var dbg: DebugOverlay = main_node.get_node_or_null("DebugOverlay") as DebugOverlay
 	assert_not_null(dbg, "Main must have DebugOverlay node")
 	assert_eq(dbg.fsm, fsm, "DebugOverlay should be connected to FSM")
+
+
+func test_session_outbreak_follows_flag() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	assert_null(Session.new(cfg).outbreak)
+	cfg.feature_flags["outbreak_mode"] = true
+	var session := Session.new(cfg)
+	assert_not_null(session.outbreak)
+	session.record_outbreak("attacker", 400)
+	session.record_outbreak("attacker", 600)
+	assert_eq(session.outbreak.generation, 3)
+	assert_eq(session.outbreak.total_score, 1000)
+	session.record_outbreak("defender", 0)
+	assert_true(session.outbreak.ended)
+
+
+func test_record_outbreak_noop_without_run() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	var session := Session.new(cfg)
+	session.record_outbreak("attacker", 400)
+	assert_null(session.outbreak)
