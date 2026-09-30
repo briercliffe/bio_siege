@@ -6,7 +6,7 @@ extends RefCounted
 ## Pure RefCounted with zero Node/OS/scene dependencies.
 
 
-static func base_to_dict(grid: GridModel) -> Dictionary:
+static func base_to_dict(grid: GridModel, memory: ImmuneMemory = null) -> Dictionary:
 	var structs_arr: Array = []
 	if grid != null:
 		for s: GridModel.PlacedStructure in grid.structures():
@@ -16,7 +16,7 @@ static func base_to_dict(grid: GridModel) -> Dictionary:
 			})
 	var w: int = grid.width if grid != null else 0
 	var h: int = grid.height if grid != null else 0
-	return {
+	var out: Dictionary = {
 		"format": "bio_siege.base",
 		"version": 1,
 		"grid": {
@@ -25,6 +25,9 @@ static func base_to_dict(grid: GridModel) -> Dictionary:
 		},
 		"structures": structs_arr,
 	}
+	if memory != null and not memory.is_empty():
+		out["memory"] = memory.to_dict()
+	return out
 
 
 static func army_to_dict(deployments: Array) -> Dictionary:
@@ -99,7 +102,7 @@ static func battle_to_dict(config: GameConfig, setup: BattleSetup, sim: BattleSi
 		"final_state_hash": sim.state_hash() if sim != null else "",
 	}
 
-	return {
+	var battle: Dictionary = {
 		"format": "bio_siege.battle",
 		"version": 1,
 		"config_hash": config.content_hash if config != null else "",
@@ -108,6 +111,9 @@ static func battle_to_dict(config: GameConfig, setup: BattleSetup, sim: BattleSi
 		"army": army_dict,
 		"result": result_dict,
 	}
+	if setup != null and not setup.memory_seed.is_empty():
+		battle["memory_seed"] = setup.memory_seed.duplicate(true)
+	return battle
 
 
 static func _sort_keys_recursive(val: Variant) -> Variant:
@@ -263,6 +269,17 @@ static func parse_base(text: String, config: GameConfig) -> Dictionary:
 			"origin": origin,
 		})
 
+	var memory_out: Dictionary = {}
+	if d.has("memory"):
+		var mem_val: Variant = d["memory"]
+		if not (mem_val is Dictionary):
+			return {
+				"ok": false,
+				"error": "Invalid memory block",
+				"layout": [],
+			}
+		memory_out = (mem_val as Dictionary).duplicate(true)
+
 	if config != null:
 		var setup := BattleSetup.create(layout, [], 0)
 		var val_errors: PackedStringArray = setup.validate(config)
@@ -277,6 +294,7 @@ static func parse_base(text: String, config: GameConfig) -> Dictionary:
 		"ok": true,
 		"error": "",
 		"layout": layout,
+		"memory": memory_out,
 	}
 
 
@@ -530,7 +548,28 @@ static func parse_battle(text: String, config: GameConfig) -> Dictionary:
 	var result_val: Variant = d.get("result", {})
 	var result: Dictionary = result_val as Dictionary if result_val is Dictionary else {}
 
-	var setup: BattleSetup = BattleSetup.create(parsed_base.layout, parsed_army.units, seed_val)
+	var memory_seed: Dictionary = {}
+	if d.has("memory_seed"):
+		var ms_val: Variant = d["memory_seed"]
+		if not (ms_val is Dictionary):
+			return {
+				"ok": false,
+				"error": "Invalid memory_seed",
+				"setup": null,
+				"result": {},
+				"config_hash": "",
+			}
+		memory_seed = _parse_memory_seed(ms_val as Dictionary)
+		if memory_seed.is_empty() and not (ms_val as Dictionary).is_empty():
+			return {
+				"ok": false,
+				"error": "Invalid memory_seed",
+				"setup": null,
+				"result": {},
+				"config_hash": "",
+			}
+
+	var setup: BattleSetup = BattleSetup.create(parsed_base.layout, parsed_army.units, seed_val, memory_seed)
 
 	return {
 		"ok": true,
@@ -539,6 +578,22 @@ static func parse_battle(text: String, config: GameConfig) -> Dictionary:
 		"result": result,
 		"config_hash": config_hash,
 	}
+
+
+## Returns key -> int pct, or {} if any entry is malformed.
+static func _parse_memory_seed(raw: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for k: Variant in raw.keys():
+		var v: Variant = raw[k]
+		if typeof(k) != TYPE_STRING or not (typeof(v) == TYPE_INT or typeof(v) == TYPE_FLOAT):
+			return {}
+		if not is_equal_approx(float(v), roundf(float(v))):
+			return {}
+		var pct: int = int(v)
+		if pct < 0 or pct > 100:
+			return {}
+		out[str(k)] = pct
+	return out
 
 
 static func setup_from_battle(d: Dictionary) -> BattleSetup:
@@ -575,4 +630,8 @@ static func setup_from_battle(d: Dictionary) -> BattleSetup:
 				unit_entry["strain"] = str(u["strain"])
 			units_arr.append(unit_entry)
 
-	return BattleSetup.create(structs_arr, units_arr, seed_val)
+	var ms_val: Variant = d.get("memory_seed", {})
+	var memory_seed: Dictionary = {}
+	if ms_val is Dictionary:
+		memory_seed = _parse_memory_seed(ms_val as Dictionary)
+	return BattleSetup.create(structs_arr, units_arr, seed_val, memory_seed)

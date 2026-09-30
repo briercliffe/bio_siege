@@ -92,3 +92,25 @@ func test_replay_verify_with_strains() -> void:
 	var res: Dictionary = Replay.verify(json, cfg)
 	assert_true(res["ok"])
 	assert_true(res["match"], "strained battle must reproduce")
+
+
+func test_replay_verify_with_memory_seed() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	cfg.feature_flags["bcell_analysis"] = true
+	var structs: Array = [
+		{"type": "nucleus", "origin": Vector2i(9, 9)},
+		{"type": "b_cell", "origin": Vector2i(10, 3)},
+		{"type": "macrophage", "origin": Vector2i(6, 6)},
+	]
+	var units: Array = [
+		{"type": "rhinovirus", "cell": Vector2i(0, 10)},
+		{"type": "staphylococcus", "cell": Vector2i(0, 9)},
+	]
+	var setup: BattleSetup = BattleSetup.create(structs, units, 11, {"rhinovirus/wild": 50, "staphylococcus/wild": 100})
+	var sim := BattleSim.new(cfg, setup)
+	while not sim.finished:
+		sim.step()
+	var json: String = SnapshotIO.to_json(SnapshotIO.battle_to_dict(cfg, setup, sim))
+	var res: Dictionary = Replay.verify(json, cfg)
+	assert_true(res["ok"])
+	assert_true(res["match"], "seeded battle must reproduce")

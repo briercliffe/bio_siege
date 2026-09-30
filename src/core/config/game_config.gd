@@ -24,6 +24,11 @@ var deploy_hold_interval_s: float = 0.1
 var start_wallet: Dictionary = {}
 var default_seed: int = 0
 var feature_flags: Dictionary = {}
+var memory_max_level: int = 0
+var memory_seed_pct_per_level: int = 0
+var memory_decay_raids: int = 0
+var memory_slots: int = 0
+var memory_drift_pct: int = 0
 var structures: Dictionary = {} # String -> StructureDef
 var pathogens: Dictionary = {} # String -> PathogenDef
 var content_hash: String = ""
@@ -69,6 +74,10 @@ func core_structure_id() -> String:
 ## True when the named feature flag is set in data/game_rules.json (missing = false).
 func flag(flag_name: String) -> bool:
 	return bool(feature_flags.get(flag_name, false))
+
+## Immune memory needs its own flag, B-Cell analysis, and a loaded immune_memory block.
+func memory_enabled() -> bool:
+	return flag("immune_memory") and flag("bcell_analysis") and memory_max_level > 0
 
 func move_nucleus_enabled() -> bool:
 	return bool(feature_flags.get("move_nucleus", false))
@@ -147,6 +156,7 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 		else:
 			rules_data = json_rules.data
 			_validate_rules(rules_data, errors)
+			_validate_immune_memory(rules_data, errors)
 
 	var structures_data: Dictionary = {}
 	if err_structures == OK:
@@ -196,6 +206,14 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 
 	config.default_seed = int(rules_data.get("default_seed", 0))
 	config.feature_flags = (rules_data.get("feature_flags", {}) as Dictionary).duplicate(true)
+	var mem_raw: Variant = rules_data.get("immune_memory", null)
+	if typeof(mem_raw) == TYPE_DICTIONARY:
+		var mem: Dictionary = mem_raw
+		config.memory_max_level = int(mem.get("max_level", 0))
+		config.memory_seed_pct_per_level = int(mem.get("seed_pct_per_level", 0))
+		config.memory_decay_raids = int(mem.get("decay_raids", 0))
+		config.memory_slots = int(mem.get("slots", 0))
+		config.memory_drift_pct = int(mem.get("drift_pct", 0))
 
 	for id_variant: Variant in structures_data.keys():
 		var id: String = str(id_variant)
@@ -464,9 +482,10 @@ static func _validate_rules(data: Dictionary, errors: PackedStringArray) -> void
 		"battle_timeout_s", "max_path_recalcs_per_tick", "empty_path_weight",
 		"deploy_hold_interval_s", "default_seed", "feature_flags"
 	]
+	var optional_rule_keys: Array[String] = ["immune_memory"]
 	for k_var: Variant in data.keys():
 		var k: String = str(k_var)
-		if not k.begins_with("_") and not allowed_keys.has(k):
+		if not k.begins_with("_") and not allowed_keys.has(k) and not optional_rule_keys.has(k):
 			errors.append("game_rules.json: %s: unknown key (got %s)" % [k, k])
 
 	for req_key: String in allowed_keys:
@@ -600,6 +619,45 @@ static func _validate_rules(data: Dictionary, errors: PackedStringArray) -> void
 				var fk: String = str(fk_var)
 				if typeof(flags[fk_var]) != TYPE_BOOL:
 					errors.append("game_rules.json: feature_flags.%s: must be a boolean (got %s)" % [fk, _format_val(flags[fk_var])])
+
+static func _validate_immune_memory(data: Dictionary, errors: PackedStringArray) -> void:
+	var flags_val: Variant = data.get("feature_flags", null)
+	var flag_on: bool = false
+	if typeof(flags_val) == TYPE_DICTIONARY:
+		flag_on = (flags_val as Dictionary).get("immune_memory", false) == true
+	if not data.has("immune_memory"):
+		if flag_on:
+			errors.append("game_rules.json: immune_memory: required when feature_flags.immune_memory is true (got null)")
+		return
+	var m_val: Variant = data["immune_memory"]
+	if typeof(m_val) != TYPE_DICTIONARY:
+		errors.append("game_rules.json: immune_memory: must be a JSON object (got %s)" % [_format_val(m_val)])
+		return
+	var m: Dictionary = m_val
+	# key -> [min, max]; max -1 means unbounded.
+	var spec: Dictionary = {
+		"max_level": [1, -1], "seed_pct_per_level": [0, 100], "decay_raids": [1, -1],
+		"slots": [1, -1], "drift_pct": [0, 100]
+	}
+	for mk_var: Variant in m.keys():
+		var mk: String = str(mk_var)
+		if not mk.begins_with("_") and not spec.has(mk):
+			errors.append("game_rules.json: immune_memory.%s: unknown key (got %s)" % [mk, mk])
+	for key_var: Variant in spec.keys():
+		var key: String = str(key_var)
+		var range_arr: Array = spec[key]
+		var lo: int = int(range_arr[0])
+		var hi: int = int(range_arr[1])
+		if not m.has(key):
+			errors.append("game_rules.json: immune_memory.%s: missing required field (got null)" % [key])
+			continue
+		var v: Variant = m[key]
+		if not _is_whole_number(v):
+			errors.append("game_rules.json: immune_memory.%s: must be an integer (got %s)" % [key, _format_val(v)])
+		elif int(v) < lo:
+			errors.append("game_rules.json: immune_memory.%s: must be >= %d (got %s)" % [key, lo, _format_val(v)])
+		elif hi >= 0 and int(v) > hi:
+			errors.append("game_rules.json: immune_memory.%s: must be <= %d (got %s)" % [key, hi, _format_val(v)])
 
 static func _validate_structures(data: Dictionary, errors: PackedStringArray) -> void:
 	if data.is_empty():

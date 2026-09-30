@@ -236,10 +236,19 @@ func _on_hud_launch_requested() -> void:
 
 	# 4. Build setup:
 	#    session.battle_setup = BattleSetup.create(session.grid.to_layout(), session.army.deployments.duplicate(true), session.seed)
+	var memory_seed: Dictionary = {}
+	if session.config.memory_enabled():
+		var strain_keys: Array[String] = []
+		for dep: Dictionary in session.army.deployments:
+			var key: String = "%s/%s" % [str(dep.get("type", "")), str(dep.get("strain", "wild"))]
+			if not strain_keys.has(key):
+				strain_keys.append(key)
+		memory_seed = session.memory.seed_map(strain_keys, session.config)
 	session.battle_setup = BattleSetup.create(
 		session.grid.to_layout(),
 		session.army.deployments.duplicate(true),
-		session.seed
+		session.seed,
+		memory_seed
 	)
 	var army_counts: Dictionary = {}
 	for p_id: String in session.config.pathogen_ids():

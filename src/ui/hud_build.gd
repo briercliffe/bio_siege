@@ -24,6 +24,7 @@ var btn_menu: Button = null
 var popup_menu: PopupMenu = null
 var import_dialog: ImportDialog = null
 var last_toast_message: String = ""
+var memory_panel: MemoryPanel = null
 
 var bottom_tray: PanelContainer = null
 var scroll_container: ScrollContainer = null
@@ -256,6 +257,18 @@ func setup(p_session: Session, p_controller: BuildController) -> void:
 
 	_populate_tray()
 	_update_card_affordability()
+	_sync_memory_panel()
+
+## Shows the read-only MemoryPanel (top right, under the top bar) only when immune memory is enabled.
+func _sync_memory_panel() -> void:
+	var enabled: bool = session != null and session.config != null and session.config.memory_enabled()
+	if memory_panel == null and enabled:
+		memory_panel = MemoryPanel.new()
+		add_child(memory_panel)
+	if memory_panel != null:
+		memory_panel.visible = enabled
+		if enabled:
+			memory_panel.setup(session)
 
 func _populate_tray() -> void:
 	for c in cards:
@@ -484,7 +497,7 @@ func open_import_dialog() -> void:
 func export_base() -> String:
 	if session == null or session.grid == null:
 		return ""
-	var base_dict: Dictionary = SnapshotIO.base_to_dict(session.grid)
+	var base_dict: Dictionary = SnapshotIO.base_to_dict(session.grid, session.memory)
 	var json_str: String = SnapshotIO.to_json(base_dict)
 	DisplayServer.clipboard_set(json_str)
 	_show_toast("Base copied to clipboard")
@@ -529,6 +542,9 @@ func import_base(json_text: String) -> bool:
 
 	session.wallet.reset(session.config.start_wallet)
 	session.grid.load_layout(layout, session.wallet)
+	if session.config.memory_enabled():
+		session.memory = ImmuneMemory.from_dict(res.get("memory", {}), session.config)
+		_sync_memory_panel()
 	if import_dialog != null:
 		import_dialog.close()
 	_show_toast("Base loaded")

@@ -11,6 +11,7 @@ var battle_setup: BattleSetup = null
 var last_result: Dictionary = {}          # filled by #20, shown by #22
 var last_launch: Dictionary = {}
 var prediction_structure_id: int = 0      # filled by #25
+var memory: ImmuneMemory = ImmuneMemory.new()  # immune_memory flag: strains learned across raids
 var best_score: int = 0                   # raid_score flag: best score this session (not persisted)
 var intent_lines_enabled: bool = true
 var pending_config: GameConfig = null     # hot-reloaded config queued during INFECTION (#27)
@@ -48,6 +49,8 @@ func apply_new_config(new_config: GameConfig) -> Dictionary:
 	if old_config != null:
 		summary["changed_values"] = ConfigDiff.count_changed_leaves(old_config.source_data, new_config.source_data)
 	config = new_config
+	if new_config.memory_enabled():
+		memory.clamp_to(new_config)
 	if grid == null or wallet == null or army == null:
 		summary["message"] = _reload_message(int(summary["changed_values"]), notices)
 		return summary

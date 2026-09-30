@@ -12,6 +12,7 @@ var scroll_container: ScrollContainer = null
 var title_label: Label = null
 var reason_label: Label = null
 var score_label: Label = null
+var memory_label: Label = null
 var stats_container: VBoxContainer = null
 
 # Stat value labels
@@ -76,6 +77,8 @@ func _resolve_nodes() -> void:
 		reason_label = find_child("ReasonLabel", true, false) as Label
 	if score_label == null:
 		score_label = find_child("ScoreLabel", true, false) as Label
+	if memory_label == null:
+		memory_label = find_child("MemoryLabel", true, false) as Label
 	if stats_container == null:
 		stats_container = find_child("StatsContainer", true, false) as VBoxContainer
 
@@ -188,6 +191,14 @@ func _build_ui_fallback() -> void:
 	score_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	score_label.visible = false
 	content.add_child(score_label)
+
+	memory_label = Label.new()
+	memory_label.name = "MemoryLabel"
+	memory_label.add_theme_font_size_override("font_size", 16)
+	memory_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	memory_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	memory_label.visible = false
+	content.add_child(memory_label)
 
 	content.add_child(HSeparator.new())
 
@@ -424,6 +435,7 @@ func _populate() -> void:
 		stats["Prediction"] = val_prediction.text
 
 	_populate_score(res, is_attacker_win)
+	_populate_memory(res)
 
 	# 4. ATP split bar
 	base_atp = 0
@@ -484,6 +496,40 @@ func _populate() -> void:
 
 	_populate_survey()
 	_populate_export()
+
+
+## Immune-memory line (immune_memory flag). Hidden and absent from stats when there are no changes.
+func _populate_memory(res: Dictionary) -> void:
+	var text: String = ""
+	if session != null and session.config != null and session.config.memory_enabled() and res.has("memory_changes"):
+		text = memory_changes_text(res.get("memory_changes", []), session.config)
+	if memory_label != null:
+		memory_label.text = text
+		memory_label.visible = not text.is_empty()
+	if not text.is_empty():
+		stats["memory"] = text
+
+
+## "Immune memory: Rhinovirus (wild) 1→2 · Staphylococcus (wild) forgotten"
+static func memory_changes_text(changes: Array, config: GameConfig) -> String:
+	if changes.is_empty():
+		return ""
+	var parts: Array[String] = []
+	for c_val: Variant in changes:
+		if not (c_val is Dictionary):
+			continue
+		var c: Dictionary = c_val
+		var label: String = MemoryPanel.strain_label(str(c.get("strain_key", "")), config)
+		var to_level: int = int(c.get("to", 0))
+		if str(c.get("reason", "")) == "forgotten":
+			parts.append("%s forgotten" % label)
+		elif str(c.get("reason", "")) == "evicted":
+			parts.append("%s evicted" % label)
+		else:
+			parts.append("%s %d→%d" % [label, int(c.get("from", 0)), to_level])
+	if parts.is_empty():
+		return ""
+	return "Immune memory: " + " · ".join(parts)
 
 
 ## Raid-score row (raid_score flag). Hidden and absent from stats when the flag is off.
@@ -766,6 +812,7 @@ static func apply_choice(choice: String, session: Session, fsm: GameStateMachine
 				fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
 		"new_base":
 			session.best_score = 0
+			session.memory = ImmuneMemory.new()
 			if session.wallet != null and session.config != null:
 				session.wallet.reset(session.config.start_wallet)
 			if session.grid != null:

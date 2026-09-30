@@ -191,3 +191,20 @@ func test_strain_round_trips_through_dict() -> void:
 	var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 0), "strain": "capsid_hardening"}]
 	var back: BattleSetup = BattleSetup.from_dict(BattleSetup.create(structs, units, 5).to_dict())
 	assert_eq(back.units[0]["strain"], "capsid_hardening")
+
+
+func test_memory_seed_round_trip_and_validation() -> void:
+	var cfg: GameConfig = _load_config()
+	var structs: Array = [{"type": "nucleus", "origin": Vector2i(9, 9)}]
+	var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 0)}]
+	var plain: BattleSetup = BattleSetup.create(structs, units, 5)
+	assert_false(plain.to_dict().has("memory_seed"))
+
+	var seeded: BattleSetup = BattleSetup.create(structs, units, 5, {"rhinovirus/wild": 50})
+	assert_eq(seeded.to_dict()["memory_seed"], {"rhinovirus/wild": 50})
+	assert_eq(BattleSetup.from_dict(seeded.to_dict()).memory_seed, {"rhinovirus/wild": 50})
+	assert_eq(seeded.duplicate_setup().memory_seed, {"rhinovirus/wild": 50})
+	assert_eq(seeded.validate(cfg).size(), 0)
+
+	var bad: BattleSetup = BattleSetup.create(structs, units, 5, {"rhinovirus/wild": 101})
+	assert_gt(bad.validate(cfg).size(), 0)

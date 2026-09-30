@@ -477,3 +477,67 @@ func test_infection_phase_writes_score_only_when_flag_on() -> void:
 			assert_eq(int(result["score"]), expected)
 			assert_eq(int(result["base_value"]), int(cfg.structures["macrophage"].cost.get("atp", 0)))
 			assert_eq(session.best_score, expected)
+
+
+func _memory_cfg() -> GameConfig:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	cfg.feature_flags["immune_memory"] = true
+	cfg.feature_flags["bcell_analysis"] = true
+	return cfg
+
+
+func test_memory_cleared_only_on_new_base() -> void:
+	var session := Session.new(_memory_cfg())
+	var fsm := GameStateMachine.new()
+	add_child_autoqfree(fsm)
+	fsm.session = session
+	session.memory.entries["rhinovirus/wild"] = {"level": 2, "absent": 0, "since": 1}
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("re_raid", session, fsm)
+	assert_false(session.memory.is_empty())
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("edit_base", session, fsm)
+	assert_false(session.memory.is_empty())
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("new_base", session, fsm)
+	assert_true(session.memory.is_empty())
+
+
+func test_infection_phase_updates_memory_when_enabled() -> void:
+	for enabled: bool in [false, true]:
+		var cfg: GameConfig = _memory_cfg()
+		cfg.feature_flags["immune_memory"] = enabled
+		var session := Session.new(cfg)
+		var structs: Array = [
+			{"type": "nucleus", "origin": Vector2i(9, 9)},
+			{"type": "b_cell", "origin": Vector2i(10, 3)},
+		]
+		var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 10)}]
+		session.battle_setup = BattleSetup.create(structs, units, session.seed)
+		var sim: BattleSim = SimFixtures.make_sim(structs, units, session.seed, cfg)
+		sim.run_to_end()
+		var inf := InfectionPhase.new()
+		add_child_autoqfree(inf)
+		inf.session = session
+		inf._on_battle_finished(sim)
+		assert_eq(session.memory.raids, 1 if enabled else 0)
+		assert_eq(session.last_result.has("memory_changes"), enabled)
+		assert_eq(session.last_result.has("memory"), enabled)
+
+
+func test_results_memory_line() -> void:
+	var cfg: GameConfig = _memory_cfg()
+	var session := Session.new(cfg)
+	session.last_result = _score_result("attacker")
+	session.last_result["memory_changes"] = [
+		{"strain_key": "rhinovirus/wild", "from": 1, "to": 2, "reason": "learned"},
+		{"strain_key": "staphylococcus/wild", "from": 1, "to": 0, "reason": "forgotten"},
+	]
+	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
+	var ui: ResultsPhase = scene.instantiate() as ResultsPhase
+	add_child_autoqfree(ui)
+	ui.setup(session)
+	var expected: String = "Immune memory: Rhinovirus (wild) 1→2 · Staphylococcus (wild) forgotten"
+	assert_true(ui.memory_label.visible)
+	assert_eq(ui.memory_label.text, expected)
+	assert_eq(ui.get_stat("memory"), expected)

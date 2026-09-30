@@ -388,6 +388,13 @@ func _on_battle_finished(sim: BattleSim) -> void:
 		if session.config != null and session.config.flag("bcell_analysis"):
 			session.last_result["analyzed_strains"] = sim.analyzed_strain_keys()
 
+		if session.config != null and session.config.memory_enabled():
+			var mem_changes: Array[Dictionary] = session.memory.update_after_raid(sim.seen_strain_keys(), sim.analyzed_strain_keys(), session.config)
+			session.last_result["memory_changes"] = mem_changes
+			session.last_result["memory"] = session.memory.to_dict()
+			if SessionLogger != null and SessionLogger.has_method("log_event"):
+				SessionLogger.log_event("memory_updated", {"raids": session.memory.raids, "changes": mem_changes})
+
 		if session.config != null and session.config.flag("biofilm"):
 			session.last_result["biofilm_max_group"] = _biofilm_max_group
 			session.last_result["biofilm_changes"] = _biofilm_changes

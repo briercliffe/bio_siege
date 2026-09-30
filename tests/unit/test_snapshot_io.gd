@@ -260,3 +260,40 @@ func test_setup_from_battle_keeps_strain() -> void:
 	}
 	var setup: BattleSetup = SnapshotIO.setup_from_battle(d)
 	assert_eq(setup.units[0]["strain"], "capsid_hardening")
+
+
+func test_base_memory_round_trip() -> void:
+	var grid := GridModel.new(config)
+	grid.reset_with_nucleus()
+	assert_false(SnapshotIO.base_to_dict(grid).has("memory"))
+	assert_false(SnapshotIO.base_to_dict(grid, ImmuneMemory.new()).has("memory"))
+
+	var mem := ImmuneMemory.new()
+	mem.raids = 2
+	mem.entries["rhinovirus/wild"] = {"level": 2, "absent": 0, "since": 1}
+	var d: Dictionary = SnapshotIO.base_to_dict(grid, mem)
+	assert_eq(d["version"], 1)
+	var parsed: Dictionary = SnapshotIO.parse_base(SnapshotIO.to_json(d), config)
+	assert_true(parsed["ok"])
+	var back: ImmuneMemory = ImmuneMemory.from_dict(parsed["memory"], config)
+	assert_eq(back.to_dict(), mem.to_dict())
+	assert_eq(SnapshotIO.parse_base(SnapshotIO.to_json(SnapshotIO.base_to_dict(grid)), config)["memory"], {})
+
+	d["memory"] = "junk"
+	var bad: Dictionary = SnapshotIO.parse_base(SnapshotIO.to_json(d), config)
+	assert_false(bad["ok"])
+	assert_eq(bad["error"], "Invalid memory block")
+
+
+func test_battle_memory_seed_round_trip() -> void:
+	var base: BattleSetup = Scenarios.open_field(9)
+	var setup: BattleSetup = BattleSetup.create(base.structures, base.units, 9, {"rhinovirus/wild": 75})
+	var sim := BattleSim.new(config, setup)
+	var b_dict: Dictionary = SnapshotIO.battle_to_dict(config, setup, sim)
+	assert_eq(b_dict["memory_seed"], {"rhinovirus/wild": 75})
+	assert_eq(SnapshotIO.setup_from_battle(b_dict).memory_seed, {"rhinovirus/wild": 75})
+	var parsed: Dictionary = SnapshotIO.parse_battle(SnapshotIO.to_json(b_dict), config)
+	assert_true(parsed["ok"])
+	assert_eq((parsed["setup"] as BattleSetup).memory_seed, {"rhinovirus/wild": 75})
+	var plain: Dictionary = SnapshotIO.battle_to_dict(config, base, BattleSim.new(config, base))
+	assert_false(plain.has("memory_seed"))

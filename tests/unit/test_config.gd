@@ -673,3 +673,46 @@ func test_strains_validation_errors() -> void:
 	assert_true(_contains_error(r5.errors, "pathogens.json: rhinovirus.strains[0].modifiers.hp: must be > 0"))
 	var r6: ConfigLoadResult = _load_with_strains(func(d: Dictionary) -> void: d["rhinovirus"]["strains"] = "nope")
 	assert_true(_contains_error(r6.errors, "pathogens.json: rhinovirus.strains: must be an array"))
+
+# -----------------------------------------------------------------------------
+# immune_memory block (#89)
+# -----------------------------------------------------------------------------
+
+func _memory_rules(mutate: Callable) -> ConfigLoadResult:
+	var r: Dictionary = JSON.parse_string(default_rules_str)
+	mutate.call(r)
+	return GameConfig.load_from_strings(JSON.stringify(r), default_structures_str, default_pathogens_str)
+
+func test_immune_memory_defaults_load() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	assert_eq(cfg.memory_max_level, 3)
+	assert_eq(cfg.memory_seed_pct_per_level, 25)
+	assert_eq(cfg.memory_decay_raids, 2)
+	assert_eq(cfg.memory_slots, 3)
+	assert_eq(cfg.memory_drift_pct, 50)
+	assert_false(cfg.memory_enabled())
+	cfg.feature_flags["immune_memory"] = true
+	cfg.feature_flags["bcell_analysis"] = true
+	assert_true(cfg.memory_enabled())
+
+func test_immune_memory_validation_errors() -> void:
+	var r1: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["immune_memory"]["slots"] = 0)
+	assert_true(_contains_error(r1.errors, "immune_memory.slots: must be >= 1 (got 0)"))
+	var r2: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["immune_memory"]["drift_pct"] = 150)
+	assert_true(_contains_error(r2.errors, "immune_memory.drift_pct: must be <= 100 (got 150)"))
+	var r3: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["immune_memory"]["max_level"] = "x")
+	assert_true(_contains_error(r3.errors, "immune_memory.max_level: must be an integer"))
+	var r4: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["immune_memory"]["bogus"] = 1)
+	assert_true(_contains_error(r4.errors, "immune_memory.bogus: unknown key"))
+	var r5: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void:
+		r.erase("immune_memory")
+		r["feature_flags"]["immune_memory"] = true)
+	assert_true(_contains_error(r5.errors, "game_rules.json: immune_memory: required when feature_flags.immune_memory is true (got null)"))
+
+func test_config_without_immune_memory_block_loads() -> void:
+	var res: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void:
+		r.erase("immune_memory")
+		r["feature_flags"].erase("immune_memory"))
+	assert_true(res.is_ok())
+	assert_eq(res.config.memory_slots, 0)
+	assert_false(res.config.memory_enabled())
