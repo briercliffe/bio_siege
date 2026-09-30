@@ -639,14 +639,17 @@ func _build() -> void:
 	footer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(footer_label)
 
+	var dialogs: Theme = dialog_theme()
 	import_dialog = (load("res://src/ui/import_dialog.tscn") as PackedScene).instantiate() as ImportDialog
 	import_dialog.name = "ImportDialog"
+	import_dialog.theme = dialogs
 	import_dialog.load_requested.connect(import_text)
 	import_dialog.file_requested.connect(_on_file_requested)
 	add_child(import_dialog)
 
 	confirm_popup = (load("res://src/ui/confirmation_popup.tscn") as PackedScene).instantiate() as ConfirmationPopup
 	confirm_popup.name = "ConfirmDelete"
+	confirm_popup.theme = dialogs
 	add_child(confirm_popup)
 	confirm_popup.confirmed.connect(_on_delete_confirmed)
 	confirm_popup.canceled.connect(_on_delete_canceled)
@@ -660,6 +663,38 @@ func _build() -> void:
 	toast.name = "Toast"
 	toast.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(toast)
+
+
+## Day styling for the shared import and confirmation dialogs, which otherwise use Godot's dark default.
+static func dialog_theme() -> Theme:
+	var pal: Dictionary = UiPalette.for_theme(false)
+	var ink: Color = pal["ink"] as Color
+	var t := Theme.new()
+	var panel: StyleBoxFlat = KitDraw.make_box(pal["panel_border"] as Color, float(FloatingCard.RADIUS), 2,
+			pal["panel_border"] as Color, pal["panel_shadow"] as Color, 28, Vector2(0.0, 10.0))
+	t.set_stylebox("panel", "PanelContainer", panel)
+	t.set_color("font_color", "Label", ink)
+	t.set_font("font", "Label", UiFonts.weight(600))
+	var normal: StyleBoxFlat = KitDraw.make_box(pal["secondary_btn_bg"] as Color, 24.0, 2, pal["secondary_btn_border"] as Color)
+	var pressed: StyleBoxFlat = KitDraw.make_box(pal["chip"] as Color, 24.0, 2, pal["accent"] as Color)
+	for state: String in ["normal", "hover", "focus", "disabled"]:
+		t.set_stylebox(state, "Button", normal)
+	t.set_stylebox("pressed", "Button", pressed)
+	t.set_stylebox("hover_pressed", "Button", pressed)
+	for c: String in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
+		t.set_color(c, "Button", ink)
+	t.set_font("font", "Button", UiFonts.weight(700))
+	t.set_font_size("font_size", "Button", 16)
+	var field: StyleBoxFlat = KitDraw.make_box(pal["stepper_bg"] as Color, 16.0, 2, pal["stepper_border"] as Color)
+	field.set_content_margin_all(12.0)
+	t.set_stylebox("normal", "TextEdit", field)
+	var field_focus: StyleBoxFlat = field.duplicate() as StyleBoxFlat
+	field_focus.border_color = pal["accent"] as Color
+	t.set_stylebox("focus", "TextEdit", field_focus)
+	t.set_color("font_color", "TextEdit", ink)
+	t.set_color("font_placeholder_color", "TextEdit", pal["muted"] as Color)
+	t.set_color("caret_color", "TextEdit", ink)
+	return t
 
 
 func _make_button(node_name: String, label: String, v: PillButton.Variant, min_size: Vector2, px: int, w: int) -> CardButton:
