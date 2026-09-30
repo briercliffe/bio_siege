@@ -148,6 +148,7 @@ func test_paint_every_part_at_every_size_draws_cleanly() -> void:
 				r.paint_cell(ci, cell, 1.0, pose)
 				r.paint_cell(ci, cell, 0.3, pose)
 				r.paint_cracks(ci, cell, false, 0.8, pose)
+				r.paint_body_and_post(ci, cell, pose)
 			r.paint_break(ci, Vector2i(9, 9), 0.5)
 			r.paint_goo(ci, Vector2i(9, 9))
 			r.paint_body(ci, Vector2i(30, 30), false, pose)
@@ -155,6 +156,57 @@ func test_paint_every_part_at_every_size_draws_cleanly() -> void:
 	await wait_process_frames(2)
 	assert_gt(host.draw_count, 0)
 	assert_no_new_orphans()
+
+
+func test_body_and_post_join_into_one_list() -> void:
+	var r := WallRenderer.new()
+	var walls: Dictionary = _run(Vector2i(0, 0), Vector2i(2, 0))
+	r.rebuild(walls, IsoProjection.new(23.0, Vector2(200.0, 50.0)))
+	var end: WallRenderer.CellGeo = r.cell_geo(Vector2i(0, 0))
+	assert_not_null(end.post_tris, "an end carries a post")
+	assert_eq(end.body_post.indices.size(), end.body.indices.size() + end.post_tris.indices.size())
+	assert_eq(end.body_post.points.size(), end.body.points.size() + end.post_tris.points.size())
+	var last: int = end.body_post.indices[end.body_post.indices.size() - 1]
+	assert_eq(end.body_post.points[last], end.post_tris.points[end.post_tris.indices[end.post_tris.indices.size() - 1]],
+		"post indices are offset past the body's vertices")
+	var mid: WallRenderer.CellGeo = r.cell_geo(Vector2i(1, 0))
+	assert_null(mid.post_tris)
+	assert_null(mid.body_post, "no post, nothing to join")
+	assert_null(r.cell_geo(Vector2i(9, 9)))
+
+
+func test_cached_geometry_shares_vertices_and_stays_in_range() -> void:
+	for t: float in [14.0, 23.0, 40.0]:
+		var r := WallRenderer.new()
+		var walls: Dictionary = _run(Vector2i(0, 0), Vector2i(4, 0))
+		walls[Vector2i(2, 1)] = true
+		r.rebuild(walls, IsoProjection.new(t, Vector2(200.0, 50.0)))
+		for cell_var: Variant in walls:
+			var geo: WallRenderer.CellGeo = r.cell_geo(cell_var)
+			for tris: WallRenderer.Tris in [geo.body, geo.body_hurt, geo.post_tris, geo.body_post]:
+				if tris == null:
+					continue
+				assert_eq(tris.indices.size() % 3, 0)
+				assert_eq(tris.colors.size(), tris.points.size())
+				assert_lt(tris.points.size(), tris.indices.size(), "quads and fans reuse their corners at T = %d" % t)
+				var top: int = 0
+				for i: int in tris.indices:
+					top = maxi(top, i)
+				assert_lt(top, tris.points.size())
+			assert_eq(geo.cracks.size(), 12, "two hexagon bands")
+			assert_eq(geo.cracks_hurt.size(), 12)
+			assert_gt(geo.cracks_hurt[0].y, geo.cracks[0].y, "hurt cracks sit on the lower top face")
+
+
+func test_coarse_build_below_fine_size_uses_fewer_triangles() -> void:
+	var walls: Dictionary = _run(Vector2i(0, 0), Vector2i(4, 0))
+	var coarse := WallRenderer.new()
+	coarse.rebuild(walls, IsoProjection.new(WallRenderer.FINE_T_PX - 1.0, Vector2.ZERO))
+	var fine := WallRenderer.new()
+	fine.rebuild(walls, IsoProjection.new(WallRenderer.FINE_T_PX, Vector2.ZERO))
+	for cell_var: Variant in walls:
+		assert_lt(coarse.cell_geo(cell_var).body.indices.size(), fine.cell_geo(cell_var).body.indices.size())
+	assert_lt(coarse.cell_geo(Vector2i(0, 0)).post_tris.indices.size(), fine.cell_geo(Vector2i(0, 0)).post_tris.indices.size())
 
 
 func test_wall_painter_is_registered_for_the_viewer() -> void:

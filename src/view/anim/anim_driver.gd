@@ -184,6 +184,12 @@ func pose_for_pathogen(p: PathogenState, sim_tick: int, ground: Vector2, target_
 	return pose
 
 
+## The pose pose_for_structure last built for a structure, or null. Lets a second draw item of the same
+## structure in one frame (a wall's post or cracks) reuse it instead of building it again.
+func last_structure_pose(id: int) -> ModelPose:
+	return _poses_s.get(id)
+
+
 func pose_for_structure(s: StructureState, sim_tick: int, aim_ground: Vector2, view_time: float) -> ModelPose:
 	_latest_tick = sim_tick
 	var pose: ModelPose = _pose(_poses_s, s.id)

@@ -6,9 +6,14 @@ extends RefCounted
 ## cell is a core square plus bridges to its left and up neighbours, so a run of cells reads as one membrane.
 ##
 ## Topology (segment_rects, needs_post, height_tiles) is pure and tested. Drawing is split from it:
-## rebuild() turns the wall set into screen-space geometry once and bakes it into one ArrayMesh per cell
-## part, so painting a cell is a single draw_mesh call on cached data with no allocation. rebuild() runs
-## only when the wall set, the projection or the tile size changes.
+## rebuild() turns the wall set into screen-space geometry once and bakes each cell part into one cached
+## triangle list, so painting a segment or a post is a single polygon command on cached arrays, with no
+## allocation and no per-frame triangulation. rebuild() runs only when the wall set, the projection or the
+## tile size changes.
+##
+## The triangle lists go through RenderingServer.canvas_item_add_triangle_array on the CanvasItem being
+## drawn, the call draw_polygon makes after triangulating. Do not switch to draw_mesh: on the GL
+## Compatibility renderer it costs about 26 us per call, several times a polygon command.
 ##
 ## Ground rects are in tile units. Screen heights are tile units times T px, negative y up.
 
@@ -28,11 +33,18 @@ const SHADOW_RADIUS_K: float = 0.25
 const TOP_OUTLINE_T: float = 1.3 * K_T
 const CAP_RING_T: float = 1.2 * K_T
 const SHADOW_OFFSET_T: Vector2 = Vector2(0.5, 0.5)
-## Below this tile size the stripes and the post highlight are skipped.
+## Below this tile size the post highlight is skipped.
 const DETAIL_T_PX: float = 10.0
 
-const CORNER_STEPS: int = 3
-const ELLIPSE_POINTS: int = 18
+## Below this tile size a wall is built coarse: square top corners (the rounding is about 2 px there), no
+## face stripes, 8-point ellipses and a post cap shaded per vertex instead of from its focus. Each small
+## triangle costs raster setup whatever its size, and the full build made the stress scene slower than the
+## old wall boxes (docs/PERF_BASELINE.md).
+const FINE_T_PX: float = 28.0
+const CORNER_STEPS_FINE: int = 3
+const ELLIPSE_POINTS_FINE: int = 18
+const ELLIPSE_POINTS_COARSE: int = 8
+const GLOSS_POINTS_COARSE: int = 4
 
 const POST_BASE: Rect2 = Rect2(-0.46, -0.24, 0.92, 0.46)
 const POST_BODY: Rect2 = Rect2(-0.42, -1.35, 0.84, 1.33)
@@ -46,6 +58,8 @@ const CAP_DARK_AT: float = 0.8
 const CRACK_INSET_T: float = 0.1
 const CRACK_SIZE_T: float = 0.8
 const CRACK_HALF_W_T: float = 0.08
+## Crack alphas are painted from this many cached colour steps between 0 and 1.
+const CRACK_ALPHA_STEPS: int = 32
 
 const SHAKE_T: float = 0.05
 const SHAKE_RAD_PER_S: float = 60.0
@@ -76,7 +90,7 @@ const POST_R: Color = Color("#978859")
 const CAP_LIGHT: Color = Color("#fff6d2")
 const CAP_DARK: Color = Color("#e2d09a")
 const GLOSS: Color = Color(1.0, 1.0, 1.0, 0.75)
-## Vertex colour of the cracks is opaque; paint_cracks() passes the alpha as the mesh modulate.
+## The crack colour is opaque here; paint_cracks() takes the alpha (resting or pulsing).
 const CRACK: Color = Color(60.0 / 255.0, 40.0 / 255.0, 10.0 / 255.0, 1.0)
 const CRACK_ALPHA: float = 0.85
 const CHUNK: Color = Color("#dccd99")
@@ -85,31 +99,49 @@ const GOO: Color = Color(200.0 / 255.0, 185.0 / 255.0, 138.0 / 255.0, 0.45)
 const NEIGHBOURS: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 
 
+## A cached triangle list: every three indices are one triangle, painted in order.
+class Tris extends RefCounted:
+	var points: PackedVector2Array = PackedVector2Array()
+	var colors: PackedColorArray = PackedColorArray()
+	var indices: PackedInt32Array = PackedInt32Array()
+
+
 ## Cached geometry of one wall cell.
 class CellGeo extends RefCounted:
 	var foot: Vector2 = Vector2.ZERO
 	var post: bool = false
-	var body: ArrayMesh = null
-	var body_hurt: ArrayMesh = null
-	var post_mesh: ArrayMesh = null
-	var cracks: ArrayMesh = null
+	var body: Tris = null
+	var body_hurt: Tris = null
+	var post_tris: Tris = null
+	## The full-height body followed by the post, for one command when nothing sorts between them.
+	var body_post: Tris = null
+	## The two crack bands as triangles on the full and on the damaged top face.
+	var cracks: PackedVector2Array = PackedVector2Array()
+	var cracks_hurt: PackedVector2Array = PackedVector2Array()
 
 
-## Tints every mesh draw, for ghost previews. Opaque white is a no-op.
+## Tints the baked colours, for ghost previews. Applied by rebuild(); opaque white is a no-op.
 var modulate: Color = Color.WHITE
 ## Screen offset added to every draw, for painters that bake a lone cell around the local origin.
 var offset: Vector2 = Vector2.ZERO
 
 var _cells: Dictionary = {}
-var _shadows: ArrayMesh = null
+var _shadows: Tris = null
 var _proj: IsoProjection = null
 var _t: float = 14.0
 
-# Mesh-building scratch, only touched inside rebuild().
+# Geometry-building scratch, only touched inside rebuild().
 var _verts: PackedVector2Array = PackedVector2Array()
 var _cols: PackedColorArray = PackedColorArray()
+var _idx: PackedInt32Array = PackedInt32Array()
 var _ring: PackedVector2Array = PackedVector2Array()
 var _ring_cols: PackedColorArray = PackedColorArray()
+var _corner_steps: int = CORNER_STEPS_FINE
+var _ellipse_points: int = ELLIPSE_POINTS_FINE
+var _fine: bool = true
+## One single-colour array per crack alpha step, and the index list every crack triangle set shares.
+var _crack_cols: Array[PackedColorArray] = []
+var _crack_indices: PackedInt32Array = PackedInt32Array()
 
 
 # --- topology ---------------------------------------------------------------
@@ -151,10 +183,14 @@ static func is_hurt(hp_frac: float) -> bool:
 
 # --- cache ------------------------------------------------------------------
 
-## Rebuilds every cached mesh from `walls` (Vector2i -> true, the live wall cells) under `projection`.
+## Rebuilds all cached geometry from `walls` (Vector2i -> true, the live wall cells) under `projection`.
 func rebuild(walls: Dictionary, projection: IsoProjection) -> void:
 	_proj = projection
 	_t = projection.tile_px
+	_fine = _t >= FINE_T_PX
+	_corner_steps = CORNER_STEPS_FINE if _fine else 0
+	_ellipse_points = ELLIPSE_POINTS_FINE if _fine else ELLIPSE_POINTS_COARSE
+	_build_crack_colours()
 	_cells.clear()
 	_begin()
 	for cell_var: Variant in walls:
@@ -168,11 +204,15 @@ func rebuild(walls: Dictionary, projection: IsoProjection) -> void:
 		geo.foot = projection.cell_center(cell)
 		geo.post = needs_post(cell, walls, false)
 		var rects: Array[Rect2] = segment_rects(cell, walls)
-		geo.body = _build_body(rects, HEIGHT_T, false)
-		geo.body_hurt = _build_body(rects, HURT_HEIGHT_T, true)
+		# A neighbour's bridge always covers the core face on that side, and it is painted later.
+		var covered := Vector2i(int(walls.has(cell + NEIGHBOURS[0])), int(walls.has(cell + NEIGHBOURS[2])))
+		geo.body = _build_body(rects, HEIGHT_T, false, covered)
+		geo.body_hurt = _build_body(rects, HURT_HEIGHT_T, true, covered)
 		if geo.post:
-			geo.post_mesh = _build_post(geo.foot)
-		geo.cracks = _build_cracks(cell)
+			geo.post_tris = _build_post(geo.foot)
+			geo.body_post = _join(geo.body, geo.post_tris)
+		geo.cracks = _build_cracks(cell, -HEIGHT_T * _t)
+		geo.cracks_hurt = _build_cracks(cell, -HURT_HEIGHT_T * _t)
 		_cells[cell] = geo
 
 
@@ -194,17 +234,22 @@ func tile_px() -> float:
 	return _t
 
 
+## The cached geometry of a cell, or null when it is not a live wall cell.
+func cell_geo(cell: Vector2i) -> CellGeo:
+	return _cells.get(cell)
+
+
 # --- painting ---------------------------------------------------------------
 
 ## Everything for one cell in a pass with no units to interleave (Synthesis, the viewer): faces and top,
 ## then the post (full health only), then the cracks (below half HP).
 func paint_cell(ci: CanvasItem, cell: Vector2i, hp_frac: float, pose: ModelPose) -> void:
 	var hurt: bool = is_hurt(hp_frac)
-	paint_body(ci, cell, hurt, pose)
 	if not hurt:
-		paint_post(ci, cell, pose)
-	else:
-		paint_cracks(ci, cell, true, CRACK_ALPHA, pose)
+		paint_body_and_post(ci, cell, pose)
+		return
+	paint_body(ci, cell, true, pose)
+	paint_cracks(ci, cell, true, CRACK_ALPHA, pose)
 
 
 ## Faces, stripes and top of one cell, at the full or the damaged height.
@@ -212,32 +257,44 @@ func paint_body(ci: CanvasItem, cell: Vector2i, hurt: bool, pose: ModelPose) -> 
 	var geo: CellGeo = _cells.get(cell)
 	if geo == null:
 		return
-	ci.draw_mesh(geo.body_hurt if hurt else geo.body, null, Transform2D(0.0, offset + Vector2(_shake_px(pose), 0.0)), modulate)
+	_paint_tris(ci, geo.body_hurt if hurt else geo.body, Vector2(_shake_px(pose), 0.0))
 
 
 func paint_post(ci: CanvasItem, cell: Vector2i, pose: ModelPose) -> void:
 	var geo: CellGeo = _cells.get(cell)
-	if geo == null or geo.post_mesh == null:
+	if geo == null or geo.post_tris == null:
 		return
-	ci.draw_mesh(geo.post_mesh, null, Transform2D(0.0, offset + Vector2(_shake_px(pose), 0.0)), modulate)
+	_paint_tris(ci, geo.post_tris, Vector2(_shake_px(pose), 0.0))
 
 
-## Crossed cracks on the top face. `alpha` is the crack colour alpha (0.85 at rest, pulsing while a
-## pathogen is breaking the wall).
-func paint_cracks(ci: CanvasItem, cell: Vector2i, hurt: bool, alpha: float, pose: ModelPose) -> void:
+## The full-height body and its post (if any) in one command, the same paint order as paint_body() then
+## paint_post().
+func paint_body_and_post(ci: CanvasItem, cell: Vector2i, pose: ModelPose) -> void:
 	var geo: CellGeo = _cells.get(cell)
 	if geo == null:
 		return
-	var lift: float = -(HURT_HEIGHT_T if hurt else HEIGHT_T) * _t
-	var m := Color(modulate.r, modulate.g, modulate.b, modulate.a * alpha)
-	ci.draw_mesh(geo.cracks, null, Transform2D(0.0, offset + Vector2(_shake_px(pose), lift)), m)
+	_paint_tris(ci, geo.body_post if geo.body_post != null else geo.body, Vector2(_shake_px(pose), 0.0))
+
+
+## Crossed cracks on the top face. `alpha` is the crack colour alpha (0.85 at rest, pulsing while a
+## pathogen is breaking the wall), painted from the nearest of CRACK_ALPHA_STEPS cached steps.
+func paint_cracks(ci: CanvasItem, cell: Vector2i, hurt: bool, alpha: float, pose: ModelPose) -> void:
+	var geo: CellGeo = _cells.get(cell)
+	if geo == null or _crack_cols.is_empty():
+		return
+	var step: int = clampi(roundi(alpha * CRACK_ALPHA_STEPS), 0, CRACK_ALPHA_STEPS)
+	var moved: Vector2 = offset + Vector2(_shake_px(pose), 0.0)
+	if moved != Vector2.ZERO:
+		ci.draw_set_transform(moved)
+	RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), _crack_indices,
+		geo.cracks_hurt if hurt else geo.cracks, _crack_cols[step])
+	if moved != Vector2.ZERO:
+		ci.draw_set_transform(Vector2.ZERO)
 
 
 ## Every cached ground shadow in one draw, on the ground pass before any depth-sorted item.
 func paint_shadows(ci: CanvasItem) -> void:
-	if _shadows == null:
-		return
-	ci.draw_mesh(_shadows, null, Transform2D(0.0, offset), modulate)
+	_paint_tris(ci, _shadows, Vector2.ZERO)
 
 
 ## Break effect at a destroyed cell, `death_t` 0..1 over DEATH_TICKS["mucous_wall"]: four tan chunks fly
@@ -266,62 +323,103 @@ func paint_goo(ci: CanvasItem, cell: Vector2i, alpha: float = 1.0) -> void:
 		Color(GOO, GOO.a * alpha))
 
 
+func _paint_tris(ci: CanvasItem, tris: Tris, shift: Vector2) -> void:
+	if tris == null:
+		return
+	var moved: Vector2 = offset + shift
+	if moved != Vector2.ZERO:
+		ci.draw_set_transform(moved)
+	RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), tris.indices, tris.points, tris.colors)
+	if moved != Vector2.ZERO:
+		ci.draw_set_transform(Vector2.ZERO)
+
+
 func _shake_px(pose: ModelPose) -> float:
 	if pose == null or pose.shake <= 0.0:
 		return 0.0
 	return sin(pose.time * SHAKE_RAD_PER_S) * SHAKE_T * _t * pose.shake
 
 
-# --- mesh building (rebuild only) -------------------------------------------
+# --- geometry building (rebuild only) ----------------------------------------
 
 func _begin() -> void:
 	_verts = PackedVector2Array()
 	_cols = PackedColorArray()
+	_idx = PackedInt32Array()
 
 
-func _commit() -> ArrayMesh:
-	if _verts.is_empty():
+func _commit() -> Tris:
+	if _idx.is_empty():
 		return null
-	var arrays: Array = []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = _verts
-	arrays[Mesh.ARRAY_COLOR] = _cols
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	return mesh
+	var tris := Tris.new()
+	tris.points = _verts
+	tris.colors = _cols
+	tris.indices = _idx
+	if modulate != Color.WHITE:
+		for i: int in range(tris.colors.size()):
+			tris.colors[i] *= modulate
+	return tris
 
 
-func _tri(a: Vector2, b: Vector2, c: Vector2, ca: Color, cb: Color, cc: Color) -> void:
-	_verts.append(a)
-	_verts.append(b)
-	_verts.append(c)
-	_cols.append(ca)
-	_cols.append(cb)
-	_cols.append(cc)
+## Appends a vertex and returns its index. Shapes share their corner vertices through the index list.
+func _vert(p: Vector2, col: Color) -> int:
+	_verts.append(p)
+	_cols.append(col)
+	return _verts.size() - 1
+
+
+func _tri_idx(a: int, b: int, c: int) -> void:
+	_idx.append(a)
+	_idx.append(b)
+	_idx.append(c)
 
 
 ## Quad a-b-c-d in order around its edge, one colour per corner.
 func _quad(a: Vector2, b: Vector2, c: Vector2, d: Vector2, ca: Color, cb: Color, cc: Color, cd: Color) -> void:
-	_tri(a, b, c, ca, cb, cc)
-	_tri(a, c, d, ca, cc, cd)
+	var ia: int = _vert(a, ca)
+	var ib: int = _vert(b, cb)
+	var ic: int = _vert(c, cc)
+	var id: int = _vert(d, cd)
+	_tri_idx(ia, ib, ic)
+	_tri_idx(ia, ic, id)
 
 
 ## Triangle fan over the convex ring in _ring / _ring_cols around `centre`.
 func _fan(centre: Vector2, centre_col: Color) -> void:
+	var ic: int = _vert(centre, centre_col)
+	var first: int = _verts.size()
 	var n: int = _ring.size()
 	for i: int in range(n):
-		var j: int = (i + 1) % n
-		_tri(centre, _ring[i], _ring[j], centre_col, _ring_cols[i], _ring_cols[j])
+		_vert(_ring[i], _ring_cols[i])
+	for i: int in range(n):
+		_tri_idx(ic, first + i, first + (i + 1) % n)
+
+
+## Fills the convex ring in _ring / _ring_cols from its first point. Colours are interpolated linearly, so
+## any triangulation reproduces a linear gradient exactly; only a radial one needs _fan's centre point.
+func _fill_convex() -> void:
+	var first: int = _verts.size()
+	for i: int in range(_ring.size()):
+		_vert(_ring[i], _ring_cols[i])
+	for i: int in range(1, _ring.size() - 1):
+		_tri_idx(first, first + i, first + i + 1)
 
 
 func _ground(g: Vector2, lift_px: float) -> Vector2:
 	return _proj.ground_to_screen(g) + Vector2(0.0, lift_px)
 
 
-## Rounded rect in ground tile units, projected and lifted, into _ring (colour left to the caller).
-func _rounded_ring(rect: Rect2, radius: float, lift_px: float) -> void:
+## Outline of a rounded rect in ground tile units, clockwise from the top-right corner. Square when the
+## build is coarse.
+func _corner_points(rect: Rect2, radius: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if _corner_steps <= 0:
+		out.append(Vector2(rect.end.x, rect.position.y))
+		out.append(rect.end)
+		out.append(Vector2(rect.position.x, rect.end.y))
+		out.append(rect.position)
+		return out
 	var r: float = clampf(radius, 0.0, minf(rect.size.x, rect.size.y) * 0.5)
-	_ring = PackedVector2Array()
 	var corners: Array[Vector2] = [
 		Vector2(rect.end.x - r, rect.position.y + r),
 		Vector2(rect.end.x - r, rect.end.y - r),
@@ -330,9 +428,17 @@ func _rounded_ring(rect: Rect2, radius: float, lift_px: float) -> void:
 	]
 	for k: int in range(4):
 		var start: float = -PI * 0.5 + float(k) * PI * 0.5
-		for s: int in range(CORNER_STEPS + 1):
-			var a: float = start + PI * 0.5 * float(s) / float(CORNER_STEPS)
-			_ring.append(_ground(corners[k] + Vector2(cos(a), sin(a)) * r, lift_px))
+		for s: int in range(_corner_steps + 1):
+			var a: float = start + PI * 0.5 * float(s) / float(_corner_steps)
+			out.append(corners[k] + Vector2(cos(a), sin(a)) * r)
+	return out
+
+
+## Rounded rect in ground tile units, projected and lifted, into _ring (colour left to the caller).
+func _rounded_ring(rect: Rect2, radius: float, lift_px: float) -> void:
+	_ring = PackedVector2Array()
+	for g: Vector2 in _corner_points(rect, radius):
+		_ring.append(_ground(g, lift_px))
 
 
 func _add_shadow(q: Rect2) -> void:
@@ -341,14 +447,16 @@ func _add_shadow(q: Rect2) -> void:
 	_ring_cols = PackedColorArray()
 	for i: int in range(_ring.size()):
 		_ring_cols.append(SHADOW)
-	_fan(_ground(rect.get_center(), 0.0), SHADOW)
+	_fill_convex()
 
 
-func _build_body(rects: Array[Rect2], h_t: float, hurt: bool) -> ArrayMesh:
+## `covered` flags the core's right (x) and front-left (y) faces as hidden by a neighbour's bridge.
+func _build_body(rects: Array[Rect2], h_t: float, hurt: bool, covered: Vector2i) -> Tris:
 	_begin()
 	var h: float = -h_t * _t
-	var stripes: bool = _t >= DETAIL_T_PX
-	for q: Rect2 in rects:
+	var stripes: bool = _t >= FINE_T_PX
+	for i: int in range(rects.size()):
+		var q: Rect2 = rects[i]
 		var x0: float = q.position.x
 		var y0: float = q.position.y
 		var x1: float = q.end.x
@@ -356,47 +464,38 @@ func _build_body(rects: Array[Rect2], h_t: float, hurt: bool) -> ArrayMesh:
 		# Front-left face: the +y edge, lit.
 		var a := Vector2(x0, y1)
 		var b := Vector2(x1, y1)
-		_quad(_ground(a, h), _ground(b, h), _ground(b, 0.0), _ground(a, 0.0), LEFT_A, LEFT_A, LEFT_B, LEFT_B)
-		if stripes:
-			_add_stripes(a, b, h, LEFT_STRIPE)
+		if i != 0 or covered.y == 0:
+			_quad(_ground(a, h), _ground(b, h), _ground(b, 0.0), _ground(a, 0.0), LEFT_A, LEFT_A, LEFT_B, LEFT_B)
+			if stripes:
+				_add_stripes(a, b, h, LEFT_STRIPE)
 		# Front-right face: the +x edge, in shade.
 		a = Vector2(x1, y0)
 		b = Vector2(x1, y1)
-		_quad(_ground(a, h), _ground(b, h), _ground(b, 0.0), _ground(a, 0.0), RIGHT_A, RIGHT_A, RIGHT_B, RIGHT_B)
-		if stripes:
-			_add_stripes(a, b, h, RIGHT_STRIPE)
+		if i != 0 or covered.x == 0:
+			_quad(_ground(a, h), _ground(b, h), _ground(b, 0.0), _ground(a, 0.0), RIGHT_A, RIGHT_A, RIGHT_B, RIGHT_B)
+			if stripes:
+				_add_stripes(a, b, h, RIGHT_STRIPE)
 		# Glossy top with its outline ring, drawn as a slightly larger dark rect underneath.
 		var e: float = TOP_OUTLINE_T
 		var radius: float = TOP_RADIUS_K * THICK_T
 		_rounded_ring(Rect2(x0 - e, y0 - e, q.size.x + e * 2.0, q.size.y + e * 2.0), radius + e, h)
 		_ring_cols = PackedColorArray()
-		for i: int in range(_ring.size()):
+		for _j: int in range(_ring.size()):
 			_ring_cols.append(OUTLINE)
-		_fan(_ground(q.get_center(), h), OUTLINE)
+		_fill_convex()
 		_add_top(q, radius, h, HURT_TOP_A if hurt else TOP_A, HURT_TOP_B if hurt else TOP_B)
 	return _commit()
 
 
 ## The 135-degree gradient: `ca` at the rect's ground origin corner, `cb` at the far corner.
 func _add_top(q: Rect2, radius: float, h: float, ca: Color, cb: Color) -> void:
-	var r: float = clampf(radius, 0.0, minf(q.size.x, q.size.y) * 0.5)
 	_ring = PackedVector2Array()
 	_ring_cols = PackedColorArray()
-	var corners: Array[Vector2] = [
-		Vector2(q.end.x - r, q.position.y + r),
-		Vector2(q.end.x - r, q.end.y - r),
-		Vector2(q.position.x + r, q.end.y - r),
-		Vector2(q.position.x + r, q.position.y + r),
-	]
 	var span: float = q.size.x + q.size.y
-	for k: int in range(4):
-		var start: float = -PI * 0.5 + float(k) * PI * 0.5
-		for s: int in range(CORNER_STEPS + 1):
-			var ang: float = start + PI * 0.5 * float(s) / float(CORNER_STEPS)
-			var g: Vector2 = corners[k] + Vector2(cos(ang), sin(ang)) * r
-			_ring.append(_ground(g, h))
-			_ring_cols.append(ca.lerp(cb, clampf(((g.x - q.position.x) + (g.y - q.position.y)) / span, 0.0, 1.0)))
-	_fan(_ground(q.get_center(), h), ca.lerp(cb, 0.5))
+	for g: Vector2 in _corner_points(q, radius):
+		_ring.append(_ground(g, h))
+		_ring_cols.append(ca.lerp(cb, clampf(((g.x - q.position.x) + (g.y - q.position.y)) / span, 0.0, 1.0)))
+	_fill_convex()
 
 
 ## Vertical stripes along the ground edge a -> b, 2k wide every 6k, full face height.
@@ -412,7 +511,7 @@ func _add_stripes(a: Vector2, b: Vector2, h: float, col: Color) -> void:
 		u += STRIPE_STEP_T
 
 
-func _build_post(foot: Vector2) -> ArrayMesh:
+func _build_post(foot: Vector2) -> Tris:
 	_begin()
 	var t: float = _t
 	_add_ellipse(PaintKit.part_rect(foot, t, POST_BASE.position.x, POST_BASE.position.y, POST_BASE.size.x, POST_BASE.size.y), OUTLINE)
@@ -426,59 +525,82 @@ func _build_post(foot: Vector2) -> ArrayMesh:
 	_add_ellipse(cap.grow(CAP_RING_T * t), OUTLINE)
 	_add_cap(cap)
 	if t >= DETAIL_T_PX:
-		_add_ellipse(PaintKit.part_rect(foot, t, POST_GLOSS.position.x, POST_GLOSS.position.y, POST_GLOSS.size.x, POST_GLOSS.size.y), GLOSS)
+		_add_ellipse(PaintKit.part_rect(foot, t, POST_GLOSS.position.x, POST_GLOSS.position.y, POST_GLOSS.size.x, POST_GLOSS.size.y), GLOSS,
+			_ellipse_points if _fine else GLOSS_POINTS_COARSE)
 	return _commit()
 
 
-func _ellipse_ring(rect: Rect2) -> void:
+func _ellipse_ring(rect: Rect2, points: int) -> void:
 	_ring = PackedVector2Array()
 	var c: Vector2 = rect.get_center()
 	var r: Vector2 = rect.size * 0.5
-	for i: int in range(ELLIPSE_POINTS):
-		var a: float = float(i) / float(ELLIPSE_POINTS) * TAU
+	for i: int in range(points):
+		var a: float = float(i) / float(points) * TAU
 		_ring.append(c + Vector2(cos(a), sin(a)) * r)
 
 
-func _add_ellipse(rect: Rect2, col: Color) -> void:
-	_ellipse_ring(rect)
+func _add_ellipse(rect: Rect2, col: Color, points: int = -1) -> void:
+	_ellipse_ring(rect, _ellipse_points if points < 0 else points)
 	_ring_cols = PackedColorArray()
 	for i: int in range(_ring.size()):
 		_ring_cols.append(col)
-	_fan(rect.get_center(), col)
+	_fill_convex()
 
 
-## radial-gradient(circle at 40% 35%, light, dark 80%): a fan from the offset focus.
+## radial-gradient(circle at 40% 35%, light, dark 80%): a fan from the offset focus. The coarse build
+## shades the rim only and fills without the focus point.
 func _add_cap(rect: Rect2) -> void:
-	_ellipse_ring(rect)
+	_ellipse_ring(rect, _ellipse_points)
 	var focus: Vector2 = rect.position + rect.size * CAP_FOCUS
 	var far: float = (rect.size * (Vector2.ONE - CAP_FOCUS)).length()
 	_ring_cols = PackedColorArray()
 	for p: Vector2 in _ring:
 		_ring_cols.append(CAP_LIGHT.lerp(CAP_DARK, clampf(p.distance_to(focus) / (far * CAP_DARK_AT), 0.0, 1.0)))
-	_fan(focus, CAP_LIGHT)
+	if _fine:
+		_fan(focus, CAP_LIGHT)
+	else:
+		_fill_convex()
 
 
-## Two diagonal bands across the crack square, at ground level; paint_cracks() lifts them to the top.
-func _build_cracks(cell: Vector2i) -> ArrayMesh:
-	_begin()
+## `a` followed by `b` as one triangle list; either may be null.
+func _join(a: Tris, b: Tris) -> Tris:
+	if a == null or b == null:
+		return b if a == null else a
+	var out := Tris.new()
+	out.points = a.points + b.points
+	out.colors = a.colors + b.colors
+	out.indices = a.indices.duplicate()
+	var base: int = a.points.size()
+	for i: int in b.indices:
+		out.indices.append(base + i)
+	return out
+
+
+func _build_crack_colours() -> void:
+	_crack_cols.clear()
+	for step: int in range(CRACK_ALPHA_STEPS + 1):
+		var a: float = float(step) / float(CRACK_ALPHA_STEPS)
+		_crack_cols.append(PackedColorArray([Color(CRACK.r * modulate.r, CRACK.g * modulate.g, CRACK.b * modulate.b, a * modulate.a)]))
+
+
+## Two diagonal bands across the crack square on the top face at `lift_px`, as one triangle list.
+func _build_cracks(cell: Vector2i, lift_px: float) -> PackedVector2Array:
 	var o: Vector2 = Vector2(cell) + Vector2(CRACK_INSET_T, CRACK_INSET_T)
 	var s: float = CRACK_SIZE_T
 	var h: float = CRACK_HALF_W_T
-	# Band along (1, 1): |x - y| <= h inside the square, a hexagon.
+	# Band along (1, 1): |x - y| <= h inside the square, a convex hexagon.
 	var along: Array[Vector2] = [Vector2(0.0, 0.0), Vector2(h, 0.0), Vector2(s, s - h), Vector2(s, s), Vector2(s - h, s), Vector2(0.0, h)]
-	_band(o, along)
 	# Band along (1, -1): |x + y - s| <= h.
 	var across: Array[Vector2] = [Vector2(s, 0.0), Vector2(s, h), Vector2(h, s), Vector2(0.0, s), Vector2(0.0, s - h), Vector2(s - h, 0.0)]
-	_band(o, across)
-	return _commit()
-
-
-func _band(o: Vector2, pts: Array[Vector2]) -> void:
-	_ring = PackedVector2Array()
-	_ring_cols = PackedColorArray()
-	var centre := Vector2.ZERO
-	for p: Vector2 in pts:
-		_ring.append(_ground(o + p, 0.0))
-		_ring_cols.append(CRACK)
-		centre += p
-	_fan(_ground(o + centre / float(pts.size()), 0.0), CRACK)
+	var out := PackedVector2Array()
+	for p: Vector2 in along + across:
+		out.append(_ground(o + p, lift_px))
+	if _crack_indices.is_empty():
+		# Each hexagon fanned from its first corner.
+		for band: int in range(2):
+			var first: int = band * along.size()
+			for i: int in range(1, along.size() - 1):
+				_crack_indices.append(first)
+				_crack_indices.append(first + i)
+				_crack_indices.append(first + i + 1)
+	return out

@@ -264,19 +264,29 @@ func _draw() -> void:
 	if sim == null or projection == null:
 		return
 	_draw_ground_decals()
-	for item: UnitDrawItem in _sorted:
+	var n: int = _sorted.size()
+	var i: int = 0
+	while i < n:
+		var item: UnitDrawItem = _sorted[i]
+		i += 1
 		match item.kind:
 			KIND_STRUCTURE:
-				_draw_structure(sim.structure(item.id))
+				var s: StructureState = sim.structure(item.id)
+				# A post right behind its own segment in the order joins the segment's command.
+				if i < n and _sorted[i].kind == KIND_WALL_POST and _sorted[i].id == item.id and item.age < 0.0:
+					walls.paint_body_and_post(self, s.origin, _wall_pose(s))
+					i += 1
+				else:
+					_draw_structure(s)
 			KIND_PATHOGEN:
 				_draw_pathogen(sim.pathogen(item.id))
 			KIND_WALL_POST:
 				var ps: StructureState = sim.structure(item.id)
-				walls.paint_post(self, ps.origin, _wall_pose(ps))
+				walls.paint_post(self, ps.origin, _wall_part_pose(ps))
 			KIND_WALL_CRACKS:
 				var cs: StructureState = sim.structure(item.id)
 				var alpha: float = crack_pulse_alpha(view_time) if _breached.has(cs.id) else WallRenderer.CRACK_ALPHA
-				walls.paint_cracks(self, cs.origin, cs.hp * 2 < cs.max_hp, alpha, _wall_pose(cs))
+				walls.paint_cracks(self, cs.origin, cs.hp * 2 < cs.max_hp, alpha, _wall_part_pose(cs))
 
 
 func _refresh_wall_cache() -> void:
@@ -298,6 +308,12 @@ func _refresh_wall_cache() -> void:
 
 func _wall_pose(s: StructureState) -> ModelPose:
 	return driver.pose_for_structure(s, sim.tick, Vector2.ZERO, view_time)
+
+
+## Posts and cracks sort after their segment, so the segment's pose from this frame is already built.
+func _wall_part_pose(s: StructureState) -> ModelPose:
+	var pose: ModelPose = driver.last_structure_pose(s.id)
+	return pose if pose != null else _wall_pose(s)
 
 
 func _draw_ground_decals() -> void:
