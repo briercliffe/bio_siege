@@ -530,3 +530,37 @@ func test_empty_entity_dictionaries() -> void:
 	var res2: ConfigLoadResult = GameConfig.load_from_strings(default_rules_str, default_structures_str, "{}")
 	assert_true(res2.is_err())
 	assert_true(_contains_error(res2.errors, "pathogens.json: root: pathogens cannot be empty (got empty)"))
+
+
+# -----------------------------------------------------------------------------
+# B-Cell analysis block (#87)
+# -----------------------------------------------------------------------------
+
+func _load_with_analysis(mutate: Callable) -> ConfigLoadResult:
+	var structs_dict: Dictionary = JSON.parse_string(default_structures_str)
+	mutate.call(structs_dict)
+	return GameConfig.load_from_strings(default_rules_str, JSON.stringify(structs_dict), default_pathogens_str)
+
+func test_analysis_default_data() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	var bc: StructureDef = cfg.structures["b_cell"]
+	assert_true(bc.has_analysis)
+	assert_eq(bc.analysis_threshold_ticks, roundi(10.0 * cfg.tick_rate))
+	assert_eq(bc.analysis_multiplier_pct, 300)
+	assert_false((cfg.structures["macrophage"] as StructureDef).has_analysis)
+	assert_false(cfg.flag("bcell_analysis"))
+
+func test_analysis_key_optional() -> void:
+	var res: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["b_cell"].erase("analysis"))
+	assert_true(res.is_ok())
+	assert_false((res.config.structures["b_cell"] as StructureDef).has_analysis)
+
+func test_analysis_validation_errors() -> void:
+	var r1: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["b_cell"]["analysis"]["exposure_s"] = 0)
+	assert_true(_contains_error(r1.errors, "structures.json: b_cell.analysis.exposure_s: must be > 0 (got 0)"))
+	var r2: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["b_cell"]["analysis"]["damage_multiplier"] = 0.5)
+	assert_true(_contains_error(r2.errors, "structures.json: b_cell.analysis.damage_multiplier: must be >= 1 (got 0.5)"))
+	var r3: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["b_cell"]["analysis"]["bogus"] = 1)
+	assert_true(_contains_error(r3.errors, "structures.json: b_cell.analysis.bogus: unknown key"))
+	var r4: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["nucleus"]["analysis"] = {"exposure_s": 10.0, "damage_multiplier": 3.0})
+	assert_true(_contains_error(r4.errors, "structures.json: nucleus.analysis: only allowed on structures with an attack"))

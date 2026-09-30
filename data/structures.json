@@ -88,6 +88,7 @@
       "splash_radius_tiles": 0,
       "projectile_speed_tiles_s": 10.0
     },
+    "analysis": { "exposure_s": 10.0, "damage_multiplier": 3.0 },
     "damage_multipliers": {},
     "levels": [],
     "placeholder": {

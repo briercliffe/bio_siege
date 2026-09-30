@@ -12,6 +12,9 @@ var max_hp: int = 0
 var alive: bool = true
 var attack_cooldown: int = 0  # ticks until the next shot; 0 = ready
 var target_id: int = 0        # pathogen id the tower is shooting, 0 = none
+var analysis_exposure: Dictionary = {}   # strain_key -> int, hundredths of a tick
+var analyzed: Dictionary = {}            # strain_key -> true
+var analysis_focus_key: String = ""      # strain key of the current target, for the view
 
 static func create(p_id: int, p_type_id: String, p_def: StructureDef, p_origin: Vector2i) -> StructureState:
 	var state := StructureState.new()
@@ -34,3 +37,13 @@ func cells() -> Array[Vector2i]:
 		for x in range(origin.x, origin.x + footprint.x):
 			result.append(Vector2i(x, y))
 	return result
+
+func analysis_progress_pct(strain_key: String) -> int:
+	if analyzed.has(strain_key):
+		return 100
+	if def == null or def.analysis_threshold_ticks <= 0:
+		return 0
+	return mini(100, int(analysis_exposure.get(strain_key, 0)) / def.analysis_threshold_ticks)
+
+func is_analyzed(strain_key: String) -> bool:
+	return analyzed.has(strain_key)

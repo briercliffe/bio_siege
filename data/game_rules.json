@@ -19,6 +19,7 @@
   "feature_flags": {
     "move_nucleus": false,
     "raid_score": false,
+    "bcell_analysis": false,
     "intent_lines_default": true
   }
 }
