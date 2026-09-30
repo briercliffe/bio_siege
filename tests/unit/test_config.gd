@@ -564,3 +564,41 @@ func test_analysis_validation_errors() -> void:
 	assert_true(_contains_error(r3.errors, "structures.json: b_cell.analysis.bogus: unknown key"))
 	var r4: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["nucleus"]["analysis"] = {"exposure_s": 10.0, "damage_multiplier": 3.0})
 	assert_true(_contains_error(r4.errors, "structures.json: nucleus.analysis: only allowed on structures with an attack"))
+
+
+# -----------------------------------------------------------------------------
+# Biofilm block (#91)
+# -----------------------------------------------------------------------------
+
+func _load_with_biofilm(mutate: Callable) -> ConfigLoadResult:
+	var p_dict: Dictionary = JSON.parse_string(default_pathogens_str)
+	mutate.call(p_dict)
+	return GameConfig.load_from_strings(default_rules_str, default_structures_str, JSON.stringify(p_dict))
+
+func test_biofilm_default_data() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	var staph: PathogenDef = cfg.pathogens["staphylococcus"]
+	assert_true(staph.has_biofilm)
+	assert_eq(staph.biofilm_damage_taken_pct, 75)
+	assert_eq(staph.biofilm_regroup_ticks, roundi(0.5 * cfg.tick_rate))
+	assert_eq(staph.biofilm_link_mt, roundi(1.5 * cfg.grid_scale * 1000.0))
+	assert_eq(staph.biofilm_break_mt, roundi(2.0 * cfg.grid_scale * 1000.0))
+	assert_false((cfg.pathogens["rhinovirus"] as PathogenDef).has_biofilm)
+	assert_false(cfg.flag("biofilm"))
+
+func test_biofilm_key_optional() -> void:
+	var res: ConfigLoadResult = _load_with_biofilm(func(d: Dictionary) -> void: d["staphylococcus"].erase("biofilm"))
+	assert_false(res.is_err())
+	assert_false((res.config.pathogens["staphylococcus"] as PathogenDef).has_biofilm)
+
+func test_biofilm_validation_errors() -> void:
+	var r1: ConfigLoadResult = _load_with_biofilm(func(d: Dictionary) -> void: d["staphylococcus"]["biofilm"]["break_radius_tiles"] = 1.0)
+	assert_true(_contains_error(r1.errors, "pathogens.json: staphylococcus.biofilm.break_radius_tiles: must be >= link_radius_tiles"))
+	var r2: ConfigLoadResult = _load_with_biofilm(func(d: Dictionary) -> void: d["staphylococcus"]["biofilm"]["damage_taken_multiplier"] = 1.5)
+	assert_true(_contains_error(r2.errors, "pathogens.json: staphylococcus.biofilm.damage_taken_multiplier: must be > 0 and <= 1 (got 1.5)"))
+	var r3: ConfigLoadResult = _load_with_biofilm(func(d: Dictionary) -> void: d["staphylococcus"]["biofilm"]["bogus"] = 1)
+	assert_true(_contains_error(r3.errors, "pathogens.json: staphylococcus.biofilm.bogus: unknown key"))
+	var r4: ConfigLoadResult = _load_with_biofilm(func(d: Dictionary) -> void: d["staphylococcus"]["biofilm"]["regroup_interval_s"] = 0)
+	assert_true(_contains_error(r4.errors, "pathogens.json: staphylococcus.biofilm.regroup_interval_s: must be > 0 (got 0)"))
+	var r5: ConfigLoadResult = _load_with_biofilm(func(d: Dictionary) -> void: d["staphylococcus"]["biofilm"].erase("link_radius_tiles"))
+	assert_true(_contains_error(r5.errors, "pathogens.json: staphylococcus.biofilm.link_radius_tiles: missing required field"))

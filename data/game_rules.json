@@ -20,6 +20,7 @@
     "move_nucleus": false,
     "raid_score": false,
     "bcell_analysis": false,
+    "biofilm": false,
     "intent_lines_default": true
   }
 }

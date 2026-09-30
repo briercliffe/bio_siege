@@ -76,6 +76,7 @@
       "shape": "cluster",
       "color": "#f1c40f"
     },
-    "levels": []
+    "levels": [],
+    "biofilm": { "link_radius_tiles": 1.5, "break_radius_tiles": 2.0, "damage_taken_multiplier": 0.75, "regroup_interval_s": 0.5 }
   }
 }

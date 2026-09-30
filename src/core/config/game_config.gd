@@ -305,10 +305,51 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 		p.attack_interval_ticks = maxi(1, roundi(float(atk.get("interval_s", 1.0)) * float(config.tick_rate)))
 		p.attack_range_mt = roundi(float(atk.get("range_tiles", 0.0)) * float(config.grid_scale) * 1000.0)
 
+		var bf_cfg: Variant = p_data.get("biofilm", null)
+		if bf_cfg is Dictionary:
+			var bf: Dictionary = bf_cfg
+			p.has_biofilm = true
+			p.biofilm_link_mt = roundi(float(bf.get("link_radius_tiles", 0.0)) * float(config.grid_scale) * 1000.0)
+			p.biofilm_break_mt = roundi(float(bf.get("break_radius_tiles", 0.0)) * float(config.grid_scale) * 1000.0)
+			p.biofilm_damage_taken_pct = roundi(float(bf.get("damage_taken_multiplier", 1.0)) * 100.0)
+			p.biofilm_regroup_ticks = maxi(1, roundi(float(bf.get("regroup_interval_s", 1.0)) * float(config.tick_rate)))
+
 		config.pathogens[id] = p
 
 	result.config = config
 	return result
+
+static func _validate_biofilm(id: String, bf_val: Variant, errors: PackedStringArray) -> void:
+	if typeof(bf_val) != TYPE_DICTIONARY:
+		errors.append("pathogens.json: %s.biofilm: must be a JSON object (got %s)" % [id, _format_val(bf_val)])
+		return
+	var bf: Dictionary = bf_val
+	var bf_keys: Array[String] = ["link_radius_tiles", "break_radius_tiles", "damage_taken_multiplier", "regroup_interval_s"]
+	for bk_var: Variant in bf.keys():
+		var bk: String = str(bk_var)
+		if not bf_keys.has(bk):
+			errors.append("pathogens.json: %s.biofilm.%s: unknown key (got %s)" % [id, bk, bk])
+	var numeric_ok: bool = true
+	for req_bk: String in bf_keys:
+		if not bf.has(req_bk):
+			errors.append("pathogens.json: %s.biofilm.%s: missing required field (got null)" % [id, req_bk])
+			numeric_ok = false
+		elif not _is_number(bf[req_bk]):
+			errors.append("pathogens.json: %s.biofilm.%s: must be a number (got %s)" % [id, req_bk, _format_val(bf[req_bk])])
+			numeric_ok = false
+	if not numeric_ok:
+		return
+	var link_r: float = float(bf["link_radius_tiles"])
+	var break_r: float = float(bf["break_radius_tiles"])
+	var mult: float = float(bf["damage_taken_multiplier"])
+	if link_r <= 0.0:
+		errors.append("pathogens.json: %s.biofilm.link_radius_tiles: must be > 0 (got %s)" % [id, _format_val(bf["link_radius_tiles"])])
+	if break_r < link_r:
+		errors.append("pathogens.json: %s.biofilm.break_radius_tiles: must be >= link_radius_tiles (got %s)" % [id, _format_val(bf["break_radius_tiles"])])
+	if mult <= 0.0 or mult > 1.0:
+		errors.append("pathogens.json: %s.biofilm.damage_taken_multiplier: must be > 0 and <= 1 (got %s)" % [id, _format_val(bf["damage_taken_multiplier"])])
+	if float(bf["regroup_interval_s"]) <= 0.0:
+		errors.append("pathogens.json: %s.biofilm.regroup_interval_s: must be > 0 (got %s)" % [id, _format_val(bf["regroup_interval_s"])])
 
 static func _validate_analysis(id: String, s_data: Dictionary, errors: PackedStringArray) -> void:
 	var an_val: Variant = s_data["analysis"]
@@ -742,6 +783,7 @@ static func _validate_pathogens(data: Dictionary, errors: PackedStringArray) -> 
 		"display_name", "role", "cost", "hp", "speed_tiles_s", "attack",
 		"tags", "targeting", "damage_multipliers", "placeholder", "levels"
 	]
+	var optional_keys: Array[String] = ["biofilm"]
 
 	for id_var: Variant in data.keys():
 		var id: String = str(id_var)
@@ -757,12 +799,15 @@ static func _validate_pathogens(data: Dictionary, errors: PackedStringArray) -> 
 
 		for k_var: Variant in p_data.keys():
 			var k: String = str(k_var)
-			if not k.begins_with("_") and not allowed_keys.has(k):
+			if not k.begins_with("_") and not allowed_keys.has(k) and not optional_keys.has(k):
 				errors.append("pathogens.json: %s.%s: unknown key (got %s)" % [id, k, k])
 
 		for req_key: String in allowed_keys:
 			if not p_data.has(req_key):
 				errors.append("pathogens.json: %s.%s: missing required field (got null)" % [id, req_key])
+
+		if p_data.has("biofilm"):
+			_validate_biofilm(id, p_data["biofilm"], errors)
 
 		if p_data.has("display_name"):
 			var dn: Variant = p_data["display_name"]

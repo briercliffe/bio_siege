@@ -15,6 +15,7 @@ var grid_view: GridView = null
 var runner: BattleRunner = null
 var hud_combat: HudCombat = null
 var intent_lines_view: IntentLinesView = null
+var biofilm_view: BiofilmView = null
 
 var entity_container: Node2D = null
 var structures_container: Node2D = null
@@ -29,6 +30,8 @@ var vfx_pool: NodePool = null
 var _structure_views: Dictionary = {}
 var _active_pathogens: Dictionary = {}
 var _active_projectiles: Dictionary = {}
+var _biofilm_changes: int = 0
+var _biofilm_max_group: int = 0
 
 var banner_panel: Control = null
 var banner_label: Label = null
@@ -100,6 +103,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 
 	if intent_lines_view != null:
 		intent_lines_view.setup(session, runner, _active_pathogens, _structure_views)
+	if biofilm_view != null:
+		biofilm_view.setup(session, runner, _active_pathogens)
 	if hud_combat != null:
 		hud_combat.setup(session, runner)
 
@@ -124,6 +129,13 @@ func _init_entity_containers() -> void:
 	entity_container.add_child(intent_lines_view)
 	intent_lines_view.setup(session, runner, _active_pathogens, _structure_views)
 
+	biofilm_view = null
+	if session != null and session.config != null and session.config.flag("biofilm"):
+		biofilm_view = BiofilmView.new()
+		biofilm_view.name = "BiofilmView"
+		entity_container.add_child(biofilm_view)
+		biofilm_view.setup(session, runner, _active_pathogens)
+
 	pathogens_container = Node2D.new()
 	pathogens_container.name = "PathogensContainer"
 	entity_container.add_child(pathogens_container)
@@ -139,6 +151,8 @@ func _init_entity_containers() -> void:
 	_structure_views.clear()
 	_active_pathogens.clear()
 	_active_projectiles.clear()
+	_biofilm_changes = 0
+	_biofilm_max_group = 0
 
 
 func _init_pools() -> void:
@@ -230,6 +244,11 @@ func _route_event(ev: Dictionary) -> void:
 					if pv != null:
 						pv.setup(p_state, p_def, tile_px, runner, vfx_pool)
 						_active_pathogens[uid] = pv
+
+		SimEvents.BIOFILM_CHANGED:
+			_biofilm_changes += 1
+			for g_var: Variant in ev.get("groups", []):
+				_biofilm_max_group = maxi(_biofilm_max_group, (g_var as Array).size())
 
 		SimEvents.TOWER_FIRED:
 			Sfx.play("tower_fire")
@@ -360,6 +379,10 @@ func _on_battle_finished(sim: BattleSim) -> void:
 
 		if session.config != null and session.config.flag("bcell_analysis"):
 			session.last_result["analyzed_strains"] = sim.analyzed_strain_keys()
+
+		if session.config != null and session.config.flag("biofilm"):
+			session.last_result["biofilm_max_group"] = _biofilm_max_group
+			session.last_result["biofilm_changes"] = _biofilm_changes
 
 		var pred_id: int = session.prediction_structure_id if session != null else 0
 		# Kept with the result so a config applied on leaving INFECTION cannot erase it.
