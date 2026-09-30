@@ -52,3 +52,30 @@ if ! command -v godot >/dev/null 2>&1 || ! godot --version 2>&1 | grep -q "$GODO
 fi
 
 godot --version
+
+configure_android_sdk() {
+  # Only run if ANDROID_SDK_ROOT is set (i.e. in CI via android-actions/setup-android)
+  if [ -z "${ANDROID_SDK_ROOT:-}" ]; then
+    echo "ANDROID_SDK_ROOT not set — skipping Android SDK editor settings configuration"
+    return 0
+  fi
+
+  local settings_dir="$HOME/.config/godot"
+  local settings_file="$settings_dir/editor_settings-4.tres"
+  mkdir -p "$settings_dir"
+
+  if grep -q "export/android/android_sdk_path" "$settings_file" 2>/dev/null; then
+    echo "Android SDK path already in editor settings — skipping"
+    return 0
+  fi
+
+  cat >> "$settings_file" << EOF
+
+[resource]
+export/android/android_sdk_path = "$ANDROID_SDK_ROOT"
+EOF
+
+  echo "Wrote Android SDK path to $settings_file: $ANDROID_SDK_ROOT"
+}
+
+configure_android_sdk
