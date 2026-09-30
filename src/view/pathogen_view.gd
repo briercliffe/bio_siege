@@ -20,6 +20,7 @@ var max_hp: int = 0
 var entity_size: float = 16.0
 
 var _flash_tween: Tween = null
+var _was_channeling: bool = false
 
 
 func setup(p_state: PathogenState, p_def: PathogenDef, p_tile_px: int, p_runner: BattleRunner, p_vfx_pool: NodePool) -> void:
@@ -114,6 +115,9 @@ func _exit_tree() -> void:
 
 
 func _process(_delta: float) -> void:
+	if pathogen_state != null and (pathogen_state.channel_target_id != 0 or _was_channeling):
+		_was_channeling = pathogen_state.channel_target_id != 0
+		queue_redraw()
 	var alpha: float = runner.alpha if runner != null else 1.0
 	position = prev_pos.lerp(curr_pos, alpha) + offset
 
@@ -126,6 +130,10 @@ func _draw() -> void:
 	var color: Color = pathogen_def.placeholder_color if pathogen_def != null else Color.WHITE
 	var rect := Rect2(-entity_size * 0.5, -entity_size * 0.5, entity_size, entity_size)
 	PlaceholderShapes.draw_shape(self, shape, rect, color)
+
+	if pathogen_state != null and pathogen_state.channel_target_id != 0 and pathogen_def.hijack_channel_ticks > 0:
+		var frac: float = 1.0 - float(pathogen_state.channel_ticks_left) / float(pathogen_def.hijack_channel_ticks)
+		draw_arc(Vector2.ZERO, entity_size * 0.85, -PI * 0.5, -PI * 0.5 + TAU * clampf(frac, 0.0, 1.0), 32, Color("#e67e22"), 3.0)
 
 	# Health bar: shown only when hp < max_hp and hp > 0
 	if hp < max_hp and hp > 0:

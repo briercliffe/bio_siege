@@ -602,3 +602,39 @@ func test_biofilm_validation_errors() -> void:
 	assert_true(_contains_error(r4.errors, "pathogens.json: staphylococcus.biofilm.regroup_interval_s: must be > 0 (got 0)"))
 	var r5: ConfigLoadResult = _load_with_biofilm(func(d: Dictionary) -> void: d["staphylococcus"]["biofilm"].erase("link_radius_tiles"))
 	assert_true(_contains_error(r5.errors, "pathogens.json: staphylococcus.biofilm.link_radius_tiles: missing required field"))
+
+
+
+# -----------------------------------------------------------------------------
+# Hijack block (#92)
+# -----------------------------------------------------------------------------
+
+func _load_with_hijack(mutate: Callable) -> ConfigLoadResult:
+	var p_dict: Dictionary = JSON.parse_string(default_pathogens_str)
+	mutate.call(p_dict)
+	return GameConfig.load_from_strings(default_rules_str, default_structures_str, JSON.stringify(p_dict))
+
+func test_hijack_default_data() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	var phage: PathogenDef = cfg.pathogens["bacteriophage"]
+	assert_true(phage.has_hijack)
+	assert_eq(phage.hijack_channel_ticks, roundi(2.0 * cfg.tick_rate))
+	assert_eq(phage.hijack_disable_ticks, roundi(8.0 * cfg.tick_rate))
+	assert_eq(phage.hijack_target_tags, PackedStringArray(["defense"]))
+	assert_false((cfg.pathogens["rhinovirus"] as PathogenDef).has_hijack)
+	assert_false(cfg.flag("phage_hijack"))
+
+func test_hijack_key_optional() -> void:
+	var res: ConfigLoadResult = _load_with_hijack(func(d: Dictionary) -> void: d["bacteriophage"].erase("hijack"))
+	assert_false(res.is_err())
+	assert_false((res.config.pathogens["bacteriophage"] as PathogenDef).has_hijack)
+
+func test_hijack_validation_errors() -> void:
+	var r1: ConfigLoadResult = _load_with_hijack(func(d: Dictionary) -> void: d["bacteriophage"]["hijack"]["channel_s"] = 0)
+	assert_true(_contains_error(r1.errors, "pathogens.json: bacteriophage.hijack.channel_s: must be > 0 (got 0)"))
+	var r2: ConfigLoadResult = _load_with_hijack(func(d: Dictionary) -> void: d["bacteriophage"]["hijack"]["target_tags"] = [])
+	assert_true(_contains_error(r2.errors, "pathogens.json: bacteriophage.hijack.target_tags: cannot be empty"))
+	var r3: ConfigLoadResult = _load_with_hijack(func(d: Dictionary) -> void: d["bacteriophage"]["hijack"]["target_tags"] = ["bogus"])
+	assert_true(_contains_error(r3.errors, "pathogens.json: bacteriophage.hijack.target_tags: unknown tag (got bogus)"))
+	var r4: ConfigLoadResult = _load_with_hijack(func(d: Dictionary) -> void: d["bacteriophage"]["hijack"]["bogus"] = 1)
+	assert_true(_contains_error(r4.errors, "pathogens.json: bacteriophage.hijack.bogus: unknown key"))

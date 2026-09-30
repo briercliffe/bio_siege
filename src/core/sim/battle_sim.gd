@@ -26,6 +26,11 @@ var _analysis_on: bool = false
 var biofilm: Biofilm = Biofilm.new()
 var _biofilm_on: bool = false
 var _biofilm_regroup_ticks: int = 0
+var _hijack_on: bool = false
+var _channeled_by: Dictionary = {}  # structure id -> unit id
+var pathogens_consumed: int = 0
+var hijacks_completed: int = 0
+var hijacks_interrupted: int = 0
 
 
 func _init(p_config: GameConfig, setup: BattleSetup) -> void:
@@ -33,6 +38,7 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 	status = StatusEffects.new()
 	_analysis_on = p_config != null and p_config.flag("bcell_analysis")
 	_biofilm_on = p_config != null and p_config.flag("biofilm")
+	_hijack_on = p_config != null and p_config.flag("phage_hijack")
 	if _biofilm_on:
 		for pd: PathogenDef in p_config.pathogens.values():
 			if pd.has_biofilm and (_biofilm_regroup_ticks == 0 or pd.biofilm_regroup_ticks < _biofilm_regroup_ticks):
@@ -206,6 +212,9 @@ func state_hash() -> String:
 			p.blocker_id,
 			p.path_index,
 		])
+	for p: PathogenState in pathogens:
+		if p.channel_target_id != 0:
+			lines.append("H:%d:%d:%d" % [p.id, p.channel_target_id, p.channel_ticks_left])
 	for proj: ProjectileState in projectiles:
 		lines.append("J:%d:%d:%d:%d" % [
 			proj.id,
@@ -263,6 +272,8 @@ func _apply_pathogen_damage(p: PathogenState, amount: int, source_structure_id: 
 	if p.hp == 0:
 		p.alive = false
 		p.state = PathogenState.State.DEAD
+		if p.channel_target_id != 0:
+			_clear_channel(p, "unit_died")
 		biofilm.remove(p.id)
 		pathogens_killed += 1
 		var key: String = StatusEffects.key_pathogen(p.id)
@@ -424,6 +435,8 @@ func _update_pathogen(p: PathogenState) -> void:
 	var cur_target: StructureState = structure(p.target_id)
 	if cur_target == null or not cur_target.alive:
 		var old_target_id: int = p.target_id
+		if p.channel_target_id != 0:
+			_clear_channel(p, "target_destroyed")
 		p.target_id = Targeting.pick_structure_target(p, structures)
 		p.blocker_id = 0
 		p.path_version = -1
@@ -521,7 +534,77 @@ func _move_budget(p: PathogenState) -> int:
 	return budget
 
 
+func _can_hijack(p: PathogenState, victim: StructureState) -> bool:
+	if not _hijack_on or not p.def.has_hijack or victim == null or not victim.alive:
+		return false
+	var tagged: bool = false
+	for t: String in p.def.hijack_target_tags:
+		if victim.def.has_tag(t):
+			tagged = true
+			break
+	if not tagged:
+		return false
+	if status.has_flag(StatusEffects.key_structure(victim.id), StatusEffects.Kind.DISABLED):
+		return false
+	if _channeled_by.has(victim.id) and int(_channeled_by[victim.id]) != p.id:
+		return false
+	return true
+
+
+func _hijack_tick(p: PathogenState, victim: StructureState) -> void:
+	if p.channel_target_id != victim.id:
+		p.channel_target_id = victim.id
+		p.channel_ticks_left = p.def.hijack_channel_ticks
+		_channeled_by[victim.id] = p.id
+		_emit_event(SimEvents.HIJACK_STARTED, {
+			"unit_id": p.id,
+			"structure_id": victim.id,
+			"channel_ticks": p.def.hijack_channel_ticks,
+		})
+		return
+	p.channel_ticks_left -= 1
+	if p.channel_ticks_left > 0:
+		return
+	status.add(StatusEffects.key_structure(victim.id), StatusEffects.Kind.DISABLED, 1, p.def.hijack_disable_ticks, "hijack:%d" % p.id)
+	_emit_event(SimEvents.HIJACK_COMPLETE, {
+		"unit_id": p.id,
+		"structure_id": victim.id,
+		"duration_ticks": p.def.hijack_disable_ticks,
+	})
+	hijacks_completed += 1
+	p.hp = 0
+	p.alive = false
+	p.state = PathogenState.State.DEAD
+	biofilm.remove(p.id)
+	status.clear_entity(StatusEffects.key_pathogen(p.id))
+	_channeled_by.erase(victim.id)
+	p.channel_target_id = 0
+	p.channel_ticks_left = 0
+	pathogens_consumed += 1
+	_emit_event(SimEvents.PATHOGEN_KILLED, {
+		"unit_id": p.id,
+		"unit_type": p.type_id,
+		"source_structure_id": 0,
+		"cause": "hijack",
+	})
+
+
+func _clear_channel(p: PathogenState, reason: String) -> void:
+	_emit_event(SimEvents.HIJACK_INTERRUPTED, {
+		"unit_id": p.id,
+		"structure_id": p.channel_target_id,
+		"reason": reason,
+	})
+	_channeled_by.erase(p.channel_target_id)
+	p.channel_target_id = 0
+	p.channel_ticks_left = 0
+	hijacks_interrupted += 1
+
+
 func _pathogen_attack(p: PathogenState, victim: StructureState) -> void:
+	if _can_hijack(p, victim) or p.channel_target_id == victim.id:
+		_hijack_tick(p, victim)
+		return
 	if p.attack_cooldown > 0:
 		return
 	var mult: int = 100
