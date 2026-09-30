@@ -22,15 +22,23 @@ var strain_id: String = "wild"     # ID-03 fills this from the setup
 var analysis_rate_pct: int = 100   # how fast B-Cells analyze this strain (100 = x1)
 var channel_target_id: int = 0     # structure being hijacked, 0 = none
 var channel_ticks_left: int = 0
+var speed_mt_per_tick: int = 0
+var attack_damage: int = 0
 
-static func create(p_id: int, p_type_id: String, p_def: PathogenDef, p_cell: Vector2i) -> PathogenState:
+static func create(p_id: int, p_type_id: String, p_def: PathogenDef, p_cell: Vector2i, p_strain: StrainDef = null) -> PathogenState:
 	var s := PathogenState.new()
 	s.id = p_id
 	s.type_id = p_type_id
 	s.def = p_def
 	s.cell = p_cell
 	s.pos = FixedMath.cell_center(p_cell)
-	s.hp = p_def.hp if p_def != null else 0
+	var strain: StrainDef = p_strain if p_strain != null else StrainDef.wild()
+	s.strain_id = strain.id
+	s.analysis_rate_pct = strain.analysis_rate_pct
+	if p_def != null:
+		s.hp = maxi(1, FixedMath.apply_pct(p_def.hp, strain.hp_pct))
+		s.speed_mt_per_tick = FixedMath.apply_pct(p_def.speed_mt_per_tick, strain.speed_pct)
+		s.attack_damage = maxi(1, FixedMath.apply_pct(p_def.attack_damage, strain.damage_pct))
 	s.max_hp = s.hp
 	s.alive = true
 	s.state = State.SEEKING

@@ -26,6 +26,21 @@ var has_hijack: bool = false
 var hijack_channel_ticks: int = 0
 var hijack_disable_ticks: int = 0
 var hijack_target_tags: PackedStringArray = PackedStringArray()
+var strains: Array[StrainDef] = []
+
+func strain(variant_id: String) -> StrainDef:
+	if variant_id == "wild":
+		return StrainDef.wild()
+	for sd: StrainDef in strains:
+		if sd.id == variant_id:
+			return sd
+	return null
+
+func strain_ids() -> Array[String]:
+	var ids: Array[String] = ["wild"]
+	for sd: StrainDef in strains:
+		ids.append(sd.id)
+	return ids
 
 func has_tag(t: String) -> bool:
 	return tags.has(t)

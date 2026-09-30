@@ -638,3 +638,38 @@ func test_hijack_validation_errors() -> void:
 	assert_true(_contains_error(r3.errors, "pathogens.json: bacteriophage.hijack.target_tags: unknown tag (got bogus)"))
 	var r4: ConfigLoadResult = _load_with_hijack(func(d: Dictionary) -> void: d["bacteriophage"]["hijack"]["bogus"] = 1)
 	assert_true(_contains_error(r4.errors, "pathogens.json: bacteriophage.hijack.bogus: unknown key"))
+
+
+func _load_with_strains(mutate: Callable) -> ConfigLoadResult:
+	var p_dict: Dictionary = JSON.parse_string(default_pathogens_str)
+	mutate.call(p_dict)
+	return GameConfig.load_from_strings(default_rules_str, default_structures_str, JSON.stringify(p_dict))
+
+func test_strains_default_data() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	var rhino: PathogenDef = cfg.pathogens["rhinovirus"]
+	assert_eq(rhino.strain_ids(), ["wild", "capsid_hardening", "rapid_replication", "antigenic_masking"] as Array[String])
+	assert_eq(rhino.strain("capsid_hardening").hp_pct, 115)
+	assert_eq(rhino.strain("capsid_hardening").speed_pct, 90)
+	assert_true(rhino.strain("wild").is_wild())
+	assert_null(rhino.strain("nope"))
+	assert_false(cfg.flag("strains"))
+
+func test_strains_key_optional() -> void:
+	var res: ConfigLoadResult = _load_with_strains(func(d: Dictionary) -> void: d["rhinovirus"].erase("strains"))
+	assert_false(res.is_err())
+	assert_eq((res.config.pathogens["rhinovirus"] as PathogenDef).strain_ids(), ["wild"] as Array[String])
+
+func test_strains_validation_errors() -> void:
+	var r1: ConfigLoadResult = _load_with_strains(func(d: Dictionary) -> void: d["rhinovirus"]["strains"][0]["id"] = "wild")
+	assert_true(_contains_error(r1.errors, "pathogens.json: rhinovirus.strains[0].id: reserved id (got wild)"))
+	var r2: ConfigLoadResult = _load_with_strains(func(d: Dictionary) -> void: d["rhinovirus"]["strains"][2]["id"] = "rapid_replication")
+	assert_true(_contains_error(r2.errors, "pathogens.json: rhinovirus.strains[2].id: duplicate id (got rapid_replication)"))
+	var r3: ConfigLoadResult = _load_with_strains(func(d: Dictionary) -> void: d["rhinovirus"]["strains"][0]["id"] = "Bad-Id")
+	assert_true(_contains_error(r3.errors, "pathogens.json: rhinovirus.strains[0].id: must match"))
+	var r4: ConfigLoadResult = _load_with_strains(func(d: Dictionary) -> void: d["rhinovirus"]["strains"][0]["modifiers"]["bogus"] = 1.0)
+	assert_true(_contains_error(r4.errors, "pathogens.json: rhinovirus.strains[0].modifiers.bogus: unknown key"))
+	var r5: ConfigLoadResult = _load_with_strains(func(d: Dictionary) -> void: d["rhinovirus"]["strains"][0]["modifiers"]["hp"] = 0)
+	assert_true(_contains_error(r5.errors, "pathogens.json: rhinovirus.strains[0].modifiers.hp: must be > 0"))
+	var r6: ConfigLoadResult = _load_with_strains(func(d: Dictionary) -> void: d["rhinovirus"]["strains"] = "nope")
+	assert_true(_contains_error(r6.errors, "pathogens.json: rhinovirus.strains: must be an array"))

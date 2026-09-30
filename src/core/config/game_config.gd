@@ -324,6 +324,21 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 			for t_var: Variant in hj.get("target_tags", []):
 				p.hijack_target_tags.append(str(t_var))
 
+		var st_cfg: Variant = p_data.get("strains", null)
+		if st_cfg is Array:
+			for st_var: Variant in st_cfg:
+				var st_d: Dictionary = st_var
+				var sd := StrainDef.new()
+				sd.id = str(st_d.get("id", ""))
+				sd.display_name = str(st_d.get("display_name", ""))
+				var mods: Dictionary = st_d.get("modifiers", {})
+				sd.hp_pct = roundi(float(mods.get("hp", 1.0)) * 100.0)
+				sd.speed_pct = roundi(float(mods.get("speed", 1.0)) * 100.0)
+				sd.damage_pct = roundi(float(mods.get("damage", 1.0)) * 100.0)
+				sd.cost_pct = roundi(float(mods.get("cost", 1.0)) * 100.0)
+				sd.analysis_rate_pct = roundi(float(mods.get("analysis_rate", 1.0)) * 100.0)
+				p.strains.append(sd)
+
 		config.pathogens[id] = p
 
 	result.config = config
@@ -815,6 +830,59 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 	if core_count != 1:
 		errors.append("structures.json: structures: must contain exactly one core structure (got %d)" % [core_count])
 
+static func _validate_strains(id: String, st_val: Variant, errors: PackedStringArray) -> void:
+	if typeof(st_val) != TYPE_ARRAY:
+		errors.append("pathogens.json: %s.strains: must be an array (got %s)" % [id, _format_val(st_val)])
+		return
+	var arr: Array = st_val
+	var seen: Dictionary = {}
+	var st_keys: Array[String] = ["id", "display_name", "modifiers"]
+	var mod_keys: Array[String] = ["hp", "speed", "damage", "cost", "analysis_rate"]
+	var id_re := RegEx.new()
+	id_re.compile("^[a-z][a-z0-9_]*$")
+	for idx: int in range(arr.size()):
+		var pre: String = "pathogens.json: %s.strains[%d]" % [id, idx]
+		if typeof(arr[idx]) != TYPE_DICTIONARY:
+			errors.append("%s: must be a JSON object (got %s)" % [pre, _format_val(arr[idx])])
+			continue
+		var st: Dictionary = arr[idx]
+		for k_var: Variant in st.keys():
+			var k: String = str(k_var)
+			if not st_keys.has(k):
+				errors.append("%s.%s: unknown key (got %s)" % [pre, k, k])
+		for req: String in st_keys:
+			if not st.has(req):
+				errors.append("%s.%s: missing required field (got null)" % [pre, req])
+		if st.has("id"):
+			var sid: Variant = st["id"]
+			if typeof(sid) != TYPE_STRING or id_re.search(str(sid)) == null:
+				errors.append("%s.id: must match ^[a-z][a-z0-9_]*$ (got %s)" % [pre, _format_val(sid)])
+			elif str(sid) == "wild":
+				errors.append("%s.id: reserved id (got wild)" % [pre])
+			elif seen.has(str(sid)):
+				errors.append("%s.id: duplicate id (got %s)" % [pre, str(sid)])
+			else:
+				seen[str(sid)] = true
+		if st.has("display_name"):
+			var dn: Variant = st["display_name"]
+			if typeof(dn) != TYPE_STRING or str(dn).is_empty():
+				errors.append("%s.display_name: must be a non-empty string (got %s)" % [pre, _format_val(dn)])
+		if st.has("modifiers"):
+			var mv: Variant = st["modifiers"]
+			if typeof(mv) != TYPE_DICTIONARY:
+				errors.append("%s.modifiers: must be a JSON object (got %s)" % [pre, _format_val(mv)])
+			else:
+				var mods: Dictionary = mv
+				for mk_var: Variant in mods.keys():
+					var mk: String = str(mk_var)
+					if not mod_keys.has(mk):
+						errors.append("%s.modifiers.%s: unknown key (got %s)" % [pre, mk, mk])
+					var val: Variant = mods[mk_var]
+					if not _is_number(val):
+						errors.append("%s.modifiers.%s: must be a number > 0 (got %s)" % [pre, mk, _format_val(val)])
+					elif float(val) <= 0.0:
+						errors.append("%s.modifiers.%s: must be > 0 (got %s)" % [pre, mk, _format_val(val)])
+
 static func _validate_pathogens(data: Dictionary, errors: PackedStringArray) -> void:
 	if data.is_empty():
 		errors.append("pathogens.json: root: pathogens cannot be empty (got empty)")
@@ -824,7 +892,7 @@ static func _validate_pathogens(data: Dictionary, errors: PackedStringArray) -> 
 		"display_name", "role", "cost", "hp", "speed_tiles_s", "attack",
 		"tags", "targeting", "damage_multipliers", "placeholder", "levels"
 	]
-	var optional_keys: Array[String] = ["biofilm", "hijack"]
+	var optional_keys: Array[String] = ["biofilm", "hijack", "strains"]
 
 	for id_var: Variant in data.keys():
 		var id: String = str(id_var)
@@ -851,6 +919,8 @@ static func _validate_pathogens(data: Dictionary, errors: PackedStringArray) -> 
 			_validate_biofilm(id, p_data["biofilm"], errors)
 		if p_data.has("hijack"):
 			_validate_hijack(id, p_data["hijack"], errors)
+		if p_data.has("strains"):
+			_validate_strains(id, p_data["strains"], errors)
 
 		if p_data.has("display_name"):
 			var dn: Variant = p_data["display_name"]

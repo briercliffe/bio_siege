@@ -3,6 +3,7 @@ extends Button
 
 signal buy_requested(type_id: String)
 signal unbuy_requested(type_id: String)
+signal strain_cycle_requested(type_id: String)
 
 var type_id: String = ""
 var is_recall: bool = false
@@ -19,6 +20,8 @@ var count_badge: Label = null
 var buttons_container: HBoxContainer = null
 var btn_minus: Button = null
 var btn_plus: Button = null
+var strain_button: Button = null
+var strain_summary_label: Label = null
 
 var _style_normal: StyleBoxFlat = null
 var _style_hover: StyleBoxFlat = null
@@ -219,6 +222,44 @@ func setup_recall() -> void:
 
 	if icon_control != null:
 		icon_control.queue_redraw()
+
+## Adds (once) and refreshes the StrainButton. Only called when the strains flag is on.
+func setup_strain(p_def: PathogenDef, strain: StrainDef) -> void:
+	_ensure_nodes()
+	if is_recall:
+		return
+	var vbox: VBoxContainer = get_node_or_null("MarginContainer/VBoxContainer") as VBoxContainer
+	if vbox == null:
+		return
+	if strain_button == null:
+		strain_button = Button.new()
+		strain_button.name = "StrainButton"
+		strain_button.custom_minimum_size = Vector2(0.0, 48.0)
+		strain_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		strain_button.add_theme_font_size_override("font_size", 11)
+		strain_button.clip_text = true
+		strain_button.pressed.connect(_on_strain_button_pressed)
+		vbox.add_child(strain_button)
+		vbox.move_child(strain_button, role_label.get_index() + 1 if role_label != null else 1)
+		strain_summary_label = Label.new()
+		strain_summary_label.name = "StrainSummaryLabel"
+		strain_summary_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		strain_summary_label.add_theme_font_size_override("font_size", 10)
+		strain_summary_label.add_theme_color_override("font_color", Color("#b0a0a4"))
+		strain_summary_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		vbox.add_child(strain_summary_label)
+		vbox.move_child(strain_summary_label, strain_button.get_index() + 1)
+		custom_minimum_size = Vector2(custom_minimum_size.x, 210.0)
+	strain_button.text = strain.display_name
+	strain_summary_label.text = strain.summary()
+
+func set_unit_cost(atp: int) -> void:
+	cost_atp = atp
+	if cost_label != null and not is_recall:
+		cost_label.text = "%d ATP" % cost_atp
+
+func _on_strain_button_pressed() -> void:
+	strain_cycle_requested.emit(type_id)
 
 func update_counts(reserve_cnt: int, deployed_cnt: int) -> void:
 	_ensure_nodes()

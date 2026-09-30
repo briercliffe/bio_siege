@@ -218,3 +218,45 @@ func test_battle_to_dict_and_setup_from_battle() -> void:
 	assert_eq(recovered_setup.seed, setup.seed)
 	assert_eq(recovered_setup.structures.size(), setup.structures.size())
 	assert_eq(recovered_setup.units.size(), setup.units.size())
+
+
+func _strain_army_json(units: Array) -> String:
+	return SnapshotIO.to_json({"format": "bio_siege.army", "version": 1, "units": units})
+
+func test_army_to_dict_strain_only_when_not_wild() -> void:
+	var d: Dictionary = SnapshotIO.army_to_dict([
+		{"type": "rhinovirus", "cell": Vector2i(0, 0), "strain": "wild"},
+		{"type": "rhinovirus", "cell": Vector2i(1, 0)},
+		{"type": "bacteriophage", "cell": Vector2i(2, 0), "strain": "capsid_hardening"},
+	])
+	assert_false((d["units"][0] as Dictionary).has("strain"))
+	assert_false((d["units"][1] as Dictionary).has("strain"))
+	assert_eq(d["units"][2]["strain"], "capsid_hardening")
+
+func test_parse_army_strain_rules() -> void:
+	var ok: Dictionary = SnapshotIO.parse_army(_strain_army_json([
+		{"type": "rhinovirus", "cell": [0, 0], "strain": "capsid_hardening"},
+		{"type": "rhinovirus", "cell": [1, 0], "strain": "capsid_hardening"},
+	]), config)
+	assert_true(ok["ok"])
+	assert_eq(ok["units"][0]["strain"], "capsid_hardening")
+	var unknown: Dictionary = SnapshotIO.parse_army(_strain_army_json([
+		{"type": "rhinovirus", "cell": [0, 0], "strain": "nope"},
+	]), config)
+	assert_false(unknown["ok"])
+	assert_eq(unknown["error"], "Unknown strain 'nope' for rhinovirus")
+	var mixed: Dictionary = SnapshotIO.parse_army(_strain_army_json([
+		{"type": "rhinovirus", "cell": [0, 0], "strain": "capsid_hardening"},
+		{"type": "rhinovirus", "cell": [1, 0]},
+	]), config)
+	assert_false(mixed["ok"])
+	assert_eq(mixed["error"], "An army can use only one strain per pathogen type (rhinovirus)")
+
+func test_setup_from_battle_keeps_strain() -> void:
+	var d: Dictionary = {
+		"seed": 1,
+		"base": {"structures": []},
+		"army": {"units": [{"type": "rhinovirus", "cell": [0, 0], "strain": "capsid_hardening"}]},
+	}
+	var setup: BattleSetup = SnapshotIO.setup_from_battle(d)
+	assert_eq(setup.units[0]["strain"], "capsid_hardening")

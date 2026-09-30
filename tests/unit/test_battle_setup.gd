@@ -175,3 +175,19 @@ func test_validate_invalid_coord_formats() -> void:
 		1
 	)
 	assert_true(invalid_cell.validate(cfg).size() > 0)
+
+
+func test_unknown_strain_fails_validation() -> void:
+	var cfg: GameConfig = _load_config()
+	var structs: Array = [{"type": "nucleus", "origin": Vector2i(9, 9)}]
+	var bad: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 0), "strain": "nope"}]
+	var errors: PackedStringArray = BattleSetup.create(structs, bad, 1).validate(cfg)
+	assert_true(errors.has("Unknown strain 'nope' for pathogen 'rhinovirus'"))
+	var good: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 0), "strain": "capsid_hardening"}]
+	assert_eq(BattleSetup.create(structs, good, 1).validate(cfg).size(), 0)
+
+func test_strain_round_trips_through_dict() -> void:
+	var structs: Array = [{"type": "nucleus", "origin": Vector2i(9, 9)}]
+	var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 0), "strain": "capsid_hardening"}]
+	var back: BattleSetup = BattleSetup.from_dict(BattleSetup.create(structs, units, 5).to_dict())
+	assert_eq(back.units[0]["strain"], "capsid_hardening")

@@ -25,6 +25,7 @@ var _next_projectile_id: int = 0
 var _analysis_on: bool = false
 var biofilm: Biofilm = Biofilm.new()
 var _biofilm_on: bool = false
+var _strains_on: bool = false
 var _biofilm_regroup_ticks: int = 0
 var _hijack_on: bool = false
 var _channeled_by: Dictionary = {}  # structure id -> unit id
@@ -39,6 +40,7 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 	_analysis_on = p_config != null and p_config.flag("bcell_analysis")
 	_biofilm_on = p_config != null and p_config.flag("biofilm")
 	_hijack_on = p_config != null and p_config.flag("phage_hijack")
+	_strains_on = p_config != null and p_config.flag("strains")
 	if _biofilm_on:
 		for pd: PathogenDef in p_config.pathogens.values():
 			if pd.has_biofilm and (_biofilm_regroup_ticks == 0 or pd.biofilm_regroup_ticks < _biofilm_regroup_ticks):
@@ -107,7 +109,10 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 
 		var p_def: PathogenDef = config.pathogens[type_id]
 		var uid: int = i + 1
-		var p_state := PathogenState.create(uid, type_id, p_def, cell)
+		var u_strain: StrainDef = null
+		if _strains_on:
+			u_strain = p_def.strain(str(u_data.get("strain", "wild")))
+		var p_state := PathogenState.create(uid, type_id, p_def, cell, u_strain)
 		pathogens.append(p_state)
 
 		_emit_event(SimEvents.UNIT_SPAWNED, {
@@ -519,7 +524,7 @@ func _update_pathogen(p: PathogenState) -> void:
 
 
 func _unit_move_budget(p: PathogenState) -> int:
-	return FixedMath.apply_pct(p.def.speed_mt_per_tick, status.pct(StatusEffects.key_pathogen(p.id), StatusEffects.Kind.SPEED_PCT))
+	return FixedMath.apply_pct(p.speed_mt_per_tick, status.pct(StatusEffects.key_pathogen(p.id), StatusEffects.Kind.SPEED_PCT))
 
 
 ## A biofilm group moves at the speed of its slowest alive member.
@@ -619,7 +624,7 @@ func _pathogen_attack(p: PathogenState, victim: StructureState) -> void:
 	if found_mult:
 		mult = best_mult
 
-	var dmg: int = FixedMath.apply_pct(p.def.attack_damage, mult)
+	var dmg: int = FixedMath.apply_pct(p.attack_damage, mult)
 	var key_p: String = StatusEffects.key_pathogen(p.id)
 	var key_s: String = StatusEffects.key_structure(victim.id)
 	dmg = FixedMath.apply_pct(dmg, status.pct(key_p, StatusEffects.Kind.DAMAGE_DEALT_PCT))
