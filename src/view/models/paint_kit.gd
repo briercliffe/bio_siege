@@ -67,6 +67,53 @@ class RadialMesh extends RefCounted:
 		RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), indices, pts, cols)
 
 
+## A soft glow as one smooth triangle mesh instead of stacked translucent circles, which band into visible
+## rings at close-up sizes. Full alpha out to an inner radius, then falling to 0 at the outer radius as
+## (1 - u)^power across RINGS rings. Like RadialMesh, draw() only moves points, so it allocates nothing.
+class GlowMesh extends RefCounted:
+	const RINGS: int = 6
+	const POINTS: int = 32
+
+	var unit: PackedVector2Array = PackedVector2Array()
+	var falloff: PackedFloat32Array = PackedFloat32Array()
+	var indices: PackedInt32Array = PackedInt32Array()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var cols: PackedColorArray = PackedColorArray()
+	var _last: Color = Color(0.0, 0.0, 0.0, -1.0)
+
+	func _init(power: float = 1.0) -> void:
+		unit = PaintKit.unit_circle_points(POINTS)
+		for k: int in range(RINGS):
+			falloff.append(pow(1.0 - float(k) / float(RINGS - 1), power))
+		for i: int in range(POINTS):
+			var j: int = (i + 1) % POINTS
+			indices.append_array([0, 1 + i, 1 + j])
+			for k: int in range(RINGS - 1):
+				var a: int = 1 + k * POINTS
+				var b: int = a + POINTS
+				indices.append_array([a + i, b + i, b + j, a + i, b + j, a + j])
+		pts.resize(1 + RINGS * POINTS)
+		cols.resize(1 + RINGS * POINTS)
+
+	## `c`, `r_in` and `r_out` in local px; `col` is the colour at full strength.
+	func draw(ci: CanvasItem, c: Vector2, r_in: float, r_out: float, col: Color) -> void:
+		if col.a <= 0.0 or r_out <= 0.0:
+			return
+		pts[0] = c
+		for k: int in range(RINGS):
+			var r: float = lerpf(r_in, r_out, float(k) / float(RINGS - 1))
+			for i: int in range(POINTS):
+				pts[1 + k * POINTS + i] = c + unit[i] * r
+		if col != _last:
+			_last = col
+			cols[0] = col
+			for k: int in range(RINGS):
+				var ck: Color = Color(col.r, col.g, col.b, col.a * falloff[k])
+				for i: int in range(POINTS):
+					cols[1 + k * POINTS + i] = ck
+		RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), indices, pts, cols)
+
+
 static var _unit_circle: PackedVector2Array = _build_unit_circle()
 static var _scratch: PackedVector2Array = PackedVector2Array()
 static var _quad: PackedVector2Array = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
@@ -86,6 +133,14 @@ static func unit_circle_points(n: int) -> PackedVector2Array:
 		var a: float = float(i) / float(maxi(n, 3)) * TAU
 		out.append(Vector2(cos(a), sin(a)))
 	return out
+
+
+## The alpha factor of translucent layers with these alpha shares drawn over each other.
+static func stacked_alpha(shares: Array[float]) -> float:
+	var clear: float = 1.0
+	for a: float in shares:
+		clear *= 1.0 - clampf(a, 0.0, 1.0)
+	return 1.0 - clear
 
 
 ## The canvas P(dx, dy, w, h): a rect in tile units relative to the ground anchor.

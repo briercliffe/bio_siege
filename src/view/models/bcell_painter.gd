@@ -95,11 +95,21 @@ var _cols: Array[Color] = []
 var _ped_cols: Array[Color] = []
 var _tri: PackedVector2Array = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
 var _tri_cols: PackedColorArray = PackedColorArray([Color.WHITE, Color.WHITE, Color.WHITE])
+var _glow: PaintKit.GlowMesh = PaintKit.GlowMesh.new()
+var _halo: PaintKit.GlowMesh = PaintKit.GlowMesh.new()
+## Peak alpha factors: what the canvas's stacked rings add up to where they all overlap.
+var _glow_peak: float = 0.0
+var _halo_peak: float = 0.0
 
 
 func _init() -> void:
 	_cols.resize(BASE.size())
 	_ped_cols.resize(6)
+	_glow_peak = PaintKit.stacked_alpha(GLOW_SHARE)
+	var halo_shares: Array[float] = []
+	halo_shares.resize(HALO_RINGS)
+	halo_shares.fill(HALO_RING_SHARE)
+	_halo_peak = PaintKit.stacked_alpha(halo_shares)
 	_prepare(1.0)
 
 
@@ -243,28 +253,24 @@ func _paint_tier(ci: CanvasItem, t: float, tier: Vector3, drop: float, light: in
 	ci.draw_polygon(_tri, _tri_cols)
 
 
-## The box-shadow glow around a core of radius `r` px: rings of rising radius and falling alpha (one ring
-## when flat).
+## The box-shadow glow around a core of radius `r` px: a smooth mesh fading to 0 (one circle when flat).
 func _paint_glow(ci: CanvasItem, c: Vector2, r: float, t: float, col: Color, flat: bool) -> void:
 	if col.a <= 0.0:
 		return
 	if flat:
 		ci.draw_circle(c, r + GLOW_GROW_T[2] * t, Color(col.r, col.g, col.b, col.a * 0.5))
 		return
-	for i: int in range(GLOW_GROW_T.size()):
-		ci.draw_circle(c, r + GLOW_GROW_T[i] * t, Color(col.r, col.g, col.b, col.a * GLOW_SHARE[i]))
+	_glow.draw(ci, c, r, r + GLOW_GROW_T[0] * t, Color(col.r, col.g, col.b, col.a * _glow_peak))
 
 
-## The radial halo: stacked circles out to `r` px, so the alpha builds toward the centre and fades to 0 at
-## the rim (one circle when flat).
+## The radial halo: a smooth mesh from the centre fading to 0 at `r` px (one circle when flat).
 func _paint_halo(ci: CanvasItem, c: Vector2, r: float, col: Color, flat: bool) -> void:
 	if col.a <= 0.0:
 		return
 	if flat:
 		ci.draw_circle(c, r * 0.75, Color(col.r, col.g, col.b, col.a * 0.6))
 		return
-	for i: int in range(HALO_RINGS):
-		ci.draw_circle(c, r * (1.0 - float(i) / float(HALO_RINGS)), Color(col.r, col.g, col.b, col.a * HALO_RING_SHARE))
+	_halo.draw(ci, c, 0.0, r, Color(col.r, col.g, col.b, col.a * _halo_peak))
 
 
 func _ca(slot: int, alpha: float) -> Color:

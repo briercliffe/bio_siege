@@ -40,6 +40,26 @@ func test_helpers_draw_without_errors() -> void:
 	assert_gt(probe.draws, 0, "the probe drew")
 
 
+func test_stacked_alpha_adds_translucent_layers() -> void:
+	assert_almost_eq(PaintKit.stacked_alpha([0.5, 0.5]), 0.75, 0.0001)
+	assert_almost_eq(PaintKit.stacked_alpha([]), 0.0, 0.0001)
+	assert_almost_eq(PaintKit.stacked_alpha([1.0, 0.2]), 1.0, 0.0001)
+
+
+func test_glow_mesh_fades_from_full_to_zero() -> void:
+	var g := PaintKit.GlowMesh.new(2.0)
+	var rings: int = PaintKit.GlowMesh.RINGS
+	assert_eq(g.falloff.size(), rings)
+	assert_almost_eq(g.falloff[0], 1.0, 0.0001)
+	assert_almost_eq(g.falloff[rings - 1], 0.0, 0.0001)
+	for k: int in range(1, rings):
+		assert_lt(g.falloff[k], g.falloff[k - 1], "alpha falls ring by ring")
+	assert_eq(g.pts.size(), 1 + rings * PaintKit.GlowMesh.POINTS)
+	assert_eq(g.indices.size(), PaintKit.GlowMesh.POINTS * (3 + 6 * (rings - 1)))
+	for i: int in g.indices:
+		assert_true(i >= 0 and i < g.pts.size())
+
+
 func test_easing_endpoints() -> void:
 	for f: Callable in [Easing.linear, Easing.ease_in_quad, Easing.ease_out_quad, Easing.ease_in_out, Easing.ease_out_back]:
 		assert_almost_eq(float(f.call(0.0)), 0.0, 0.0001)

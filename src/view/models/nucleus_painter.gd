@@ -43,8 +43,8 @@ const CRACK_PX_AT_14: float = 2.0
 
 ## Below this tile size the pores and streaks are skipped (issue: detail cutoff).
 const LOW_DETAIL_T_PX: float = 10.0
-## Below this tile size the dome and nucleolus are two circles each instead of a radial-gradient mesh, the dome rim, pore rings
-## and the outer glow ring are skipped. Every draw command costs around 10 to 15 microseconds
+## Below this tile size the dome and nucleolus are two circles each instead of a radial-gradient mesh, the
+## glow is one circle instead of a mesh, and the dome rim and pore rings are skipped. Every draw command costs around 10 to 15 microseconds
 ## (docs/PERF_BASELINE.md), and the battle runs at 23 px per tile.
 const FLAT_T_PX: float = 28.0
 
@@ -109,6 +109,9 @@ var _cols: Array[Color] = []
 var _half: PackedVector2Array = PackedVector2Array()
 var _sphere: PaintKit.RadialMesh = PaintKit.RadialMesh.new(PackedVector2Array(), DOME_POINTS)
 var _nucleolus: PaintKit.RadialMesh = PaintKit.RadialMesh.new()
+var _glow: PaintKit.GlowMesh = PaintKit.GlowMesh.new()
+## What the canvas's stacked glow rings add up to where they all overlap.
+var _glow_peak: float = PaintKit.stacked_alpha(NUCLEOLUS_GLOW_SHARE)
 ## Unit points of the back (upper) half of the ring, left to right over the top; the front half is the
 ## same points with y negated.
 var _unit_back: PackedVector2Array = PackedVector2Array()
@@ -200,10 +203,11 @@ func _paint_dome(ci: CanvasItem, t: float, pose: ModelPose, d: float, flat: bool
 	var nr: float = NUCLEOLUS_R * t * (1.0 + PULSE_AMOUNT * sin(TAU * pose.pulse_phase))
 	var nc: Vector2 = NUCLEOLUS_C * t
 	var glow: Color = _cols[C_NUC_GLOW]
-	for i: int in range(NUCLEOLUS_GLOW_T.size()):
-		if flat and i < NUCLEOLUS_GLOW_T.size() - 1:
-			continue
-		ci.draw_circle(nc, nr + NUCLEOLUS_GLOW_T[i] * t, Color(glow.r, glow.g, glow.b, glow.a * NUCLEOLUS_GLOW_SHARE[i]))
+	if flat:
+		var last: int = NUCLEOLUS_GLOW_T.size() - 1
+		ci.draw_circle(nc, nr + NUCLEOLUS_GLOW_T[last] * t, Color(glow.r, glow.g, glow.b, glow.a * NUCLEOLUS_GLOW_SHARE[last]))
+	else:
+		_glow.draw(ci, nc, nr, nr + NUCLEOLUS_GLOW_T[0] * t, Color(glow.r, glow.g, glow.b, glow.a * _glow_peak))
 	if flat:
 		ci.draw_circle(nc, nr, _cols[C_NUC_D])
 		ci.draw_circle(nc + Vector2(-0.08, -0.1) * nr, nr * 0.8, _cols[C_NUC_M].lerp(_cols[C_NUC_L], 0.3))
