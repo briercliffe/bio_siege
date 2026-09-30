@@ -7,10 +7,17 @@ signal back_requested
 signal deploy_type_selected(type_id: String)
 signal recall_tool_selected(on: bool)
 signal predict_mode_selected(on: bool)
+## "Import…" in the menu: open the Saved bases and armies screen on the Armies tab.
+signal library_requested(kind: String)
 
 const ATP_OVER_BUDGET_COLOR: Color = Color("#e74c3c")
 const CARD_SCENE: PackedScene = preload("res://src/ui/hud_spawn_card.tscn")
 const IMPORT_DIALOG_SCENE: PackedScene = preload("res://src/ui/import_dialog.tscn")
+const MENU_SAVE: int = 0
+const MENU_IMPORT: int = 1
+const MENU_SAVE_TEXT: String = "Save army…"
+const MENU_IMPORT_TEXT: String = "Import…"
+const DEFAULT_NAME: String = "Army %d"
 
 var session: Session = null
 
@@ -27,6 +34,9 @@ var btn_mute: MuteButton = null
 var btn_menu: Button = null
 var popup_menu: PopupMenu = null
 var import_dialog: ImportDialog = null
+var save_dialog: SaveNameDialog = null
+## The save library folder; the Incubation phase passes the game's, tests pass a temp one.
+var saves_root: String = SaveLibrary.DEFAULT_ROOT
 var last_toast_message: String = ""
 var memory_panel: MemoryPanel = null
 
@@ -68,10 +78,7 @@ func _ensure_nodes() -> void:
 
 	if top_bar != null:
 		if popup_menu == null:
-			popup_menu = PopupMenu.new()
-			popup_menu.name = "PopupMenu"
-			popup_menu.add_item("Export army", 0)
-			popup_menu.add_item("Import army", 1)
+			popup_menu = _make_popup_menu()
 			add_child(popup_menu)
 		if import_dialog == null:
 			import_dialog = IMPORT_DIALOG_SCENE.instantiate() as ImportDialog
@@ -199,10 +206,7 @@ func _ensure_nodes() -> void:
 	cards_container.alignment = BoxContainer.ALIGNMENT_CENTER
 	scroll_container.add_child(cards_container)
 
-	popup_menu = PopupMenu.new()
-	popup_menu.name = "PopupMenu"
-	popup_menu.add_item("Export army", 0)
-	popup_menu.add_item("Import army", 1)
+	popup_menu = _make_popup_menu()
 	add_child(popup_menu)
 
 	import_dialog = ImportDialog.new()
@@ -211,7 +215,19 @@ func _ensure_nodes() -> void:
 
 	_wire_static_nodes()
 
+static func _make_popup_menu() -> PopupMenu:
+	var menu := PopupMenu.new()
+	menu.name = "PopupMenu"
+	menu.add_item(MENU_SAVE_TEXT, MENU_SAVE)
+	menu.add_item(MENU_IMPORT_TEXT, MENU_IMPORT)
+	return menu
+
 func _wire_static_nodes() -> void:
+	if save_dialog == null:
+		save_dialog = SaveNameDialog.new()
+		save_dialog.name = "SaveDialog"
+		add_child(save_dialog)
+		save_dialog.save_requested.connect(save_army)
 	if atp_icon != null and not atp_icon.draw.is_connected(_on_atp_icon_draw):
 		atp_icon.draw.connect(_on_atp_icon_draw)
 	if btn_back != null and not btn_back.pressed.is_connected(_on_back_pressed):
@@ -525,10 +541,10 @@ func _on_btn_menu_pressed() -> void:
 
 func _on_popup_menu_item_selected(id: int) -> void:
 	match id:
-		0:
-			export_army()
-		1:
-			open_import_dialog()
+		MENU_SAVE:
+			open_save_dialog()
+		MENU_IMPORT:
+			library_requested.emit(SaveLibrary.KIND_ARMY)
 
 
 func open_import_dialog() -> void:
@@ -536,23 +552,27 @@ func open_import_dialog() -> void:
 		import_dialog.open("Import Army")
 
 
-func export_army() -> String:
-	if session == null or session.army == null:
-		return ""
-	var army_dict: Dictionary = SnapshotIO.army_to_dict(session.army.deployments)
-	var json_str: String = SnapshotIO.to_json(army_dict)
-	DisplayServer.clipboard_set(json_str)
-	_show_toast("Army copied to clipboard")
+## "Save army…": asks for a name, defaulting to "Army N" after the slots already saved.
+func open_save_dialog() -> void:
+	_ensure_nodes()
+	var cfg: GameConfig = session.config if session != null else null
+	var n: int = SaveLibrary.open(saves_root, cfg).count(SaveLibrary.KIND_ARMY) + 1
+	save_dialog.open(MENU_SAVE_TEXT, DEFAULT_NAME % n)
 
-	if not DirAccess.dir_exists_absolute("user://armies"):
-		DirAccess.make_dir_recursive_absolute("user://armies")
-	var unix_time: int = int(Time.get_unix_time_from_system())
-	var file_path: String = "user://armies/army_%d.json" % unix_time
-	var file := FileAccess.open(file_path, FileAccess.WRITE)
-	if file != null:
-		file.store_string(json_str)
-		file.close()
-	return json_str
+
+## Saves the deployed army as a library slot. Errors (a full library) show in the name dialog.
+func save_army(slot_name: String) -> Dictionary:
+	_ensure_nodes()
+	if session == null or session.army == null:
+		return {"ok": false, "path": "", "error": "Nothing to save"}
+	var lib: SaveLibrary = SaveLibrary.open(saves_root, session.config)
+	var res: Dictionary = lib.save_army(slot_name, session.army, session.config)
+	if not bool(res.get("ok", false)):
+		save_dialog.set_error(str(res.get("error", "")))
+		return res
+	save_dialog.close()
+	_show_toast("Saved '%s'" % slot_name)
+	return res
 
 
 func import_army(json_text: String) -> bool:
@@ -567,41 +587,17 @@ func import_army(json_text: String) -> bool:
 
 	if import_dialog != null:
 		import_dialog.close()
-
-	session.army.refund_all(session.wallet)
-	var units: Array = res.get("units", [])
-	if _strains_enabled():
-		var seen_types: Dictionary = {}
-		for su: Variant in units:
-			if su is Dictionary:
-				var su_type: String = str(su.get("type", ""))
-				if not seen_types.has(su_type):
-					seen_types[su_type] = true
-					session.army.set_strain(su_type, str(su.get("strain", "wild")))
-	var total_units: int = units.size()
-	var deployed_count: int = 0
-	for item: Variant in units:
-		if item is Dictionary:
-			var tid: String = str(item.get("type", ""))
-			var cell_val: Variant = item.get("cell", Vector2i.ZERO)
-			var cell: Vector2i = Vector2i.ZERO
-			if cell_val is Vector2i:
-				cell = cell_val
-			elif cell_val is Array and (cell_val as Array).size() >= 2:
-				cell = Vector2i(int((cell_val as Array)[0]), int((cell_val as Array)[1]))
-
-			if not session.army.buy(tid, session.wallet):
-				break
-			if not session.army.deploy(tid, cell):
-				session.army.unbuy(tid, session.wallet)
-				break
-			deployed_count += 1
-
-	if deployed_count < total_units:
-		_show_toast("Only %d of %d units fit your ATP" % [deployed_count, total_units])
-	else:
-		_show_toast("Army loaded")
+	_show_toast(army_loaded_message(SaveLibrary.apply_army(session, res)))
 	return true
+
+
+## "Army loaded", or how many units fit when the ATP ran out.
+static func army_loaded_message(result: Dictionary) -> String:
+	var deployed: int = int(result.get("deployed", 0))
+	var total: int = int(result.get("total", 0))
+	if deployed < total:
+		return "Only %d of %d units fit your ATP" % [deployed, total]
+	return "Army loaded"
 
 
 func _on_import_load_requested(text: String) -> void:

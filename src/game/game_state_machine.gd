@@ -7,6 +7,8 @@ signal phase_changed(from: Phase, to: Phase)
 signal config_applied(summary: Dictionary)
 ## A HUD "?" button was pressed; Main shows the How to play overlay.
 signal how_to_play_requested
+## A HUD menu's "Import…" was pressed; Main opens the Saved screen on that tab ("base" or "army").
+signal library_requested(kind: String)
 
 const PHASE_SCENE_PATHS: Dictionary = {
 	Phase.TITLE: "res://src/ui/title.tscn",
@@ -21,6 +23,8 @@ var previous_phase: Phase = Phase.NONE
 var session: Session = null
 ## Player preferences file, handed to the Session and to phases that read settings. Tests use a temp file.
 var settings_path: String = GameSettings.DEFAULT_PATH
+## Save library folder, handed to phases that save bases or armies. Tests use a temp folder.
+var saves_root: String = SaveLibrary.DEFAULT_ROOT
 
 var phase_root: Control = null
 ## Menu screens (How to play, Saved, Settings) open over the phases through this. Main assigns it.
@@ -154,6 +158,8 @@ func _apply_transition(to: Phase) -> void:
 			var phase_scene: Node = scene_res.instantiate()
 			if "settings_path" in phase_scene:
 				phase_scene.set("settings_path", settings_path)
+			if "saves_root" in phase_scene:
+				phase_scene.set("saves_root", saves_root)
 			if phase_scene.has_method("setup"):
 				phase_scene.call("setup", session, self)
 			root.add_child(phase_scene)

@@ -1,5 +1,19 @@
 extends GutTest
 
+const SAVES_ROOT: String = "user://test_hud_build_saves"
+
+func after_each() -> void:
+	_remove_tree(SAVES_ROOT)
+
+static func _remove_tree(dir_path: String) -> void:
+	if not DirAccess.dir_exists_absolute(dir_path):
+		return
+	for sub: String in DirAccess.get_directories_at(dir_path):
+		_remove_tree("%s/%s" % [dir_path, sub])
+	for file_name: String in DirAccess.get_files_at(dir_path):
+		DirAccess.remove_absolute("%s/%s" % [dir_path, file_name])
+	DirAccess.remove_absolute(dir_path)
+
 func _load_config() -> GameConfig:
 	var res: ConfigLoadResult = GameConfig.load_from_dir("res://data")
 	assert_true(res.is_ok(), "Config should load successfully from res://data")
@@ -282,18 +296,54 @@ func test_touch_buttons_minimum_sizes() -> void:
 	assert_true(hud.btn_menu.custom_minimum_size.y >= 48.0)
 
 
-func test_export_base() -> void:
+func test_menu_offers_save_and_import() -> void:
 	var session: Session = _create_session()
-	var ctx: Dictionary = _setup_hud(session)
-	var hud: HudBuild = ctx["hud"]
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	assert_eq(hud.popup_menu.item_count, 2)
+	assert_eq(hud.popup_menu.get_item_text(0), "Save base…")
+	assert_eq(hud.popup_menu.get_item_text(1), "Import…")
+	watch_signals(hud)
+	hud.popup_menu.id_pressed.emit(HudBuild.MENU_IMPORT)
+	assert_signal_emitted_with_parameters(hud, "library_requested", ["base"])
 
+
+func test_save_base_asks_for_a_name_and_saves_to_the_library() -> void:
+	var session: Session = _create_session()
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	hud.saves_root = SAVES_ROOT
 	session.grid.place("mucous_wall", Vector2i(2, 2), session.wallet)
-	var exported_json: String = hud.export_base()
-	assert_gt(exported_json.length(), 0)
+	hud.popup_menu.id_pressed.emit(HudBuild.MENU_SAVE)
+	assert_true(hud.save_dialog.visible)
+	assert_eq(hud.save_dialog.name_edit.text, "Base 1")
+	assert_gte(hud.save_dialog.name_edit.custom_minimum_size.y, 48.0)
+	hud.save_dialog.name_edit.text = "Wall test"
+	hud.save_dialog.btn_save.pressed.emit()
+	assert_false(hud.save_dialog.visible)
+	assert_eq(hud.last_toast_message, "Saved 'Wall test'")
 
-	var parsed: Dictionary = SnapshotIO.parse_base(exported_json, session.config)
-	assert_true(parsed["ok"])
-	assert_eq(hud.last_toast_message, "Base copied to clipboard")
+	var lib := SaveLibrary.new(SAVES_ROOT)
+	var slots: Array[Dictionary] = lib.list("base")
+	assert_eq(slots.size(), 1)
+	assert_eq(slots[0]["name"], "Wall test")
+	var loaded: Dictionary = lib.load_slot(slots[0]["path"], session.config)
+	assert_true(loaded["ok"])
+	assert_eq(loaded["parsed"]["layout"].size(), session.grid.structures().size())
+	hud.open_save_dialog()
+	assert_eq(hud.save_dialog.name_edit.text, "Base 2")
+
+
+func test_save_base_shows_a_full_library_in_the_dialog() -> void:
+	var session: Session = _create_session()
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	hud.saves_root = SAVES_ROOT
+	var lib := SaveLibrary.new(SAVES_ROOT)
+	for i: int in range(SaveLibrary.MAX_SLOTS):
+		lib.save_base("Base", session.grid, session.config)
+	hud.open_save_dialog()
+	var res: Dictionary = hud.save_base("Base 13")
+	assert_false(res["ok"])
+	assert_true(hud.save_dialog.visible)
+	assert_eq(hud.save_dialog.error_label.text, "Library is full (12). Delete a slot first.")
 
 
 func test_import_base_valid() -> void:
