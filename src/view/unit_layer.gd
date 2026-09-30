@@ -7,9 +7,6 @@ extends Node2D
 const KIND_STRUCTURE: int = 0
 const KIND_PATHOGEN: int = 1
 
-const HIT_TICKS: int = 4
-const HIT_WHITE: float = 0.6
-const DEATH_TICKS: int = 8
 const SCORCH_DIAMETER_T: float = 3.6
 const SCORCH_RINGS: int = 5
 const SCORCH_ALPHA: float = 0.5
@@ -20,7 +17,6 @@ const CRACK_PULSE_PERIOD_S: float = 0.8
 const PLATE_FILL: Color = Color(0.0, 0.0, 0.0, 0.3)
 const NUCLEUS_GLOW: Color = Color(195.0 / 255.0, 155.0 / 255.0, 211.0 / 255.0, 0.12)
 const NUCLEUS_PLATE: Color = Color(74.0 / 255.0, 28.0 / 255.0, 102.0 / 255.0, 0.38)
-const NOT_HIT: int = -1000
 
 ## Pathogen sprite size in tiles (width, height), from docs/MVP_UI_SPEC.md section 4.
 const PATHOGEN_SIZE_T: Dictionary = {
@@ -60,14 +56,16 @@ var _sorted: Array[UnitDrawItem] = []
 var _pool_used: int = 0
 var _sort_cmp: Callable = UnitLayer._item_before
 
-# Per-id records, in reused dictionaries of ints (tick numbers).
-var _hit_p: Dictionary = {}
-var _hit_s: Dictionary = {}
+# Per-id death ticks, in reused dictionaries of ints. Hit flashes, strikes and poses live in the AnimDriver.
 var _dying_p: Dictionary = {}
 var _dying_s: Dictionary = {}
 var _scorch: Array[int] = []
 var _breached: Dictionary = {}
 var _expired: Array[int] = []
+
+var driver: AnimDriver = AnimDriver.new()
+## View clock in seconds for idle loops. Advances only while the battle runs.
+var view_time: float = 0.0
 
 var _wall_faces: Dictionary = {}
 var _faces_key: Vector3 = Vector3(-1.0, 0.0, 0.0)
@@ -79,8 +77,9 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 	projection = p_projection
 	snapshots = p_snapshots
 	runner = p_runner
-	_hit_p.clear()
-	_hit_s.clear()
+	driver = AnimDriver.new()
+	view_time = 0.0
+	ModelRegistry.configure(config, projection.scale if projection != null else IsoProjection.DEFAULT_SCALE)
 	_dying_p.clear()
 	_dying_s.clear()
 	_scorch.clear()
@@ -88,9 +87,12 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 	queue_redraw()
 
 
-func _process(_delta: float) -> void:
-	if sim != null:
-		queue_redraw()
+func _process(delta: float) -> void:
+	if sim == null:
+		return
+	if runner != null and runner.is_running:
+		view_time += delta
+	queue_redraw()
 
 
 # --- sizing, shared with the overlay ---------------------------------------
@@ -135,21 +137,18 @@ func pathogen_anchor(p: PathogenState) -> Vector2:
 func on_event(ev: Dictionary) -> void:
 	if sim == null:
 		return
+	driver.on_event(ev)
 	match str(ev.get("type", "")):
-		SimEvents.PATHOGEN_DAMAGED:
-			_hit_p[int(ev.get("unit_id", 0))] = sim.tick
-		SimEvents.STRUCTURE_DAMAGED:
-			_hit_s[int(ev.get("structure_id", 0))] = sim.tick
 		SimEvents.PATHOGEN_KILLED:
 			var uid: int = int(ev.get("unit_id", 0))
 			if sim.pathogen(uid) != null:
-				_dying_p[uid] = sim.tick
+				_dying_p[uid] = AnimDriver.event_tick(ev, sim.tick)
 		SimEvents.STRUCTURE_DESTROYED:
 			var sid: int = int(ev.get("structure_id", 0))
 			var s: StructureState = sim.structure(sid)
 			if s == null:
 				return
-			_dying_s[sid] = sim.tick
+			_dying_s[sid] = AnimDriver.event_tick(ev, sim.tick)
 			if s.def != null and not s.def.has_tag("wall") and not _scorch.has(sid):
 				_scorch.append(sid)
 
@@ -162,12 +161,6 @@ static func _item_before(a: UnitDrawItem, b: UnitDrawItem) -> bool:
 	if a.kind != b.kind:
 		return a.kind < b.kind
 	return a.id < b.id
-
-
-func _now() -> float:
-	if sim == null:
-		return 0.0
-	return float(sim.tick) + (runner.alpha if runner != null else 0.0)
 
 
 func _take_item(kind: int, id: int, key: float, age: float) -> void:
@@ -191,7 +184,6 @@ func _collect() -> void:
 	_breached.clear()
 	if sim == null or projection == null:
 		return
-	var now: float = _now()
 	for s: StructureState in sim.structures:
 		if s.alive:
 			_take_item(KIND_STRUCTURE, s.id, IsoProjection.depth_key(structure_anchor(s)), -1.0)
@@ -204,9 +196,9 @@ func _collect() -> void:
 	_expired.clear()
 	for sid_var: Variant in _dying_s:
 		var sid: int = sid_var
-		var age: float = now - float(int(_dying_s[sid]))
+		var age: float = float(sim.tick - int(_dying_s[sid]))
 		var ds: StructureState = sim.structure(sid)
-		if age >= float(DEATH_TICKS) or ds == null:
+		if ds == null or age >= float(AnimDriver.death_ticks_for(ds.type_id)):
 			_expired.append(sid)
 		else:
 			_take_item(KIND_STRUCTURE, sid, IsoProjection.depth_key(structure_anchor(ds)), age)
@@ -215,9 +207,9 @@ func _collect() -> void:
 	_expired.clear()
 	for uid_var: Variant in _dying_p:
 		var uid: int = uid_var
-		var age: float = now - float(int(_dying_p[uid]))
+		var age: float = float(sim.tick - int(_dying_p[uid]))
 		var dp: PathogenState = sim.pathogen(uid)
-		if age >= float(DEATH_TICKS) or dp == null:
+		if dp == null or age >= float(AnimDriver.death_ticks_for(dp.type_id)):
 			_expired.append(uid)
 		else:
 			_take_item(KIND_PATHOGEN, uid, IsoProjection.depth_key(Vector2(dp.pos) / 1000.0), age)
@@ -239,26 +231,18 @@ func build_draw_order() -> Array[Vector2i]:
 
 # --- drawing ----------------------------------------------------------------
 
-func _flash(hit_tick: int, now: float) -> float:
-	var since: float = now - float(hit_tick)
-	if since < 0.0 or since >= float(HIT_TICKS):
-		return 0.0
-	return HIT_WHITE * (1.0 - since / float(HIT_TICKS))
-
-
 func _draw() -> void:
 	_collect()
 	last_item_count = _sorted.size()
 	if sim == null or projection == null:
 		return
 	_refresh_wall_cache()
-	var now: float = _now()
 	_draw_ground_decals()
 	for item: UnitDrawItem in _sorted:
 		if item.kind == KIND_STRUCTURE:
-			_draw_structure(sim.structure(item.id), item, now)
+			_draw_structure(sim.structure(item.id))
 		else:
-			_draw_pathogen(sim.pathogen(item.id), item, now)
+			_draw_pathogen(sim.pathogen(item.id))
 
 
 func _refresh_wall_cache() -> void:
@@ -298,23 +282,22 @@ func _draw_ground_decals() -> void:
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
-func _draw_structure(s: StructureState, item: UnitDrawItem, now: float) -> void:
+func _draw_structure(s: StructureState) -> void:
 	if s == null:
 		return
-	var alpha: float = 1.0 if item.age < 0.0 else 1.0 - item.age / float(DEATH_TICKS)
-	var flash: float = _flash(int(_hit_s.get(s.id, NOT_HIT)), now)
+	var aim_ground: Vector2 = Vector2.ZERO
+	if s.target_id != 0:
+		var tp: PathogenState = sim.pathogen(s.target_id)
+		if tp != null and tp.alive:
+			aim_ground = pathogen_anchor(tp)
+	var pose: ModelPose = driver.pose_for_structure(s, sim.tick, aim_ground, view_time)
 	if s.def != null and s.def.has_tag("wall"):
-		PlaceholderBillboard.draw_wall_faces(self, _faces_for(s), false, flash, alpha)
-		if item.age < 0.0 and _breached.has(s.id) and s.hp > 0:
+		PlaceholderBillboard.draw_wall_faces(self, _faces_for(s), false, PlaceholderPainter.HIT_WHITE * pose.hit_t, 1.0 - pose.death_t)
+		if pose.anim != ModelPose.Anim.DEAD and _breached.has(s.id) and s.hp > 0:
 			_draw_cracks(_faces_for(s), crack_count(s.hp, s.max_hp))
 		return
-	var col: Color = s.def.placeholder_color if s.def != null else Color.WHITE
-	col = col.lerp(Color.WHITE, flash)
-	col.a *= alpha
 	var foot: Vector2 = projection.ground_to_screen(structure_anchor(s))
-	var size: Vector2 = structure_size_px(s, projection)
-	var shape: String = s.def.placeholder_shape if s.def != null else "square"
-	PlaceholderBillboard.draw_billboard(self, shape, col, foot, size.x, size.y)
+	ModelRegistry.painter_for(s.type_id).paint(self, foot, pose, projection.tile_px)
 
 
 func _draw_cracks(faces: Array[PackedVector2Array], count: int) -> void:
@@ -335,16 +318,16 @@ func _draw_cracks(faces: Array[PackedVector2Array], count: int) -> void:
 			draw_polyline(pts, col, width)
 
 
-func _draw_pathogen(p: PathogenState, item: UnitDrawItem, now: float) -> void:
+func _draw_pathogen(p: PathogenState) -> void:
 	if p == null:
 		return
-	var alpha: float = 1.0 if item.age < 0.0 else 1.0 - item.age / float(DEATH_TICKS)
-	var flash: float = _flash(int(_hit_p.get(p.id, NOT_HIT)), now)
-	var ground: Vector2 = pathogen_anchor(p) if item.age < 0.0 else Vector2(p.pos) / 1000.0
-	var foot: Vector2 = projection.ground_to_screen(ground)
-	var size_t: Vector2 = pathogen_size_t(p.type_id)
-	var col: Color = p.def.placeholder_color if p.def != null else Color.WHITE
-	col = col.lerp(Color.WHITE, flash)
-	col.a *= alpha
-	var shape: String = p.def.placeholder_shape if p.def != null else "circle"
-	PlaceholderBillboard.draw_billboard(self, shape, col, foot, size_t.x * projection.tile_px, size_t.y * projection.tile_px)
+	var ground: Vector2 = pathogen_anchor(p) if p.alive else Vector2(p.pos) / 1000.0
+	var target_ground: Vector2 = ground
+	var tid: int = p.attacking_id()
+	if tid != 0:
+		var ts: StructureState = sim.structure(tid)
+		if ts != null:
+			target_ground = structure_anchor(ts)
+	var moved: float = driver.moved_since_last(p.id, ground) if p.alive else 0.0
+	var pose: ModelPose = driver.pose_for_pathogen(p, sim.tick, ground, target_ground, moved, view_time)
+	ModelRegistry.painter_for(p.type_id).paint(self, projection.ground_to_screen(ground), pose, projection.tile_px)
