@@ -1,10 +1,9 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://src/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://src/game/game_state_machine.gd" id="2_fsm"]
 [ext_resource type="PackedScene" path="res://src/ui/debug_overlay.tscn" id="3_dbg"]
 [ext_resource type="PackedScene" path="res://src/ui/dev_banner.tscn" id="4_banner"]
-[ext_resource type="PackedScene" path="res://src/ui/how_to_play.tscn" id="5_howto"]
 [ext_resource type="Script" path="res://src/game/screen_stack.gd" id="6_screens"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_err"]
@@ -82,8 +81,5 @@ size_flags_vertical = 3
 theme_override_font_sizes/normal_font_size = 14
 bbcode_enabled = true
 scroll_following = true
-
-[node name="HowToPlay" parent="." instance=ExtResource("5_howto")]
-layout_mode = 1
 
 [node name="DevBanner" parent="." instance=ExtResource("4_banner")]

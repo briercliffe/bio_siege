@@ -152,7 +152,7 @@ func _ensure_nodes() -> void:
 	btn_launch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top_hbox.add_child(btn_launch)
 
-	btn_help = HowToPlay.create_help_button()
+	btn_help = HowToPlayScreen.create_help_button()
 	top_hbox.add_child(btn_help)
 
 	btn_mute = MuteButton.create()
