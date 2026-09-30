@@ -7,7 +7,7 @@ const USAGE: String = """Usage: godot --headless --path . -s tools/balance_sim.g
 
 Inputs (exactly one required):
   --scenario=<name>    Scenario name: open_field, walled_nucleus, short_wall,
-                       long_wall, phage_priority, mixed, stress
+                       long_wall, phage_priority, mixed, stress, repeat_swarm
   --battle=<file>      Path to battle snapshot JSON file
   --base=<file> --army=<file>
                        Paths to base and army snapshot JSON files
@@ -20,11 +20,19 @@ Options:
                        Can be specified multiple times
   --sweep=<path>:<start>:<end>:<step>
                        Sweep a config stat over a range (e.g. structures.mucous_wall.hp:100:500:100)
+  --flag=<name>        Turn on a feature flag (e.g. --flag=bcell_analysis)
+                       Can be specified multiple times
+  --strain=<type>:<variant>
+                       Give every unit of a type a strain (e.g. --strain=rhinovirus:capsid_hardening)
+                       Can be specified multiple times
+  --memory=<key>:<level>[,<key>:<level>...]
+                       Starting immune memory (e.g. --memory=rhinovirus/wild:3)
+  --generations=G      Consecutive battles per run with memory carried forward (1-50, default: 1)
   --out=<file>         Output CSV file path (default: stdout)
   --help, -h           Show this help message and exit
 """
 
-const CSV_HEADER: String = "sweep_path,sweep_value,run,seed,outcome,end_reason,battle_s,nucleus_hp_remaining,structures_destroyed,walls_destroyed,walls_damaged,pathogens_alive,first_destroyed_type,first_contact_s"
+const CSV_HEADER: String = "sweep_path,sweep_value,run,seed,outcome,end_reason,battle_s,nucleus_hp_remaining,structures_destroyed,walls_destroyed,walls_damaged,pathogens_alive,first_destroyed_type,first_contact_s,generation,score,analyzed_strains,memory_after,hijacks_completed,biofilm_max_group"
 
 
 func _init() -> void:
@@ -105,6 +113,15 @@ func _init() -> void:
 			quit(1)
 			return
 
+	# Apply all --flag shorthands
+	for flag_var: Variant in options.get("flags", []):
+		var flag_name: String = str(flag_var)
+		var flag_err: String = BalanceSimArgs.apply_override(json_roots, "rules.feature_flags.%s" % flag_name, "true")
+		if not flag_err.is_empty():
+			printerr("Error applying '--flag=%s': %s" % [flag_name, flag_err])
+			quit(1)
+			return
+
 	# Sweep values
 	var sweep_str: String = str(options.get("sweep", "")).strip_edges()
 	var sweep_path: String = ""
@@ -169,6 +186,15 @@ func _init() -> void:
 			quit(1)
 			return
 
+		var strains: Dictionary = options.get("strains", {})
+		if not strains.is_empty():
+			base_setup = BattleSetup.create(
+				base_setup.structures,
+				BalanceSimArgs.apply_strains(base_setup.units, strains),
+				base_setup.seed,
+				base_setup.memory_seed
+			)
+
 		var setup_errors: PackedStringArray = base_setup.validate(config)
 		if not setup_errors.is_empty():
 			for serr: String in setup_errors:
@@ -178,80 +204,74 @@ func _init() -> void:
 
 		var ring_cells: Array[Vector2i] = Scenarios.ring_cells(config.grid_width, config.grid_height)
 
+		var generations: int = int(options.get("generations", 1))
+		var start_levels: Dictionary = options.get("memory", {})
 		var attacker_wins: int = 0
 		var total_battle_s: float = 0.0
 		var total_nucleus_hp: int = 0
 		var runs_with_wall_damage_count: int = 0
 		var progress_interval: int = maxi(1, runs_count / 10)
+		var gen_wins: Array[int] = []
+		var gen_score_total: Array[int] = []
+		var gen_analyzed_total: Array[int] = []
+		for _g in range(generations):
+			gen_wins.append(0)
+			gen_score_total.append(0)
+			gen_analyzed_total.append(0)
+		var battles_total: int = runs_count * generations
 
 		for run_idx in range(runs_count):
 			var run_seed: int = base_seed + run_idx
-			var jittered_units: Array = BalanceSimArgs.apply_jitter(base_setup.units, jitter, run_seed, ring_cells)
-			var run_setup: BattleSetup = BattleSetup.create(base_setup.structures, jittered_units, run_seed)
-			var sim := BattleSim.new(config, run_setup)
+			var results: Array[Dictionary] = BalanceSimRunner.run_run(
+				config, base_setup, run_idx, run_seed, jitter, generations, start_levels, ring_cells
+			)
 
-			while not sim.finished:
-				sim.step()
+			for res: Dictionary in results:
+				var gi: int = int(res["generation"]) - 1
+				if int(res["walls_damaged"]) > 0:
+					runs_with_wall_damage_count += 1
+				if res["outcome"] == "attacker":
+					attacker_wins += 1
+					gen_wins[gi] += 1
+				total_battle_s += float(res["battle_s"])
+				total_nucleus_hp += int(res["nucleus_hp"])
+				gen_score_total[gi] += int(res["score"])
+				gen_analyzed_total[gi] += (res["analyzed"] as Array).size()
 
-			var walls_damaged: int = 0
-			var walls_destroyed: int = 0
-			for s: StructureState in sim.structures:
-				if s.def != null and s.def.has_tag("wall"):
-					if s.hp < s.def.hp:
-						walls_damaged += 1
-					if not s.alive:
-						walls_destroyed += 1
-
-			if walls_damaged > 0:
-				runs_with_wall_damage_count += 1
-
-			if sim.outcome == "attacker":
-				attacker_wins += 1
-
-			var battle_s: float = float(sim.tick) / float(config.tick_rate)
-			total_battle_s += battle_s
-
-			var nuc: StructureState = sim.structure(sim.nucleus_id)
-			var nucleus_hp: int = nuc.hp if nuc != null else 0
-			total_nucleus_hp += nucleus_hp
-
-			var pathogens_alive: int = 0
-			for p: PathogenState in sim.pathogens:
-				if p != null and p.alive:
-					pathogens_alive += 1
-
-			var first_contact_str: String = "-1.0"
-			if sim.first_contact_tick >= 0:
-				first_contact_str = "%.2f" % (float(sim.first_contact_tick) / float(config.tick_rate))
-
-			# sweep_path,sweep_value,run,seed,outcome,end_reason,battle_s,nucleus_hp_remaining,structures_destroyed,walls_destroyed,walls_damaged,pathogens_alive,first_destroyed_type,first_contact_s
-			var row: String = "%s,%s,%d,%d,%s,%s,%.2f,%d,%d,%d,%d,%d,%s,%s" % [
-				sweep_path,
-				str(sweep_value) if sweep_value != null else "",
-				run_idx,
-				run_seed,
-				sim.outcome,
-				sim.end_reason,
-				battle_s,
-				nucleus_hp,
-				sim.structures_destroyed,
-				walls_destroyed,
-				walls_damaged,
-				pathogens_alive,
-				sim.first_destroyed_structure_type,
-				first_contact_str,
-			]
-			csv_rows.append(row)
+				# sweep_path,sweep_value,run,seed,outcome,end_reason,battle_s,nucleus_hp_remaining,structures_destroyed,walls_destroyed,walls_damaged,pathogens_alive,first_destroyed_type,first_contact_s,generation,score,analyzed_strains,memory_after,hijacks_completed,biofilm_max_group
+				var row: String = "%s,%s,%d,%d,%s,%s,%.2f,%d,%d,%d,%d,%d,%s,%s,%d,%d,%s,%s,%d,%d" % [
+					sweep_path,
+					str(sweep_value) if sweep_value != null else "",
+					run_idx,
+					int(res["seed"]),
+					res["outcome"],
+					res["end_reason"],
+					float(res["battle_s"]),
+					int(res["nucleus_hp"]),
+					int(res["structures_destroyed"]),
+					int(res["walls_destroyed"]),
+					int(res["walls_damaged"]),
+					int(res["pathogens_alive"]),
+					res["first_destroyed_type"],
+					res["first_contact"],
+					int(res["generation"]),
+					int(res["score"]),
+					";".join(res["analyzed"] as Array),
+					res["memory_after"],
+					int(res["hijacks_completed"]),
+					int(res["biofilm_max_group"]),
+				]
+				csv_rows.append(row)
 
 			if (run_idx + 1) % progress_interval == 0 or (run_idx + 1) == runs_count:
 				var pct: float = float(run_idx + 1) / float(runs_count) * 100.0
 				printerr("Progress: %d/%d runs (%.0f%%)" % [run_idx + 1, runs_count, pct])
 
 		# Summary block
-		var attacker_win_pct: float = float(attacker_wins) / float(runs_count) * 100.0
-		var avg_battle_s: float = total_battle_s / float(runs_count)
-		var avg_nuc_hp: float = float(total_nucleus_hp) / float(runs_count)
-		var wall_damage_pct: float = float(runs_with_wall_damage_count) / float(runs_count) * 100.0
+		var attacker_win_pct: float = float(attacker_wins) / float(battles_total) * 100.0
+		var avg_battle_s: float = total_battle_s / float(battles_total)
+		var avg_nuc_hp: float = float(total_nucleus_hp) / float(battles_total)
+		var wall_damage_pct: float = float(runs_with_wall_damage_count) / float(battles_total) * 100.0
 
 		var sweep_prefix: String = ""
 		if not sweep_path.is_empty():
@@ -265,6 +285,15 @@ func _init() -> void:
 			int(round(avg_nuc_hp)),
 			wall_damage_pct,
 		])
+		if generations > 1:
+			for gi in range(generations):
+				printerr("%sgen=%d  attacker_win=%.1f%%  avg_score=%.1f  avg_analyzed=%.1f" % [
+					sweep_prefix,
+					gi + 1,
+					float(gen_wins[gi]) / float(runs_count) * 100.0,
+					float(gen_score_total[gi]) / float(runs_count),
+					float(gen_analyzed_total[gi]) / float(runs_count),
+				])
 
 	# Write CSV output
 	var out_path: String = str(options.get("out", "")).strip_edges()
@@ -308,6 +337,8 @@ func _resolve_setup(inputs: Dictionary, config: GameConfig, seed: int) -> Battle
 				return Scenarios.mixed([], seed)
 			"stress":
 				return Scenarios.stress([], seed)
+			"repeat_swarm":
+				return Scenarios.repeat_swarm(Scenarios.ring_cells(config.grid_width, config.grid_height), seed)
 			_:
 				printerr("Error: Unknown scenario '%s'" % sname)
 				return null

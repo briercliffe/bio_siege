@@ -263,12 +263,19 @@ func _on_hud_launch_requested() -> void:
 		"army_counts": army_counts
 	}
 
+	var army_atp_by_type: Dictionary = {}
+	for t_id: Variant in army_counts.keys():
+		var unit_atp: int = int(session.army.unit_cost(str(t_id)).get("atp", 0))
+		army_atp_by_type[str(t_id)] = unit_atp * int(army_counts[t_id])
+
 	var launch_event: Dictionary = {
 		"seed": session.seed,
 		"army_counts": army_counts,
 		"base_atp": session.last_launch.base_atp,
 		"army_atp": session.last_launch.army_atp,
-		"unspent_atp": session.last_launch.unspent_atp
+		"unspent_atp": session.last_launch.unspent_atp,
+		"flags": session.config.feature_flags.duplicate(),
+		"army_atp_by_type": army_atp_by_type,
 	}
 	if session.config != null and session.config.flag("strains"):
 		var strains_used: Dictionary = {}

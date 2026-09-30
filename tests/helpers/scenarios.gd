@@ -137,6 +137,27 @@ static func mixed(ring: Array[Vector2i] = [], seed: int = 1) -> BattleSetup:
 	return BattleSetup.create(structures, units, seed)
 
 
+## Reference scenario for "repeating one strain gets punished": Nucleus, two B-Cells and a
+## Macrophage inside the base, 20 Rhinoviruses spread evenly around the ring.
+## The B-Cells flank the Nucleus and the Macrophage sits in a far corner, so the B-Cells
+## live long enough to finish analysis. All cells are inside the base at 20x20 and 40x40.
+static func repeat_swarm(ring: Array[Vector2i] = [], seed: int = 1) -> BattleSetup:
+	var structures: Array = [
+		{"type": "nucleus", "origin": Vector2i(9, 9)},
+		{"type": "b_cell", "origin": Vector2i(8, 9)},
+		{"type": "b_cell", "origin": Vector2i(11, 10)},
+		{"type": "macrophage", "origin": Vector2i(3, 3)},
+	]
+	var r: Array[Vector2i] = ring
+	if r.is_empty():
+		r = ring_cells()
+	var units: Array = []
+	var step: int = maxi(1, r.size() / 20)
+	for i in range(20):
+		units.append({"type": "rhinovirus", "cell": r[(i * step) % r.size()]})
+	return BattleSetup.create(structures, units, seed)
+
+
 static func stress(ring: Array[Vector2i] = [], seed: int = 1) -> BattleSetup:
 	var structures: Array = [
 		{"type": "nucleus", "origin": Vector2i(9, 9)},

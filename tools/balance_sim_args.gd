@@ -5,8 +5,20 @@ extends RefCounted
 ## Pure RefCounted with strict GDScript 4 static typing.
 
 const VALID_SCENARIOS: Array[String] = [
-	"open_field", "walled_nucleus", "short_wall", "long_wall", "phage_priority", "mixed", "stress"
+	"open_field", "walled_nucleus", "short_wall", "long_wall", "phage_priority", "mixed", "stress", "repeat_swarm"
 ]
+
+const FLAG_NAME_PATTERN: String = "^[a-z_]+$"
+
+
+static func _fail(message: String) -> Dictionary:
+	return {
+		"ok": false,
+		"error": message,
+		"exit_code": 1,
+		"inputs": {},
+		"options": {},
+	}
 
 
 static func parse_args(args: Array[String]) -> Dictionary:
@@ -20,6 +32,12 @@ static func parse_args(args: Array[String]) -> Dictionary:
 	var set_overrides: Array[String] = []
 	var sweep: String = ""
 	var out_file: String = ""
+	var flags: Array[String] = []
+	var strains: Dictionary = {}
+	var memory: Dictionary = {}
+	var generations: int = 1
+	var flag_re := RegEx.new()
+	flag_re.compile(FLAG_NAME_PATTERN)
 
 	for arg: String in args:
 		if arg == "--help" or arg == "-h":
@@ -118,6 +136,30 @@ static func parse_args(args: Array[String]) -> Dictionary:
 			sweep = arg.substr("--sweep=".length()).strip_edges()
 		elif arg.begins_with("--out="):
 			out_file = arg.substr("--out=".length()).strip_edges()
+		elif arg.begins_with("--flag="):
+			var flag_name: String = arg.substr("--flag=".length()).strip_edges()
+			if flag_re.search(flag_name) == null:
+				return _fail("Invalid --flag value '%s': expected lowercase letters and underscores" % flag_name)
+			if not flags.has(flag_name):
+				flags.append(flag_name)
+		elif arg.begins_with("--strain="):
+			var strain_spec: String = arg.substr("--strain=".length()).strip_edges()
+			var strain_parts: PackedStringArray = strain_spec.split(":")
+			if strain_parts.size() != 2 or strain_parts[0].strip_edges().is_empty() or strain_parts[1].strip_edges().is_empty():
+				return _fail("Invalid --strain value '%s': expected <type>:<variant>" % strain_spec)
+			strains[strain_parts[0].strip_edges()] = strain_parts[1].strip_edges()
+		elif arg.begins_with("--memory="):
+			var mem_res: Dictionary = parse_memory(arg.substr("--memory=".length()))
+			if not mem_res.get("ok", false):
+				return _fail("Invalid --memory value: %s" % mem_res.get("error", ""))
+			var mem_levels: Dictionary = mem_res.get("levels", {})
+			for mk: Variant in mem_levels.keys():
+				memory[mk] = mem_levels[mk]
+		elif arg.begins_with("--generations="):
+			var gen_str: String = arg.substr("--generations=".length()).strip_edges()
+			if not gen_str.is_valid_int() or gen_str.to_int() < 1 or gen_str.to_int() > 50:
+				return _fail("Invalid --generations value '%s': must be an integer from 1 to 50" % gen_str)
+			generations = gen_str.to_int()
 		else:
 			return {
 				"ok": false,
@@ -181,6 +223,10 @@ static func parse_args(args: Array[String]) -> Dictionary:
 		"set": set_overrides,
 		"sweep": sweep,
 		"out": out_file,
+		"flags": flags,
+		"strains": strains,
+		"memory": memory,
+		"generations": generations,
 	}
 
 	return {
@@ -348,6 +394,65 @@ static func apply_jitter(units: Array, jitter: int, seed: int, ring_cells: Array
 			unit["cell"] = ring_cells[new_idx]
 
 	return new_units
+
+
+## Parses "rhinovirus/wild:3,staphylococcus/wild:1" into {"ok", "error", "levels": {key: int}}.
+static func parse_memory(spec: String) -> Dictionary:
+	var levels: Dictionary = {}
+	var clean: String = spec.strip_edges()
+	if clean.is_empty():
+		return {"ok": false, "error": "empty memory specification", "levels": {}}
+	for entry: String in clean.split(","):
+		var parts: PackedStringArray = entry.strip_edges().split(":")
+		if parts.size() != 2:
+			return {"ok": false, "error": "entry '%s' must be <type>/<strain>:<level>" % entry, "levels": {}}
+		var key: String = parts[0].strip_edges()
+		var key_parts: PackedStringArray = key.split("/")
+		if key_parts.size() != 2 or key_parts[0].is_empty() or key_parts[1].is_empty():
+			return {"ok": false, "error": "key '%s' must contain exactly one '/'" % key, "levels": {}}
+		var level_str: String = parts[1].strip_edges()
+		if not level_str.is_valid_int() or level_str.to_int() < 1:
+			return {"ok": false, "error": "level '%s' must be an integer >= 1" % level_str, "levels": {}}
+		levels[key] = level_str.to_int()
+	return {"ok": true, "error": "", "levels": levels}
+
+
+## Deep copy of units with "strain" set on every unit whose type is in strains.
+static func apply_strains(units: Array, strains: Dictionary) -> Array:
+	var out: Array = units.duplicate(true)
+	for item: Variant in out:
+		if not (item is Dictionary):
+			continue
+		var unit: Dictionary = item as Dictionary
+		var type_id: String = str(unit.get("type", ""))
+		if strains.has(type_id):
+			unit["strain"] = str(strains[type_id])
+	return out
+
+
+## Starting memory from {key: level}: fresh entries, clamped to the config limits.
+static func memory_from_levels(levels: Dictionary, cfg: GameConfig) -> ImmuneMemory:
+	var m := ImmuneMemory.new()
+	for k: Variant in levels.keys():
+		m.entries[str(k)] = {"level": int(levels[k]), "absent": 0, "since": 0}
+	m.raids = 0
+	m.clamp_to(cfg)
+	return m
+
+
+## Sorted unique "type/strain" keys of the units (strain defaults to "wild").
+static func unit_strain_keys(units: Array) -> Array[String]:
+	var seen: Dictionary = {}
+	for item: Variant in units:
+		if not (item is Dictionary):
+			continue
+		var unit: Dictionary = item as Dictionary
+		seen["%s/%s" % [str(unit.get("type", "")), str(unit.get("strain", "wild"))]] = true
+	var out: Array[String] = []
+	for k: Variant in seen.keys():
+		out.append(str(k))
+	out.sort()
+	return out
 
 
 static func _parse_value_string(value_str: String) -> Variant:
