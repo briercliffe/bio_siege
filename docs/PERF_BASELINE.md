@@ -69,6 +69,17 @@ The first version of the painter, with a four-layer sphere for every spike and k
 
 That took desktop from 125 ms to 29 ms and draw calls from 8316 to 2116. About 9 painter commands per unit remain at 23 px (1 shadow, 5 spikes, 2 body, 1 gloss). The bench draw-call total is higher than 9 per unit because it also counts the rest of the view: the placeholder run, which has no painter detail, already reports 1116.
 
+## Mixed army: Bacteriophage and Staphylococcus painters (issue #68)
+
+`--bench-mix=rhinovirus,bacteriophage,staphylococcus` cycles the 200 units through the three pathogen types (67, 67 and 66). There was no GPU machine for this run, so both rows come from the same Linux VM with Mesa llvmpipe (software GL, 4 cores) under Xvfb, 15 s each after the warm-up, vsync left on. They are only comparable to each other, not to the tables above.
+
+| Army | Avg ms | p95 ms | Min fps | Draw calls |
+|---|---|---|---|---|
+| 200 Rhinoviruses | 45.3 | 52.3 | 17.1 | 2123 |
+| Mixed, 200 units | 63.8 | 68.5 | 13.9 | 3066 |
+
+The mixed army costs about 40% more per frame and about 950 more draw commands (about 14 painter commands per unit at 23 px, against 9 for the Rhinovirus). The Bacteriophage (legs, plate, sheath, collar and head) and the Staphylococcus (eight cocci, base and trail) have more parts than the Rhinovirus, even after the flat path below 28 px. That makes the bake step in the next section more pressing, not less.
+
 ## Budget for #72
 
 The target is 60 fps on desktop and at most 20 ms average frame time with 200 units on the web, with the p95 under 25 ms.

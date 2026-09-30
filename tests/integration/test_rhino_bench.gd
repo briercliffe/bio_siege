@@ -19,6 +19,19 @@ func test_build_setup_places_200_rhinos_evenly_and_deterministically() -> void:
 	assert_eq(seen.size(), 200, "200 distinct ring cells")
 
 
+func test_build_setup_mix_cycles_the_types() -> void:
+	var grid: GridModel = GridModel.new(GameConfig.load_from_dir("res://data").config)
+	var types: Array[String] = ["rhinovirus", "bacteriophage", "staphylococcus"]
+	var setup: BattleSetup = RhinoBench.build_setup(grid.ring_cells(), RhinoBench.UNIT_COUNT, RhinoBench.BENCH_SEED, types)
+	var counts: Dictionary = {}
+	for u: Dictionary in setup.units:
+		counts[u["type"]] = int(counts.get(u["type"], 0)) + 1
+	assert_eq(setup.units.size(), 200)
+	assert_eq(counts.size(), 3)
+	for id: String in types:
+		assert_between(int(counts[id]), 66, 67)
+
+
 func test_summarize() -> void:
 	var s: Dictionary = RhinoBench.summarize([10.0, 20.0, 30.0, 40.0])
 	assert_almost_eq(float(s["avg_ms"]), 25.0, 0.001)

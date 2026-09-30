@@ -80,6 +80,7 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 	driver = AnimDriver.new()
 	view_time = 0.0
 	ModelRegistry.configure(config, projection.scale if projection != null else IsoProjection.DEFAULT_SCALE)
+	ModelRegistry.reset_painters()
 	_dying_p.clear()
 	_dying_s.clear()
 	_scorch.clear()
@@ -250,6 +251,8 @@ func _refresh_wall_cache() -> void:
 	if key != _faces_key:
 		_faces_key = key
 		_wall_faces.clear()
+		# Painter state such as the staph trails is stored in screen space.
+		ModelRegistry.reset_painters()
 
 
 func _faces_for(s: StructureState) -> Array[PackedVector2Array]:
@@ -330,4 +333,8 @@ func _draw_pathogen(p: PathogenState) -> void:
 			target_ground = structure_anchor(ts)
 	var moved: float = driver.moved_since_last(p.id, ground) if p.alive else 0.0
 	var pose: ModelPose = driver.pose_for_pathogen(p, sim.tick, ground, target_ground, moved, view_time)
-	ModelRegistry.painter_for(p.type_id).paint(self, projection.ground_to_screen(ground), pose, projection.tile_px)
+	var painter: ModelPainter = ModelRegistry.painter_for(p.type_id)
+	var foot: Vector2 = projection.ground_to_screen(ground)
+	# A painter's ground decals (trail, shockwave) go down just before the unit, so they sort with it.
+	painter.paint_ground(self, foot, pose, projection.tile_px)
+	painter.paint(self, foot, pose, projection.tile_px)

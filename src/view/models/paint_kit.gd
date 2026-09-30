@@ -21,6 +21,8 @@ const HEX_01: PackedVector2Array = [
 static var _unit_circle: PackedVector2Array = _build_unit_circle()
 static var _scratch: PackedVector2Array = PackedVector2Array()
 static var _quad: PackedVector2Array = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
+static var _hex_pts: PackedVector2Array = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
+static var _hex_cols: PackedColorArray = PackedColorArray([Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE])
 static var _quad_cols: PackedColorArray = PackedColorArray([Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE])
 
 
@@ -79,6 +81,24 @@ static func bar(ci: CanvasItem, a: Vector2, b: Vector2, thickness_px: float, col
 
 static func hex(ci: CanvasItem, rect: Rect2, color: Color) -> void:
 	clip_poly(ci, rect, HEX_01, color)
+
+
+## Hexagon with a vertical gradient: `top` at the top vertex, `mid` at `mid_at` (0..1 of the height) and
+## `bottom` at the bottom vertex, interpolated per vertex. The shading a canvas linear-gradient clipped to HEX gives.
+static func hex_gradient(ci: CanvasItem, rect: Rect2, top: Color, mid: Color, bottom: Color, mid_at: float = 0.55) -> void:
+	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
+		return
+	var upper: Color = top.lerp(mid, 0.25 / mid_at)
+	var lower: Color = mid.lerp(bottom, (0.75 - mid_at) / (1.0 - mid_at))
+	for i: int in range(6):
+		_hex_pts[i] = rect.position + HEX_01[i] * rect.size
+	_hex_cols[0] = top
+	_hex_cols[1] = upper
+	_hex_cols[2] = lower
+	_hex_cols[3] = bottom
+	_hex_cols[4] = lower
+	_hex_cols[5] = upper
+	ci.draw_polygon(_hex_pts, _hex_cols)
 
 
 ## Maps 0..1 points into `rect`, the way the canvas clip-path does.

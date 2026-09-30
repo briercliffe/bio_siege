@@ -32,11 +32,23 @@ static func painter_for(type_id: String) -> ModelPainter:
 	return _painters[type_id]
 
 
+## Calls reset() on every cached painter, dropping per-unit state carried over from an earlier battle or
+## projection.
+static func reset_painters() -> void:
+	for p_var: Variant in _painters.values():
+		var p: ModelPainter = p_var
+		p.reset()
+
+
 ## Real painters by type id; everything else gets a placeholder.
 static func _create(type_id: String) -> ModelPainter:
 	match type_id:
 		"rhinovirus":
 			return RhinoPainter.new()
+		"bacteriophage":
+			return PhagePainter.new()
+		"staphylococcus":
+			return StaphPainter.new()
 	var p := PlaceholderPainter.new()
 	p.size_t = Vector2(DEFAULT_PATHOGEN_WIDTH_T, float(HEIGHT_T.get(type_id, DEFAULT_HEIGHT_T)))
 	return p

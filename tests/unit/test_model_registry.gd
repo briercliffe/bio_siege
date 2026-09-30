@@ -21,6 +21,10 @@ func test_every_config_id_has_a_cached_painter() -> void:
 		assert_same(ModelRegistry.painter_for(id), a, "same instance for %s" % id)
 		if id == "rhinovirus":
 			assert_true(a is RhinoPainter, "real painter registered: %s" % id)
+		elif id == "bacteriophage":
+			assert_true(a is PhagePainter, "real painter registered: %s" % id)
+		elif id == "staphylococcus":
+			assert_true(a is StaphPainter, "real painter registered: %s" % id)
 		else:
 			assert_true(a is PlaceholderPainter, "placeholder until a real painter is registered: %s" % id)
 
@@ -36,7 +40,8 @@ func test_heights_match_the_spec() -> void:
 
 func test_placeholder_painter_uses_config_look() -> void:
 	ModelRegistry.configure(config)
-	var def: PathogenDef = config.pathogens["bacteriophage"]
-	var painter: PlaceholderPainter = ModelRegistry.painter_for("bacteriophage") as PlaceholderPainter
+	# Every pathogen has a real painter now; structures still use placeholders.
+	var def: StructureDef = config.structures["macrophage"]
+	var painter: PlaceholderPainter = ModelRegistry.painter_for("macrophage") as PlaceholderPainter
 	assert_eq(painter.shape, def.placeholder_shape)
 	assert_eq(painter.color, def.placeholder_color)
