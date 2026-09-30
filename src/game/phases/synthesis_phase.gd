@@ -34,6 +34,7 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 
 	if grid_view != null and session != null:
 		grid_view.setup(session.grid, session.config)
+		grid_view.set_night(false)
 
 	if build_controller != null and session != null and grid_view != null:
 		build_controller.setup(session, grid_view)

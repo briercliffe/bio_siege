@@ -1,15 +1,102 @@
 class_name GridView
 extends Node2D
 
+## The isometric island for Synthesis, Incubation and Infection (docs/MVP_UI_SPEC.md section 3).
+## Reads the flat integer grid and draws it through an IsoProjection. Never modifies core state.
+
 signal cell_pressed(cell: Vector2i)
 signal cell_dragged(cell: Vector2i)
 signal cell_released(cell: Vector2i)
 
-enum Device { NONE, TOUCH, MOUSE }
+const CORNER_RADIUS_TILES: float = 3.2
+const HEADROOM_T: float = 4.5
+const SLAB_T: float = 1.6
+const SLAB_LAYERS: int = 6
+const ARC_STEPS: int = 8
+const CIRCLE_POINTS: int = 24
+const PULSE_PERIOD_S: float = 1.2
+const PULSE_REDRAW_INTERVAL_S: float = 1.0 / 30.0
+const DASH_PX: float = 8.0
+const GAP_PX: float = 6.0
+const DOT_RADIUS_TILES: float = 5.5
+const BLOB_RINGS: int = 6
+const BLOB_RING_ALPHA: float = 0.22
+const DECOR_SEED: int = 11
+const NO_CELL: Vector2i = Vector2i(-99999, -99999)
+
+const MODEL_HEIGHT_T: Dictionary = {"nucleus": 4.1, "macrophage": 3.0, "b_cell": 4.3}
+const DEFAULT_MODEL_HEIGHT_T: float = 3.0
+
+# Day and night theme colours, from the canvas mockup (Field.dc.html).
+const SHADOW_DAY: Color = Color("#7f9fbd")
+const SHADOW_NIGHT: Color = Color("#2c0e15")
+const SLAB_HI_DAY: Color = Color("#86a8c6")
+const SLAB_LO_DAY: Color = Color("#93b3cf")
+const SLAB_HI_NIGHT: Color = Color("#3a131c")
+const SLAB_LO_NIGHT: Color = Color("#4a1a24")
+const TOP_DAY: Color = Color("#d8e9f7")
+const TOP_NIGHT: Color = Color("#34111a")
+const BLOB_HI_DAY: Color = Color("#f0f8fd")
+const BLOB_HI_NIGHT: Color = Color("#4d1c24")
+const RIM_DAY: Color = Color("#a9c8e4")
+const RIM_NIGHT: Color = Color("#6b2632")
+const SOFT_A_DAY: Color = Color(140.0 / 255.0, 185.0 / 255.0, 225.0 / 255.0, 0.28)
+const SOFT_A_NIGHT: Color = Color(0.0, 0.0, 0.0, 0.22)
+const SOFT_B_DAY: Color = Color(1.0, 1.0, 1.0, 0.55)
+const SOFT_B_NIGHT: Color = Color(130.0 / 255.0, 45.0 / 255.0, 60.0 / 255.0, 0.30)
+const CELL_FILL_DAY: Color = Color(1.0, 1.0, 1.0, 0.38)
+const CELL_FILL_NIGHT: Color = Color(0.0, 0.0, 0.0, 0.18)
+const CELL_RIM_DAY: Color = Color(130.0 / 255.0, 175.0 / 255.0, 215.0 / 255.0, 0.55)
+const CELL_RIM_NIGHT: Color = Color(1.0, 1.0, 1.0, 0.07)
+const BAND_DAY: Color = Color(30.0 / 255.0, 90.0 / 255.0, 168.0 / 255.0, 0.09)
+const BAND_LINE_DAY: Color = Color(30.0 / 255.0, 90.0 / 255.0, 168.0 / 255.0, 0.45)
+const GREEN: Color = Color("#2ecc71")
+const RED: Color = Color("#e74c3c")
+const BAND_NIGHT_IDLE: Color = Color(46.0 / 255.0, 204.0 / 255.0, 113.0 / 255.0, 0.09)
+const BAND_LINE_NIGHT_IDLE: Color = Color(46.0 / 255.0, 204.0 / 255.0, 113.0 / 255.0, 0.25)
+const BAND_ACTIVE_ALPHA_LO: float = 0.24
+const BAND_ACTIVE_ALPHA_HI: float = 0.36
+const PLATE_DAY: Color = Color(30.0 / 255.0, 70.0 / 255.0, 120.0 / 255.0, 0.13)
+const PLATE_NIGHT: Color = Color(0.0, 0.0, 0.0, 0.3)
+const PLATE_RIM_DAY: Color = Color(1.0, 1.0, 1.0, 0.6)
+const PLATE_RIM_NIGHT: Color = Color(1.0, 1.0, 1.0, 0.07)
+const NUCLEUS_GLOW: Color = Color(195.0 / 255.0, 155.0 / 255.0, 211.0 / 255.0, 0.6)
+const NUCLEUS_PLATE: Color = Color(74.0 / 255.0, 28.0 / 255.0, 102.0 / 255.0, 0.38)
+const NUCLEUS_PLATE_RIM: Color = Color(236.0 / 255.0, 208.0 / 255.0, 248.0 / 255.0, 0.35)
+const GHOST_OK_FILL: Color = Color(46.0 / 255.0, 204.0 / 255.0, 113.0 / 255.0, 0.3)
+const GHOST_BAD_FILL: Color = Color(231.0 / 255.0, 76.0 / 255.0, 60.0 / 255.0, 0.3)
+const GHOST_DOT: Color = Color(30.0 / 255.0, 90.0 / 255.0, 168.0 / 255.0, 0.65)
+const RANGE_FILL: Color = Color(30.0 / 255.0, 90.0 / 255.0, 168.0 / 255.0, 0.07)
+const RANGE_LINE: Color = Color(30.0 / 255.0, 90.0 / 255.0, 168.0 / 255.0, 0.55)
+
+## A placed structure with its projected geometry cached.
+class StructureItem extends RefCounted:
+	var id: int = 0
+	var type_id: String = ""
+	var kind: int = 0 # 0 tower, 1 wall, 2 core
+	var depth: float = 0.0
+	var foot: Vector2 = Vector2.ZERO
+	var width: float = 0.0
+	var height: float = 0.0
+	var shape: String = "square"
+	var color: Color = Color.WHITE
+	var plate: PackedVector2Array = PackedVector2Array()
+	var plate_rim: PackedVector2Array = PackedVector2Array()
+	var glow_rings: Array[PackedVector2Array] = []
+	var faces: Array[PackedVector2Array] = []
+
+## A deployed-unit marker with its screen position cached.
+class UnitMarker extends RefCounted:
+	var center: Vector2 = Vector2.ZERO
+	var shape: String = "circle"
+	var color: Color = Color.WHITE
+	var count: int = 1
 
 var grid: GridModel = null
 var config: GameConfig = null
 var tile_px: int = 32
+var projection: IsoProjection = IsoProjection.new()
+var night: bool = false
 var deploy_mode: bool = false: set = set_deploy_mode
 var draw_structures: bool = true: set = set_draw_structures
 var army: Army = null: set = set_army
@@ -20,8 +107,45 @@ var _ghost_type_id: String = ""
 var _ghost_origin: Vector2i = Vector2i.ZERO
 var _ghost_valid: bool = false
 
-var _active_device: Device = Device.NONE
-var _last_cell: Vector2i = Vector2i(-99999, -99999)
+var _last_cell: Vector2i = NO_CELL
+var _touching: bool = false
+
+var _pulse_time: float = 0.0
+var _redraw_accum: float = 0.0
+
+# Cached geometry. Layout caches rebuild when T or origin change; item caches when structures change.
+var _geometry_dirty: bool = true
+var _items_dirty: bool = true
+var _markers_dirty: bool = true
+var _ghost_dirty: bool = true
+var _fitted: bool = false
+
+var _island_ground: PackedVector2Array = PackedVector2Array()
+var _outline: PackedVector2Array = PackedVector2Array()
+var _outline_closed: PackedVector2Array = PackedVector2Array()
+var _decor_polys: Array[PackedVector2Array] = []
+var _decor_kinds: PackedInt32Array = PackedInt32Array()  # 0 soft A, 1 soft B, 2 cell ring, 3 highlight
+var _decor_alpha: PackedFloat32Array = PackedFloat32Array()
+var _decor_rims: Array[PackedVector2Array] = []
+var _decor_ground: Array[PackedVector2Array] = []
+var _decor_ground_kinds: PackedInt32Array = PackedInt32Array()
+var _decor_ground_alpha: PackedFloat32Array = PackedFloat32Array()
+var _decor_ground_rim: PackedByteArray = PackedByteArray()
+var _decor_dims: Vector2i = Vector2i.ZERO
+var _band_quads: Array[PackedVector2Array] = []
+var _band_line: PackedVector2Array = PackedVector2Array()
+var _band_line_dashes: PackedVector2Array = PackedVector2Array()
+
+var _items: Array[StructureItem] = []
+var _markers: Array[UnitMarker] = []
+
+var _g_fill: PackedVector2Array = PackedVector2Array()
+var _g_border: PackedVector2Array = PackedVector2Array()
+var _g_dots: PackedVector2Array = PackedVector2Array()
+var _g_dot_alpha: PackedFloat32Array = PackedFloat32Array()
+var _g_range_fill: Array[PackedVector2Array] = []
+var _g_range_dashes: PackedVector2Array = PackedVector2Array()
+var _g_item: StructureItem = null
 
 func set_draw_structures(val: bool) -> void:
 	draw_structures = val
@@ -30,6 +154,8 @@ func set_draw_structures(val: bool) -> void:
 func set_deploy_mode(val: bool) -> void:
 	if deploy_mode != val:
 		deploy_mode = val
+		_markers_dirty = true
+		_redraw_accum = 0.0
 		queue_redraw()
 
 func set_predicted_structure_id(val: int) -> void:
@@ -45,17 +171,29 @@ func set_army(val: Army) -> void:
 	army = val
 	if army != null:
 		army.changed.connect(_on_army_changed)
+	_markers_dirty = true
 	queue_redraw()
 
+func set_night(val: bool) -> void:
+	if night != val:
+		night = val
+		queue_redraw()
+
 func _on_army_changed() -> void:
+	_markers_dirty = true
 	queue_redraw()
 
 func _exit_tree() -> void:
 	if army != null and army.changed.is_connected(_on_army_changed):
 		army.changed.disconnect(_on_army_changed)
 
-func _process(_delta: float) -> void:
-	if deploy_mode:
+func _process(delta: float) -> void:
+	if not deploy_mode:
+		return
+	_pulse_time = fmod(_pulse_time + delta, PULSE_PERIOD_S)
+	_redraw_accum += delta
+	if _redraw_accum >= PULSE_REDRAW_INTERVAL_S:
+		_redraw_accum = 0.0
 		queue_redraw()
 
 func setup(p_grid: GridModel, p_config: GameConfig, p_army: Army = null) -> void:
@@ -76,92 +214,106 @@ func setup(p_grid: GridModel, p_config: GameConfig, p_army: Army = null) -> void
 		grid.structure_placed.connect(_on_structure_changed)
 		grid.structure_removed.connect(_on_structure_changed)
 
+	if not _fitted and grid != null:
+		_apply_default_layout()
+	_geometry_dirty = true
+	_items_dirty = true
+	_markers_dirty = true
+	_ghost_dirty = true
 	queue_redraw()
 
 func _on_structure_changed(_s: GridModel.PlacedStructure) -> void:
+	_items_dirty = true
+	_ghost_dirty = true
 	queue_redraw()
+
+# --- layout ----------------------------------------------------------------
+
+func _apply_default_layout() -> void:
+	var t: float = float(tile_px)
+	projection.tile_px = t
+	projection.origin = Vector2(float(grid.height) * t * projection.scale, HEADROOM_T * t)
 
 func fit_to_rect(r: Rect2) -> void:
 	if grid == null or grid.width <= 0 or grid.height <= 0:
 		return
-	var gw_px: float = float(grid.width * tile_px)
-	var gh_px: float = float(grid.height * tile_px)
-	if gw_px <= 0.0 or gh_px <= 0.0:
-		return
-	var s: float = minf(r.size.x / gw_px, r.size.y / gh_px)
-	scale = Vector2(s, s)
-	var scaled_size: Vector2 = Vector2(gw_px, gh_px) * s
-	position = r.position + (r.size - scaled_size) * 0.5
+	var s: float = projection.scale
+	var span_tiles: float = float(grid.width + grid.height) * s
+	var t_fit: float = minf(r.size.x / span_tiles, r.size.y / (span_tiles * 0.5 + HEADROOM_T + SLAB_T))
+	var t_max: float = float(tile_px) * 2.0
+	var t: float = clampf(t_fit, 1.0, t_max)
+	var diamond_h: float = span_tiles * 0.5 * t
+	var total_h: float = (HEADROOM_T + SLAB_T) * t + diamond_h
+	var left_extent: float = float(grid.height) * t * s
+	var right_extent: float = float(grid.width) * t * s
+	var origin_x: float = r.position.x + (r.size.x - (left_extent + right_extent)) * 0.5 + left_extent
+	var origin_y: float = r.position.y + (r.size.y - total_h) * 0.5 + HEADROOM_T * t
+	projection.tile_px = t
+	projection.origin = Vector2(origin_x, origin_y)
+	_fitted = true
+	_geometry_dirty = true
+	_items_dirty = true
+	_markers_dirty = true
+	_ghost_dirty = true
+	queue_redraw()
 
 func set_ghost(type_id: String, origin: Vector2i, valid: bool) -> void:
 	_has_ghost = true
 	_ghost_type_id = type_id
 	_ghost_origin = origin
 	_ghost_valid = valid
+	_ghost_dirty = true
 	queue_redraw()
 
 func clear_ghost() -> void:
 	if _has_ghost:
 		_has_ghost = false
 		_ghost_type_id = ""
+		_g_item = null
 		queue_redraw()
 
 func cell_to_local_center(cell: Vector2i) -> Vector2:
-	return Vector2(float(cell.x) + 0.5, float(cell.y) + 0.5) * float(tile_px)
+	return projection.cell_center(cell)
 
 func local_to_cell(local_pos: Vector2) -> Vector2i:
-	return Vector2i(int(floor(local_pos.x / float(tile_px))), int(floor(local_pos.y / float(tile_px))))
+	return projection.screen_to_cell(local_pos)
+
+# --- input -----------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
 	if grid == null:
 		return
 
 	if event is InputEventScreenTouch:
-		if event.index != 0:
+		var touch: InputEventScreenTouch = event
+		if touch.index != 0:
 			return
-		if event.pressed:
-			if _active_device != Device.NONE:
+		if touch.pressed:
+			if _touching:
 				return
-			_active_device = Device.TOUCH
-			_handle_press(event.position)
+			_touching = true
+			_handle_press(touch.position)
 		else:
-			if _active_device != Device.TOUCH:
+			if not _touching:
 				return
-			_active_device = Device.NONE
-			_handle_release(event.position)
+			_touching = false
+			_handle_release(touch.position)
 	elif event is InputEventScreenDrag:
-		if event.index != 0 or _active_device != Device.TOUCH:
+		var drag: InputEventScreenDrag = event
+		if drag.index != 0 or not _touching:
 			return
-		_handle_drag(event.position)
-	elif event is InputEventMouseButton:
-		if event.button_index != MOUSE_BUTTON_LEFT:
-			return
-		if event.pressed:
-			if _active_device != Device.NONE:
-				return
-			_active_device = Device.MOUSE
-			_handle_press(event.position)
-		else:
-			if _active_device != Device.MOUSE:
-				return
-			_active_device = Device.NONE
-			_handle_release(event.position)
-	elif event is InputEventMouseMotion:
-		if _active_device != Device.MOUSE:
-			return
-		if event.button_mask & MOUSE_BUTTON_MASK_LEFT:
-			_handle_drag(event.position)
+		_handle_drag(drag.position)
 
 func _handle_press(screen_pos: Vector2) -> void:
-	var cell: Vector2i = local_to_cell(to_local(screen_pos))
+	var cell: Vector2i = projection.screen_to_cell(to_local(screen_pos))
 	if grid == null or not grid.in_bounds(cell):
-		_last_cell = Vector2i(-99999, -99999)
+		_last_cell = NO_CELL
 		return
 	_last_cell = cell
 	cell_pressed.emit(cell)
 
 func _handle_drag(screen_pos: Vector2) -> void:
-	var cell: Vector2i = local_to_cell(to_local(screen_pos))
+	var cell: Vector2i = projection.screen_to_cell(to_local(screen_pos))
 	if grid == null or not grid.in_bounds(cell):
 		return
 	if cell != _last_cell:
@@ -169,150 +321,437 @@ func _handle_drag(screen_pos: Vector2) -> void:
 		cell_dragged.emit(cell)
 
 func _handle_release(screen_pos: Vector2) -> void:
-	var cell: Vector2i = local_to_cell(to_local(screen_pos))
-	_last_cell = Vector2i(-99999, -99999)
+	var cell: Vector2i = projection.screen_to_cell(to_local(screen_pos))
+	_last_cell = NO_CELL
 	if grid == null or not grid.in_bounds(cell):
 		return
 	cell_released.emit(cell)
 
+# --- geometry caches -------------------------------------------------------
+
+func _project(poly: PackedVector2Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	out.resize(poly.size())
+	for i: int in range(poly.size()):
+		out[i] = projection.ground_to_screen(poly[i])
+	return out
+
+func _closed(poly: PackedVector2Array) -> PackedVector2Array:
+	var out: PackedVector2Array = poly.duplicate()
+	if poly.size() > 0:
+		out.append(poly[0])
+	return out
+
+func _circle_ground(center: Vector2, radius: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i: int in range(CIRCLE_POINTS):
+		var a: float = TAU * float(i) / float(CIRCLE_POINTS)
+		pts.append(center + Vector2(cos(a), sin(a)) * radius)
+	return pts
+
+func _rect_ground(center: Vector2, size: float, radius: float) -> PackedVector2Array:
+	var half: float = size * 0.5
+	return KitDraw.rounded_rect_points(Rect2(center - Vector2(half, half), Vector2(size, size)), radius, ARC_STEPS)
+
+## Dash segments (point pairs) along a closed screen polyline. When `clip_to_island` is set, dashes
+## whose midpoint falls off the island are dropped.
+func _dash_segments(line: PackedVector2Array, clip_to_island: bool) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var on: bool = true
+	var remaining: float = DASH_PX
+	for i: int in range(line.size() - 1):
+		var a: Vector2 = line[i]
+		var b: Vector2 = line[i + 1]
+		var seg_len: float = a.distance_to(b)
+		if seg_len <= 0.0:
+			continue
+		var dir: Vector2 = (b - a) / seg_len
+		var pos: float = 0.0
+		while pos < seg_len:
+			var step: float = minf(remaining, seg_len - pos)
+			if on:
+				var p0: Vector2 = a + dir * pos
+				var p1: Vector2 = a + dir * (pos + step)
+				if not clip_to_island or _on_island((p0 + p1) * 0.5):
+					out.append(p0)
+					out.append(p1)
+			pos += step
+			remaining -= step
+			if remaining <= 0.0:
+				on = not on
+				remaining = DASH_PX if on else GAP_PX
+	return out
+
+func _on_island(screen: Vector2) -> bool:
+	var g: Vector2 = projection.screen_to_ground(screen)
+	return g.x >= 0.0 and g.y >= 0.0 and g.x <= float(grid.width) and g.y <= float(grid.height)
+
+func _rebuild_decor_ground() -> void:
+	_decor_ground.clear()
+	_decor_ground_kinds.clear()
+	_decor_ground_alpha.clear()
+	_decor_ground_rim.clear()
+	var w: float = float(grid.width)
+	var h: float = float(grid.height)
+	_island_ground = KitDraw.rounded_rect_points(Rect2(0.0, 0.0, w, h), CORNER_RADIUS_TILES, ARC_STEPS)
+
+	# Highlight blob, about 12 tiles across near ground (12, 10) on the 40x40 island.
+	var hl_center := Vector2(w * 0.3, h * 0.25)
+	for i: int in range(BLOB_RINGS):
+		var r: float = 6.0 * (1.0 - float(i) / float(BLOB_RINGS))
+		_add_clipped(_circle_ground(hl_center, r), 3, BLOB_RING_ALPHA, false)
+
+	# Port of the canvas decor loop. Its own LCG, never the sim's Rng.
+	var seed_v: int = DECOR_SEED
+	for i: int in range(12):
+		seed_v = (seed_v * 1103515245 + 12345) % 2147483648
+		var cx: float = float(seed_v) / 2147483648.0 * w
+		seed_v = (seed_v * 1103515245 + 12345) % 2147483648
+		var cy: float = float(seed_v) / 2147483648.0 * h
+		seed_v = (seed_v * 1103515245 + 12345) % 2147483648
+		var sz: float = 5.0 + float(seed_v) / 2147483648.0 * 8.0
+		var kind: int = 1 if (i % 2) == 1 else 0
+		for ring: int in range(BLOB_RINGS):
+			var r: float = sz * 0.5 * (1.0 - float(ring) / float(BLOB_RINGS))
+			_add_clipped(_circle_ground(Vector2(cx, cy), r), kind, BLOB_RING_ALPHA, false)
+
+	var placed: int = 0
+	var tries: int = 0
+	while placed < 24 and tries < 200:
+		tries += 1
+		seed_v = (seed_v * 1103515245 + 12345) % 2147483648
+		var cx: float = float(seed_v) / 2147483648.0 * w
+		seed_v = (seed_v * 1103515245 + 12345) % 2147483648
+		var cy: float = float(seed_v) / 2147483648.0 * h
+		if cx > w * 0.225 and cx < w * 0.775 and cy > h * 0.225 and cy < h * 0.775:
+			continue
+		seed_v = (seed_v * 1103515245 + 12345) % 2147483648
+		var sz: float = 1.0 + float(seed_v) / 2147483648.0 * 1.6
+		_add_clipped(_circle_ground(Vector2(cx, cy), sz * 0.5), 2, 1.0, true)
+		placed += 1
+	_decor_dims = Vector2i(grid.width, grid.height)
+
+func _add_clipped(poly: PackedVector2Array, kind: int, alpha: float, rim: bool) -> void:
+	for piece: PackedVector2Array in Geometry2D.intersect_polygons(poly, _island_ground):
+		if piece.size() < 3 or Geometry2D.is_polygon_clockwise(piece):
+			continue
+		_decor_ground.append(piece)
+		_decor_ground_kinds.append(kind)
+		_decor_ground_alpha.append(alpha)
+		_decor_ground_rim.append(1 if rim else 0)
+
+func _ensure_island() -> void:
+	if _decor_dims != Vector2i(grid.width, grid.height) or _island_ground.is_empty():
+		_rebuild_decor_ground()
+
+func _rebuild_geometry() -> void:
+	_geometry_dirty = false
+	_ensure_island()
+	var w: float = float(grid.width)
+	var h: float = float(grid.height)
+
+	_outline = _project(_island_ground)
+	_outline_closed = _closed(_outline)
+
+	_decor_polys.clear()
+	_decor_kinds = PackedInt32Array()
+	_decor_alpha = PackedFloat32Array()
+	_decor_rims.clear()
+	for i: int in range(_decor_ground.size()):
+		var p: PackedVector2Array = _project(_decor_ground[i])
+		_decor_polys.append(p)
+		_decor_kinds.append(_decor_ground_kinds[i])
+		_decor_alpha.append(_decor_ground_alpha[i])
+		if _decor_ground_rim[i] == 1:
+			_decor_rims.append(_closed(p))
+
+	# Deploy band: concentric rounded rects share their corner centres, so quads pair up point for point.
+	var ring: float = float(grid.deploy_ring)
+	_band_quads.clear()
+	_band_line = PackedVector2Array()
+	_band_line_dashes = PackedVector2Array()
+	if ring > 0.0 and w > ring * 2.0 and h > ring * 2.0:
+		var outer: PackedVector2Array = _project(KitDraw.rounded_rect_points(Rect2(0.0, 0.0, w, h), CORNER_RADIUS_TILES, ARC_STEPS))
+		var inner_ground: PackedVector2Array = KitDraw.rounded_rect_points(
+				Rect2(ring, ring, w - ring * 2.0, h - ring * 2.0), maxf(CORNER_RADIUS_TILES - ring, 0.05), ARC_STEPS)
+		var inner: PackedVector2Array = _project(inner_ground)
+		var n: int = mini(outer.size(), inner.size())
+		for i: int in range(n):
+			var j: int = (i + 1) % n
+			_band_quads.append(PackedVector2Array([outer[i], outer[j], inner[j], inner[i]]))
+		_band_line = _closed(inner)
+		_band_line_dashes = _dash_segments(_band_line, false)
+
+func _rebuild_items() -> void:
+	_items_dirty = false
+	_items.clear()
+	if grid == null:
+		return
+	for s: GridModel.PlacedStructure in grid.structures():
+		_items.append(_make_item(s.id, s.type_id, s.origin, s.footprint))
+	_items.sort_custom(_sort_items)
+
+func _sort_items(a: StructureItem, b: StructureItem) -> bool:
+	if a.depth != b.depth:
+		return a.depth < b.depth
+	return a.id < b.id
+
+func _make_item(id: int, type_id: String, origin: Vector2i, footprint: Vector2i) -> StructureItem:
+	var t: float = projection.tile_px
+	var sdef: StructureDef = config.structures.get(type_id) if config != null else null
+	var item := StructureItem.new()
+	item.id = id
+	item.type_id = type_id
+	item.shape = sdef.placeholder_shape if sdef != null else "square"
+	item.color = sdef.placeholder_color if sdef != null else Color.WHITE
+	var center_g: Vector2 = Vector2(origin) + Vector2(footprint) * 0.5
+	item.depth = IsoProjection.depth_key(center_g)
+	item.foot = projection.ground_to_screen(center_g)
+	if sdef != null and sdef.has_tag("wall"):
+		item.kind = 1
+		item.faces = PlaceholderBillboard.wall_faces(projection, origin)
+		return item
+	item.kind = 2 if (sdef != null and sdef.has_tag("core")) else 0
+	item.width = float(footprint.x) * t * projection.scale * 1.4
+	item.height = float(MODEL_HEIGHT_T.get(type_id, DEFAULT_MODEL_HEIGHT_T)) * t
+	if item.kind == 2:
+		for i: int in range(BLOB_RINGS):
+			var r: float = 7.4 * 0.5 * (1.0 - float(i) / float(BLOB_RINGS))
+			item.glow_rings.append(_project(_circle_ground(center_g, r)))
+		item.plate = _project(_rect_ground(center_g, 5.6, 5.6 * 0.34))
+	else:
+		item.plate = _project(_rect_ground(center_g, 3.8, 3.8 * 0.36))
+	item.plate_rim = _closed(item.plate)
+	return item
+
+func _rebuild_markers() -> void:
+	_markers_dirty = false
+	_markers.clear()
+	if army == null or grid == null or not deploy_mode:
+		return
+	for cell: Vector2i in grid.ring_cells():
+		var deployed: Array[String] = army.deployed_at(cell)
+		if deployed.is_empty():
+			continue
+		var last_type: String = deployed[-1]
+		var pdef: PathogenDef = config.pathogens.get(last_type) if config != null else null
+		var m := UnitMarker.new()
+		m.center = projection.cell_center(cell)
+		m.shape = pdef.placeholder_shape if pdef != null else "circle"
+		m.color = pdef.placeholder_color if pdef != null else Color.WHITE
+		m.count = deployed.size()
+		_markers.append(m)
+
+func _rebuild_ghost() -> void:
+	_ghost_dirty = false
+	_g_item = null
+	_g_dots = PackedVector2Array()
+	_g_dot_alpha = PackedFloat32Array()
+	_g_range_fill.clear()
+	_g_range_dashes = PackedVector2Array()
+	if not _has_ghost or _ghost_type_id.is_empty() or grid == null:
+		return
+	_ensure_island()
+	var sdef: StructureDef = config.structures.get(_ghost_type_id) if config != null else null
+	var footprint: Vector2i = sdef.footprint if sdef != null else Vector2i.ONE
+	var center_g: Vector2 = Vector2(_ghost_origin) + Vector2(footprint) * 0.5
+	var radius: float = minf(0.7, minf(float(footprint.x), float(footprint.y)) * 0.5)
+	var fill_g: PackedVector2Array = KitDraw.rounded_rect_points(Rect2(Vector2(_ghost_origin), Vector2(footprint)), radius, ARC_STEPS)
+	_g_fill = _project(fill_g)
+	_g_border = _closed(_g_fill)
+	_g_item = _make_item(0, _ghost_type_id, _ghost_origin, footprint)
+
+	var reach: int = int(ceilf(DOT_RADIUS_TILES))
+	var cx: int = int(floorf(center_g.x))
+	var cy: int = int(floorf(center_g.y))
+	for y: int in range(cy - reach, cy + reach + 1):
+		for x: int in range(cx - reach, cx + reach + 1):
+			if not grid.in_bounds(Vector2i(x, y)):
+				continue
+			var tile_c: Vector2 = Vector2(float(x) + 0.5, float(y) + 0.5)
+			var d: float = tile_c.distance_to(center_g)
+			if d >= DOT_RADIUS_TILES:
+				continue
+			_g_dots.append(projection.ground_to_screen(tile_c))
+			_g_dot_alpha.append(1.0 - d / DOT_RADIUS_TILES)
+
+	if sdef != null and sdef.has_attack and sdef.attack_range_mt > 0:
+		var ring_g: PackedVector2Array = _circle_ground(center_g, float(sdef.attack_range_mt) / 1000.0)
+		for piece: PackedVector2Array in Geometry2D.intersect_polygons(ring_g, _island_ground):
+			if piece.size() >= 3 and not Geometry2D.is_polygon_clockwise(piece):
+				_g_range_fill.append(_project(piece))
+		_g_range_dashes = _dash_segments(_closed(_project(ring_g)), true)
+
+# --- drawing ---------------------------------------------------------------
+
 func _draw() -> void:
 	if grid == null or grid.width <= 0 or grid.height <= 0:
 		return
+	if _geometry_dirty:
+		_rebuild_geometry()
+	if _items_dirty:
+		_rebuild_items()
+	if _markers_dirty:
+		_rebuild_markers()
+	if _ghost_dirty:
+		_rebuild_ghost()
 
-	# Ring color in deploy mode: pulses green fill #2ecc71 with alpha 0.25 to 0.45 on 1.2s cycle
-	var ring_color := Color("#2ecc71")
-	if deploy_mode:
-		var pulse_time: float = fmod(float(Time.get_ticks_msec()) / 1000.0, 1.2)
-		var pulse_norm: float = 0.5 + 0.5 * sin((pulse_time / 1.2) * TAU)
-		ring_color.a = lerpf(0.25, 0.45, pulse_norm)
-
-	# Draw cells (interior and deploy ring)
-	for y in range(grid.height):
-		for x in range(grid.width):
-			var cell := Vector2i(x, y)
-			var cell_rect := Rect2(float(x * tile_px), float(y * tile_px), float(tile_px), float(tile_px))
-			if grid.is_deploy_zone(cell):
-				if deploy_mode:
-					draw_rect(cell_rect, ring_color, true)
-				else:
-					draw_rect(cell_rect, Color("#d9dee4"), true)
-					_draw_deploy_cell_hatch(cell_rect)
-			else:
-				draw_rect(cell_rect, Color("#f4f8fc"), true)
-
-	# Grid lines: 1 px, #c3ccd6
-	var grid_line_color := Color("#c3ccd6")
-	var total_w: float = float(grid.width * tile_px)
-	var total_h: float = float(grid.height * tile_px)
-	for x in range(grid.width + 1):
-		var px: float = float(x * tile_px)
-		draw_line(Vector2(px, 0.0), Vector2(px, total_h), grid_line_color, 1.0)
-	for y in range(grid.height + 1):
-		var py: float = float(y * tile_px)
-		draw_line(Vector2(0.0, py), Vector2(total_w, py), grid_line_color, 1.0)
-
-	# Structures from grid.structures()
+	var k: float = projection.tile_px / 14.0
+	_draw_slab()
+	_draw_top(k)
+	_draw_decor(k)
+	_draw_band(k)
 	if draw_structures:
-		for s: GridModel.PlacedStructure in grid.structures():
-			var sdef: StructureDef = config.structures.get(s.type_id) if config != null else null
-			var shape: String = sdef.placeholder_shape if sdef != null else "square"
-			var color: Color = sdef.placeholder_color if sdef != null else Color.WHITE
-			var s_rect := Rect2(Vector2(s.origin) * float(tile_px), Vector2(s.footprint) * float(tile_px))
-			PlaceholderShapes.draw_shape(self, shape, s_rect, color)
+		_draw_plates(k)
+		_draw_structure_items()
+	if _has_ghost:
+		_draw_ghost(k)
+	if deploy_mode:
+		_draw_markers()
+	_draw_prediction()
 
-	# Placement ghost
-	if _has_ghost and not _ghost_type_id.is_empty():
-		var sdef: StructureDef = config.structures.get(_ghost_type_id) if config != null else null
-		var footprint: Vector2i = sdef.footprint if sdef != null else Vector2i.ONE
-		var g_rect := Rect2(Vector2(_ghost_origin) * float(tile_px), Vector2(footprint) * float(tile_px))
+func _draw_slab() -> void:
+	var th: float = SLAB_T * projection.tile_px
+	draw_set_transform(Vector2(0.0, th), 0.0, Vector2.ONE)
+	draw_colored_polygon(_outline, SHADOW_NIGHT if night else SHADOW_DAY)
+	for i: int in range(SLAB_LAYERS, 0, -1):
+		var col: Color
+		if night:
+			col = SLAB_HI_NIGHT if i > 3 else SLAB_LO_NIGHT
+		else:
+			col = SLAB_HI_DAY if i > 3 else SLAB_LO_DAY
+		draw_set_transform(Vector2(0.0, th * float(i) / float(SLAB_LAYERS)), 0.0, Vector2.ONE)
+		draw_colored_polygon(_outline, col)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-		var tint: Color = Color("#2ecc71") if _ghost_valid else Color("#e74c3c")
-		tint.a = 0.35
-		draw_rect(g_rect, tint, true)
+func _draw_top(k: float) -> void:
+	draw_colored_polygon(_outline, TOP_NIGHT if night else TOP_DAY)
+	draw_polyline(_outline_closed, RIM_NIGHT if night else RIM_DAY, 3.0 * k, true)
 
-		var shape: String = sdef.placeholder_shape if sdef != null else "square"
-		var g_color: Color = sdef.placeholder_color if sdef != null else Color.WHITE
-		g_color.a = 0.5
-		PlaceholderShapes.draw_shape(self, shape, g_rect, g_color)
+func _decor_color(kind: int) -> Color:
+	match kind:
+		0:
+			return SOFT_A_NIGHT if night else SOFT_A_DAY
+		1:
+			return SOFT_B_NIGHT if night else SOFT_B_DAY
+		2:
+			return CELL_FILL_NIGHT if night else CELL_FILL_DAY
+		_:
+			return BLOB_HI_NIGHT if night else BLOB_HI_DAY
 
-	# Unit markers in deploy mode
-	if army != null and deploy_mode:
-		for cell: Vector2i in grid.ring_cells():
-			var deployed: Array[String] = army.deployed_at(cell)
-			if deployed.is_empty():
-				continue
-			var count: int = deployed.size()
-			var last_type: String = deployed[-1]
-			var pdef: PathogenDef = config.pathogens.get(last_type) if config != null else null
-			var shape: String = pdef.placeholder_shape if pdef != null else "circle"
-			var color: Color = pdef.placeholder_color if pdef != null else Color.WHITE
+func _draw_decor(k: float) -> void:
+	for i: int in range(_decor_polys.size()):
+		var col: Color = _decor_color(_decor_kinds[i])
+		col.a *= _decor_alpha[i]
+		if col.a > 0.0:
+			draw_colored_polygon(_decor_polys[i], col)
+	var rim: Color = CELL_RIM_NIGHT if night else CELL_RIM_DAY
+	for line: PackedVector2Array in _decor_rims:
+		draw_polyline(line, rim, 1.5 * k, true)
 
-			var tile_size := float(tile_px)
-			var marker_size: float = tile_size * 0.60
-			var offset: float = (tile_size - marker_size) * 0.5
-			var marker_rect := Rect2(
-				float(cell.x * tile_px) + offset,
-				float(cell.y * tile_px) + offset,
-				marker_size,
-				marker_size
-			)
-			PlaceholderShapes.draw_shape(self, shape, marker_rect, color)
+func _draw_band(k: float) -> void:
+	var fill: Color
+	var line: Color
+	var active: bool = night and deploy_mode
+	if night:
+		if active:
+			var pulse: float = 0.5 + 0.5 * sin(_pulse_time / PULSE_PERIOD_S * TAU)
+			fill = Color(GREEN, lerpf(BAND_ACTIVE_ALPHA_LO, BAND_ACTIVE_ALPHA_HI, pulse))
+			line = Color(GREEN, 0.9)
+		else:
+			fill = BAND_NIGHT_IDLE
+			line = BAND_LINE_NIGHT_IDLE
+	else:
+		fill = BAND_DAY
+		line = BAND_LINE_DAY
+	for quad: PackedVector2Array in _band_quads:
+		draw_colored_polygon(quad, fill)
+	if _band_line.size() < 2:
+		return
+	if active:
+		draw_polyline(_band_line, Color(GREEN, 0.12), 6.0 * k, true)
+		draw_polyline(_band_line, Color(GREEN, 0.3), 3.0 * k, true)
+		draw_polyline(_band_line, line, 2.0 * k, true)
+	elif night:
+		draw_polyline(_band_line, line, 2.0 * k, true)
+	else:
+		draw_multiline(_band_line_dashes, line, 2.0 * k, true)
 
-			if count > 1:
-				var badge_radius: float = maxf(tile_size * 0.22, 6.0)
-				var badge_center := Vector2(
-					float((cell.x + 1) * tile_px) - badge_radius - 1.0,
-					float(cell.y * tile_px) + badge_radius + 1.0
-				)
-				draw_circle(badge_center, badge_radius, Color.WHITE)
-				draw_arc(badge_center, badge_radius, 0.0, TAU, 16, Color(0.2, 0.2, 0.2, 0.6), 1.0, true)
+func _draw_plates(k: float) -> void:
+	var plate_fill: Color = PLATE_NIGHT if night else PLATE_DAY
+	var plate_rim: Color = PLATE_RIM_NIGHT if night else PLATE_RIM_DAY
+	for item: StructureItem in _items:
+		if item.kind == 0:
+			draw_colored_polygon(item.plate, plate_fill)
+			draw_polyline(item.plate_rim, plate_rim, 1.5 * k, true)
+		elif item.kind == 2:
+			for ring: PackedVector2Array in item.glow_rings:
+				draw_colored_polygon(ring, Color(NUCLEUS_GLOW, NUCLEUS_GLOW.a * BLOB_RING_ALPHA))
+			draw_colored_polygon(item.plate, NUCLEUS_PLATE)
+			draw_polyline(item.plate_rim, NUCLEUS_PLATE_RIM, 2.0 * k, true)
 
-				var font: Font = ThemeDB.fallback_font
-				if font != null:
-					var font_size: int = max(int(badge_radius * 1.5), 9)
-					var count_text: String = str(count)
-					var str_size: Vector2 = font.get_string_size(count_text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
-					var text_pos := Vector2(
-						badge_center.x - str_size.x * 0.5,
-						badge_center.y + str_size.y * 0.35
-					)
-					draw_string(font, text_pos, count_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
+func _draw_structure_items() -> void:
+	for item: StructureItem in _items:
+		_draw_item(item, false)
 
-	# Predicted structure marker
-	if predicted_structure_id > 0 and grid != null:
-		var s: GridModel.PlacedStructure = grid.get_structure(predicted_structure_id)
-		if s != null:
-			var s_center: Vector2 = (Vector2(s.origin) + Vector2(s.footprint) * 0.5) * float(tile_px)
-			var badge_radius: float = float(tile_px) * 0.35
-			draw_circle(s_center, badge_radius, Color("#f1c40f"))
-			draw_arc(s_center, badge_radius, 0.0, TAU, 16, Color(0.1, 0.1, 0.1, 0.8), 1.5, true)
-			var font: Font = ThemeDB.fallback_font
+func _draw_item(item: StructureItem, ghost: bool) -> void:
+	if item.kind == 1:
+		PlaceholderBillboard.draw_wall_faces(self, item.faces, ghost)
+		return
+	var col: Color = item.color
+	if ghost:
+		col.a *= PlaceholderBillboard.GHOST_OPACITY
+	PlaceholderBillboard.draw_billboard(self, item.shape, col, item.foot, item.width, item.height)
+
+func _draw_ghost(k: float) -> void:
+	if _g_item == null or _g_border.size() < 2:
+		return
+	var tint: Color = GREEN if _ghost_valid else RED
+	for frag: PackedVector2Array in _g_range_fill:
+		draw_colored_polygon(frag, RANGE_FILL)
+	if not _g_range_dashes.is_empty():
+		draw_multiline(_g_range_dashes, RANGE_LINE, 2.0 * k, true)
+	draw_colored_polygon(_g_fill, GHOST_OK_FILL if _ghost_valid else GHOST_BAD_FILL)
+	if _ghost_valid:
+		draw_polyline(_g_border, Color(tint, 0.15), 10.0 * k, true)
+		draw_polyline(_g_border, Color(tint, 0.3), 6.0 * k, true)
+	draw_polyline(_g_border, tint, 2.0 * k, true)
+	for i: int in range(_g_dots.size()):
+		draw_circle(_g_dots[i], 1.4 * k, Color(GHOST_DOT, GHOST_DOT.a * _g_dot_alpha[i]))
+	_draw_item(_g_item, true)
+
+func _draw_markers() -> void:
+	var t: float = projection.tile_px
+	var size: float = 0.9 * t
+	var font: Font = ThemeDB.fallback_font
+	for m: UnitMarker in _markers:
+		PlaceholderShapes.draw_shape(self, m.shape, Rect2(m.center - Vector2(size, size) * 0.5, Vector2(size, size)), m.color)
+		if m.count > 1:
+			var badge_r: float = maxf(t * 0.3, 6.0)
+			var badge_c: Vector2 = m.center + Vector2(size * 0.5, -size * 0.5)
+			draw_circle(badge_c, badge_r, Color.WHITE)
+			draw_arc(badge_c, badge_r, 0.0, TAU, 16, Color(0.2, 0.2, 0.2, 0.6), 1.0, true)
 			if font != null:
-				var font_size: int = max(int(badge_radius * 1.4), 10)
-				var q_text: String = "?"
-				var str_size: Vector2 = font.get_string_size(q_text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
-				var text_pos := Vector2(
-					s_center.x - str_size.x * 0.5,
-					s_center.y + str_size.y * 0.35
-				)
-				draw_string(font, text_pos, q_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
+				var font_size: int = maxi(int(badge_r * 1.5), 9)
+				var text: String = str(m.count)
+				var str_size: Vector2 = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+				draw_string(font, Vector2(badge_c.x - str_size.x * 0.5, badge_c.y + str_size.y * 0.35), text,
+						HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
 
-func _draw_deploy_cell_hatch(cell_rect: Rect2) -> void:
-	var hatch_color := Color("#b0b8c0")
-	var step: float = 6.0
-	var w: float = cell_rect.size.x
-	var h: float = cell_rect.size.y
-	var d: float = step
-	while d < w + h:
-		var p1: Vector2
-		var p2: Vector2
-		if d <= w:
-			p1 = Vector2(d, 0.0)
-		else:
-			p1 = Vector2(w, d - w)
-		if d <= h:
-			p2 = Vector2(0.0, d)
-		else:
-			p2 = Vector2(d - h, h)
-		draw_line(cell_rect.position + p1, cell_rect.position + p2, hatch_color, 1.0)
-		d += step
+func _draw_prediction() -> void:
+	if predicted_structure_id <= 0 or grid == null:
+		return
+	var s: GridModel.PlacedStructure = grid.get_structure(predicted_structure_id)
+	if s == null:
+		return
+	var t: float = projection.tile_px
+	var center: Vector2 = projection.footprint_center(s.origin, s.footprint) + Vector2(0.0, -2.0 * t)
+	var badge_r: float = t * 0.35
+	draw_circle(center, badge_r, Color("#f1c40f"))
+	draw_arc(center, badge_r, 0.0, TAU, 16, Color(0.1, 0.1, 0.1, 0.8), 1.5, true)
+	var font: Font = ThemeDB.fallback_font
+	if font != null:
+		var font_size: int = maxi(int(badge_r * 1.4), 10)
+		var str_size: Vector2 = font.get_string_size("?", HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+		draw_string(font, Vector2(center.x - str_size.x * 0.5, center.y + str_size.y * 0.35), "?",
+				HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)

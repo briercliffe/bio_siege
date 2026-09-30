@@ -80,6 +80,7 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 
 	if session != null:
 		grid_view.setup(session.grid, session.config, session.army)
+	grid_view.set_night(true)
 	grid_view.deploy_mode = false
 	grid_view.draw_structures = false
 
