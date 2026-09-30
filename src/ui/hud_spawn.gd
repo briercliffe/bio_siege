@@ -22,6 +22,7 @@ var title_label: Label = null
 var btn_predict: Button = null
 var btn_launch: Button = null
 var btn_help: Button = null
+var outbreak_badge: Label = null
 var btn_mute: MuteButton = null
 var btn_menu: Button = null
 var popup_menu: PopupMenu = null
@@ -237,11 +238,29 @@ func set_predict_mode(active: bool) -> void:
 	predict_active = active
 	predict_mode_selected.emit(predict_active)
 
+## Read-only "Generation N · Run T" label in the top bar (outbreak_mode flag).
+func _sync_outbreak_badge(p_session: Session) -> void:
+	var run: OutbreakRun = p_session.outbreak if p_session != null else null
+	if outbreak_badge == null and run != null and title_label != null and title_label.get_parent() != null:
+		outbreak_badge = Label.new()
+		outbreak_badge.name = "OutbreakBadge"
+		outbreak_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		outbreak_badge.add_theme_font_size_override("font_size", 14)
+		var bar: Node = title_label.get_parent()
+		bar.add_child(outbreak_badge)
+		bar.move_child(outbreak_badge, title_label.get_index() + 1)
+	if outbreak_badge != null:
+		outbreak_badge.visible = run != null
+		if run != null:
+			outbreak_badge.text = "Generation %d · Run %s" % [run.generation, ResultsPhase._group(run.total_score)]
+
+
 func _ready() -> void:
 	_ensure_nodes()
 
 func setup(p_session: Session) -> void:
 	_ensure_nodes()
+	_sync_outbreak_badge(p_session)
 
 	if session != null and session.wallet != null and session.wallet.changed.is_connected(_on_wallet_changed):
 		session.wallet.changed.disconnect(_on_wallet_changed)

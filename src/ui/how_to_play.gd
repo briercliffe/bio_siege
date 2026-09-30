@@ -32,6 +32,8 @@ const PAGES: Array[Dictionary] = [
 	},
 ]
 
+const OUTBREAK_LINE: String = "Outbreak: keep breaking your own base. It remembers every strain that hits it. The run ends when your defense holds."
+
 var page: int = 0
 var settings_path: String = GameSettings.DEFAULT_PATH
 
@@ -111,6 +113,9 @@ func _refresh() -> void:
 	var info: Dictionary = PAGES[page]
 	title_label.text = str(info["title"])
 	body_label.text = str(info["body"])
+	if page == PAGE_COUNT - 1 and GameData.config != null and GameData.config.flag("outbreak_mode"):
+		body_label.text += "
+" + OUTBREAK_LINE
 	diagram.page = page
 	btn_back.disabled = page == 0
 	btn_next.disabled = page == PAGE_COUNT - 1
