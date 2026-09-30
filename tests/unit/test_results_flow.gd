@@ -18,9 +18,9 @@ func test_post_battle_choices_and_last_launch() -> void:
 
 	# 1. Base costing 400: Place 4 macrophages (100 ATP each)
 	var p1: int = session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
-	var p2: int = session.grid.place("macrophage", Vector2i(5, 3), session.wallet)
-	var p3: int = session.grid.place("macrophage", Vector2i(7, 3), session.wallet)
-	var p4: int = session.grid.place("macrophage", Vector2i(9, 3), session.wallet)
+	var p2: int = session.grid.place("macrophage", Vector2i(7, 3), session.wallet)
+	var p3: int = session.grid.place("macrophage", Vector2i(11, 3), session.wallet)
+	var p4: int = session.grid.place("macrophage", Vector2i(15, 3), session.wallet)
 	assert_gt(p1, 0)
 	assert_gt(p2, 0)
 	assert_gt(p3, 0)
@@ -509,10 +509,10 @@ func test_infection_phase_updates_memory_when_enabled() -> void:
 		cfg.feature_flags["immune_memory"] = enabled
 		var session := Session.new(cfg)
 		var structs: Array = [
-			{"type": "nucleus", "origin": Vector2i(9, 9)},
+			{"type": "nucleus", "origin": Vector2i(18, 18)},
 			{"type": "b_cell", "origin": Vector2i(10, 3)},
 		]
-		var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 10)}]
+		var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 20)}]
 		session.battle_setup = BattleSetup.create(structs, units, session.seed)
 		var sim: BattleSim = SimFixtures.make_sim(structs, units, session.seed, cfg)
 		sim.run_to_end()
@@ -691,10 +691,10 @@ func test_infection_phase_records_outbreak_generation() -> void:
 	var cfg: GameConfig = _outbreak_cfg()
 	var session := Session.new(cfg)
 	var structs: Array = [
-		{"type": "nucleus", "origin": Vector2i(9, 9)},
+		{"type": "nucleus", "origin": Vector2i(18, 18)},
 		{"type": "b_cell", "origin": Vector2i(10, 3)},
 	]
-	var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 10)}]
+	var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 20)}]
 	session.battle_setup = BattleSetup.create(structs, units, session.seed)
 	var sim: BattleSim = SimFixtures.make_sim(structs, units, session.seed, cfg)
 	sim.run_to_end()

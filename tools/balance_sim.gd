@@ -202,7 +202,7 @@ func _init() -> void:
 			quit(1)
 			return
 
-		var ring_cells: Array[Vector2i] = Scenarios.ring_cells(config.grid_width, config.grid_height)
+		var ring_cells: Array[Vector2i] = Scenarios.ring_cells(config.grid_width, config.grid_height, config.deploy_ring)
 
 		var generations: int = int(options.get("generations", 1))
 		var start_levels: Dictionary = options.get("memory", {})
@@ -338,7 +338,7 @@ func _resolve_setup(inputs: Dictionary, config: GameConfig, seed: int) -> Battle
 			"stress":
 				return Scenarios.stress([], seed)
 			"repeat_swarm":
-				return Scenarios.repeat_swarm(Scenarios.ring_cells(config.grid_width, config.grid_height), seed)
+				return Scenarios.repeat_swarm(Scenarios.ring_cells(config.grid_width, config.grid_height, config.deploy_ring), seed)
 			_:
 				printerr("Error: Unknown scenario '%s'" % sname)
 				return null

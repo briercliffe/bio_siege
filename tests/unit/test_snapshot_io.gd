@@ -60,8 +60,8 @@ func test_parse_base_errors() -> void:
 	var wrong_fmt_dict := {
 		"format": "wrong.format",
 		"version": 1,
-		"grid": {"width": 20, "height": 20},
-		"structures": [{"type": "nucleus", "origin": [9, 9]}],
+		"grid": {"width": 40, "height": 40},
+		"structures": [{"type": "nucleus", "origin": [18, 18]}],
 	}
 	var res_fmt: Dictionary = SnapshotIO.parse_base(JSON.stringify(wrong_fmt_dict), config)
 	assert_false(res_fmt["ok"])
@@ -71,8 +71,8 @@ func test_parse_base_errors() -> void:
 	var wrong_ver_dict := {
 		"format": "bio_siege.base",
 		"version": 2,
-		"grid": {"width": 20, "height": 20},
-		"structures": [{"type": "nucleus", "origin": [9, 9]}],
+		"grid": {"width": 40, "height": 40},
+		"structures": [{"type": "nucleus", "origin": [18, 18]}],
 	}
 	var res_ver: Dictionary = SnapshotIO.parse_base(JSON.stringify(wrong_ver_dict), config)
 	assert_false(res_ver["ok"])
@@ -83,19 +83,30 @@ func test_parse_base_errors() -> void:
 		"format": "bio_siege.base",
 		"version": 1,
 		"grid": {"width": 10, "height": 10},
-		"structures": [{"type": "nucleus", "origin": [9, 9]}],
+		"structures": [{"type": "nucleus", "origin": [18, 18]}],
 	}
 	var res_grid: Dictionary = SnapshotIO.parse_base(JSON.stringify(wrong_grid_dict), config)
 	assert_false(res_grid["ok"])
 	assert_true("Grid size mismatch" in res_grid["error"])
 
+	# 4b. Old 20x20 base files are rejected with the normal grid-size error
+	var old_grid_dict := {
+		"format": "bio_siege.base",
+		"version": 1,
+		"grid": {"width": 20, "height": 20},
+		"structures": [{"type": "nucleus", "origin": [9, 9]}],
+	}
+	var res_old: Dictionary = SnapshotIO.parse_base(JSON.stringify(old_grid_dict), config)
+	assert_false(res_old["ok"])
+	assert_true("Grid size mismatch" in res_old["error"])
+
 	# 5. Unknown structure type
 	var unknown_type_dict := {
 		"format": "bio_siege.base",
 		"version": 1,
-		"grid": {"width": 20, "height": 20},
+		"grid": {"width": 40, "height": 40},
 		"structures": [
-			{"type": "nucleus", "origin": [9, 9]},
+			{"type": "nucleus", "origin": [18, 18]},
 			{"type": "nonexistent_cannon", "origin": [2, 2]},
 		],
 	}
@@ -107,9 +118,9 @@ func test_parse_base_errors() -> void:
 	var invalid_origin_dict := {
 		"format": "bio_siege.base",
 		"version": 1,
-		"grid": {"width": 20, "height": 20},
+		"grid": {"width": 40, "height": 40},
 		"structures": [
-			{"type": "nucleus", "origin": [9, 9]},
+			{"type": "nucleus", "origin": [18, 18]},
 			{"type": "mucous_wall", "origin": "invalid"},
 		],
 	}
@@ -121,7 +132,7 @@ func test_parse_base_errors() -> void:
 	var no_core_dict := {
 		"format": "bio_siege.base",
 		"version": 1,
-		"grid": {"width": 20, "height": 20},
+		"grid": {"width": 40, "height": 40},
 		"structures": [
 			{"type": "mucous_wall", "origin": [2, 2]},
 		],

@@ -263,23 +263,31 @@ func reset_with_nucleus() -> void:
 
 func ring_cells() -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
-	if width <= 0 or height <= 0:
+	if width <= 0 or height <= 0 or deploy_ring <= 0:
 		return cells
-	if width == 1 and height == 1:
-		cells.append(Vector2i(0, 0))
-		return cells
-	# 1. top row: x = 0..width-1 at y = 0
-	for x in range(0, width):
-		cells.append(Vector2i(x, 0))
-	# 2. right col: y = 1..height-1 at x = width-1
-	for y in range(1, height):
-		cells.append(Vector2i(width - 1, y))
-	# 3. bottom row: x = width-2 down to 0 at y = height-1
-	for x in range(width - 2, -1, -1):
-		cells.append(Vector2i(x, height - 1))
-	# 4. left col: y = height-2 down to 1 at x = 0
-	for y in range(height - 2, 0, -1):
-		cells.append(Vector2i(0, y))
+	var depth_count: int = mini(deploy_ring, (mini(width, height) + 1) / 2)
+	for d in range(depth_count):
+		var x0: int = d
+		var y0: int = d
+		var x1: int = width - 1 - d
+		var y1: int = height - 1 - d
+		if x0 == x1 and y0 == y1:
+			cells.append(Vector2i(x0, y0))
+			continue
+		# 1. top row: x0..x1 at y0
+		for x in range(x0, x1 + 1):
+			cells.append(Vector2i(x, y0))
+		# 2. right col: y0+1..y1 at x1
+		for y in range(y0 + 1, y1 + 1):
+			cells.append(Vector2i(x1, y))
+		# 3. bottom row: x1-1 down to x0 at y1
+		if y1 > y0:
+			for x in range(x1 - 1, x0 - 1, -1):
+				cells.append(Vector2i(x, y1))
+		# 4. left col: y1-1 down to y0+1 at x0
+		if x1 > x0:
+			for y in range(y1 - 1, y0, -1):
+				cells.append(Vector2i(x0, y))
 	return cells
 
 func buildable_cell_count() -> int:

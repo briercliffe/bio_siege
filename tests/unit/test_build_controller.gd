@@ -59,7 +59,7 @@ func test_wall_drag_places_walls_and_spends_atp() -> void:
 	assert_eq(session.grid.tile_state(Vector2i(4, 2)), GridModel.TileState.WALL)
 
 	var spent_atp: int = initial_atp - session.wallet.get_amount("atp")
-	assert_eq(spent_atp, 30, "Wall drag across 3 tiles should spend 30 ATP")
+	assert_eq(spent_atp, 15, "Wall drag across 3 tiles should spend 15 ATP")
 	assert_eq(bc.tool, "mucous_wall", "Tool remains selected after action")
 
 func test_wall_drag_reentering_cell_does_not_double_place() -> void:
@@ -82,7 +82,7 @@ func test_wall_drag_reentering_cell_does_not_double_place() -> void:
 	grid_view.cell_released.emit(Vector2i(2, 2))
 
 	var spent_atp: int = initial_atp - session.wallet.get_amount("atp")
-	assert_eq(spent_atp, 20, "Re-entering (2,2) should not place a second wall or deduct extra ATP")
+	assert_eq(spent_atp, 10, "Re-entering (2,2) should not place a second wall or deduct extra ATP")
 
 func test_tower_press_and_drag_places_at_release_only() -> void:
 	var session: Session = _create_session()
@@ -158,10 +158,10 @@ func test_sell_press_structure_a_release_structure_b_does_nothing() -> void:
 
 	assert_eq(sold_events.size(), 1)
 	assert_eq(sold_events[0]["type"], "mucous_wall")
-	assert_eq(sold_events[0]["refund"], {"atp": 10})
+	assert_eq(sold_events[0]["refund"], {"atp": 5})
 	assert_eq(sold_events[0]["cell"], Vector2i(2, 2))
 	assert_null(session.grid.get_structure(id_a))
-	assert_eq(session.wallet.get_amount("atp"), atp_before_sell_attempt + 10)
+	assert_eq(session.wallet.get_amount("atp"), atp_before_sell_attempt + 5)
 
 func test_cannot_sell_nucleus() -> void:
 	var session: Session = _create_session()
@@ -179,9 +179,9 @@ func test_cannot_sell_nucleus() -> void:
 		sold_events.append(type_id)
 	)
 
-	# Nucleus is at (9,9)
-	grid_view.cell_pressed.emit(Vector2i(9, 9))
-	grid_view.cell_released.emit(Vector2i(9, 9))
+	# Nucleus is at (18,18)
+	grid_view.cell_pressed.emit(Vector2i(18, 18))
+	grid_view.cell_released.emit(Vector2i(18, 18))
 
 	assert_eq(sold_events.size(), 0)
 	assert_not_null(session.grid.get_structure(1))
@@ -220,8 +220,8 @@ func test_toast_messages_and_failure_handling() -> void:
 
 	# 3. OCCUPIED -> "That tile is taken"
 	assert_eq(Toast.message_for_place_error(GridModel.PlaceError.OCCUPIED), "That tile is taken")
-	grid_view.cell_pressed.emit(Vector2i(9, 9)) # Nucleus tile
-	grid_view.cell_released.emit(Vector2i(9, 9))
+	grid_view.cell_pressed.emit(Vector2i(18, 18)) # Nucleus tile
+	grid_view.cell_released.emit(Vector2i(18, 18))
 	assert_eq(failed_signals.back(), int(GridModel.PlaceError.OCCUPIED))
 	assert_eq(toast.last_message, "That tile is taken")
 
@@ -246,12 +246,12 @@ func test_grid_view_fit_to_rect_and_center() -> void:
 	var container_rect := Rect2(100.0, 50.0, 1280.0, 720.0)
 	gv.fit_to_rect(container_rect)
 
-	# 20 * 32 = 640
-	assert_almost_eq(gv.scale.x, 720.0 / 640.0, 0.001)
-	assert_almost_eq(gv.scale.y, 720.0 / 640.0, 0.001)
+	# 40 * 14 = 560
+	assert_almost_eq(gv.scale.x, 720.0 / 560.0, 0.001)
+	assert_almost_eq(gv.scale.y, 720.0 / 560.0, 0.001)
 
-	assert_eq(gv.cell_to_local_center(Vector2i(0, 0)), Vector2(16.0, 16.0))
-	assert_eq(gv.cell_to_local_center(Vector2i(1, 2)), Vector2(48.0, 80.0))
+	assert_eq(gv.cell_to_local_center(Vector2i(0, 0)), Vector2(7.0, 7.0))
+	assert_eq(gv.cell_to_local_center(Vector2i(1, 2)), Vector2(21.0, 35.0))
 
 func test_placeholder_shapes_guards() -> void:
 	# Safe no-op on null canvas item or invalid rects
@@ -275,11 +275,11 @@ func test_grid_view_input_touch_events() -> void:
 	gv.cell_dragged.connect(func(c: Vector2i) -> void: dragged_cells.append(c))
 	gv.cell_released.connect(func(c: Vector2i) -> void: released_cells.append(c))
 
-	# 1. Touch press at cell (3, 4) -> 3 * 32 + 10 = 106, 4 * 32 + 10 = 138
+	# 1. Touch press at cell (3, 4) -> 3 * 14 + 5 = 106, 4 * 14 + 5 = 138
 	var touch_press := InputEventScreenTouch.new()
 	touch_press.index = 0
 	touch_press.pressed = true
-	touch_press.position = Vector2(106, 138)
+	touch_press.position = Vector2(47, 61)
 	gv._unhandled_input(touch_press)
 	assert_eq(pressed_cells, [Vector2i(3, 4)])
 
@@ -287,21 +287,21 @@ func test_grid_view_input_touch_events() -> void:
 	var touch_idx1 := InputEventScreenTouch.new()
 	touch_idx1.index = 1
 	touch_idx1.pressed = true
-	touch_idx1.position = Vector2(106, 138)
+	touch_idx1.position = Vector2(47, 61)
 	gv._unhandled_input(touch_idx1)
 	assert_eq(pressed_cells.size(), 1)
 
 	# 2. Drag to (4, 4)
 	var touch_drag := InputEventScreenDrag.new()
 	touch_drag.index = 0
-	touch_drag.position = Vector2(4 * 32 + 10, 4 * 32 + 10)
+	touch_drag.position = Vector2(4 * 14 + 5, 4 * 14 + 5)
 	gv._unhandled_input(touch_drag)
 	assert_eq(dragged_cells, [Vector2i(4, 4)])
 
 	# Drag within same cell shouldn't fire signal again
 	var touch_drag_same := InputEventScreenDrag.new()
 	touch_drag_same.index = 0
-	touch_drag_same.position = Vector2(4 * 32 + 15, 4 * 32 + 15)
+	touch_drag_same.position = Vector2(4 * 14 + 10, 4 * 14 + 10)
 	gv._unhandled_input(touch_drag_same)
 	assert_eq(dragged_cells.size(), 1)
 
@@ -309,7 +309,7 @@ func test_grid_view_input_touch_events() -> void:
 	var touch_release := InputEventScreenTouch.new()
 	touch_release.index = 0
 	touch_release.pressed = false
-	touch_release.position = Vector2(4 * 32 + 10, 4 * 32 + 10)
+	touch_release.position = Vector2(4 * 14 + 5, 4 * 14 + 5)
 	gv._unhandled_input(touch_release)
 	assert_eq(released_cells, [Vector2i(4, 4)])
 
@@ -326,18 +326,18 @@ func test_grid_view_input_mouse_events() -> void:
 	gv.cell_dragged.connect(func(c: Vector2i) -> void: dragged_cells.append(c))
 	gv.cell_released.connect(func(c: Vector2i) -> void: released_cells.append(c))
 
-	# Mouse click at cell (2, 2) -> 2 * 32 + 10 = 74
+	# Mouse click at cell (2, 2) -> 2 * 14 + 5 = 74
 	var mb_press := InputEventMouseButton.new()
 	mb_press.button_index = MOUSE_BUTTON_LEFT
 	mb_press.pressed = true
-	mb_press.position = Vector2(74, 74)
+	mb_press.position = Vector2(33, 33)
 	gv._unhandled_input(mb_press)
 	assert_eq(pressed_cells, [Vector2i(2, 2)])
 
 	# Motion to cell (3, 2)
 	var mm := InputEventMouseMotion.new()
 	mm.button_mask = MOUSE_BUTTON_MASK_LEFT
-	mm.position = Vector2(3 * 32 + 10, 74)
+	mm.position = Vector2(3 * 14 + 5, 33)
 	gv._unhandled_input(mm)
 	assert_eq(dragged_cells, [Vector2i(3, 2)])
 
@@ -345,7 +345,7 @@ func test_grid_view_input_mouse_events() -> void:
 	var mb_release := InputEventMouseButton.new()
 	mb_release.button_index = MOUSE_BUTTON_LEFT
 	mb_release.pressed = false
-	mb_release.position = Vector2(3 * 32 + 10, 74)
+	mb_release.position = Vector2(3 * 14 + 5, 33)
 	gv._unhandled_input(mb_release)
 	assert_eq(released_cells, [Vector2i(3, 2)])
 

@@ -76,14 +76,14 @@ func test_node_pool_created_count_stays_at_100() -> void:
 	var fsm := GameStateMachine.new()
 	add_child_autofree(fsm)
 
-	var ring: Array[Vector2i] = Scenarios.ring_cells(config.grid_width, config.grid_height)
+	var ring: Array[Vector2i] = Scenarios.ring_cells(config.grid_width, config.grid_height, config.deploy_ring)
 	var units: Array[Dictionary] = []
 	for i in range(100):
 		var cell: Vector2i = ring[i % ring.size()]
 		units.append({"type": "rhinovirus", "cell": cell})
 
 	var structures: Array = [
-		{"type": "nucleus", "origin": Vector2i(9, 9)},
+		{"type": "nucleus", "origin": Vector2i(18, 18)},
 	]
 	var setup := BattleSetup.create(structures, units, 100)
 	session.battle_setup = setup

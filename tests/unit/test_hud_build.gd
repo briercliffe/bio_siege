@@ -56,7 +56,7 @@ func test_hud_setup_with_real_session() -> void:
 	session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
 	assert_eq(hud.stats_label.text, "Structures: 1 · Walls: 1")
 
-	session.grid.place("b_cell", Vector2i(4, 4), session.wallet)
+	session.grid.place("b_cell", Vector2i(7, 3), session.wallet)
 	assert_eq(hud.stats_label.text, "Structures: 2 · Walls: 1")
 
 func test_atp_label_updates_on_spend() -> void:
@@ -155,7 +155,7 @@ func test_card_opacity_drops_when_cost_greater_than_balance() -> void:
 	var ctx: Dictionary = _setup_hud(session)
 	var hud: HudBuild = ctx["hud"]
 
-	var wall_card: HudCard = hud.get_card("mucous_wall") # 10 ATP
+	var wall_card: HudCard = hud.get_card("mucous_wall") # 5 ATP
 	var macro_card: HudCard = hud.get_card("macrophage")  # 100 ATP
 	var bcell_card: HudCard = hud.get_card("b_cell")     # 150 ATP
 	var sell_card: HudCard = hud.get_card("sell")        # 0 cost
@@ -174,9 +174,9 @@ func test_card_opacity_drops_when_cost_greater_than_balance() -> void:
 	assert_true(is_equal_approx(bcell_card.modulate.a, 0.4))
 	assert_eq(sell_card.modulate.a, 1.0)
 
-	# Spend down to 5 ATP
-	session.wallet.spend({"atp": 45})
-	assert_eq(session.wallet.get_amount("atp"), 5)
+	# Spend down to 4 ATP (below the 5 ATP wall cost)
+	session.wallet.spend({"atp": 46})
+	assert_eq(session.wallet.get_amount("atp"), 4)
 
 	assert_true(is_equal_approx(wall_card.modulate.a, 0.4))
 	assert_true(is_equal_approx(macro_card.modulate.a, 0.4))
@@ -304,9 +304,9 @@ func test_import_base_valid() -> void:
 	var base_dict := {
 		"format": "bio_siege.base",
 		"version": 1,
-		"grid": {"width": 20, "height": 20},
+		"grid": {"width": 40, "height": 40},
 		"structures": [
-			{"type": "nucleus", "origin": [9, 9]},
+			{"type": "nucleus", "origin": [18, 18]},
 			{"type": "mucous_wall", "origin": [3, 3]},
 		],
 	}
@@ -323,16 +323,16 @@ func test_import_base_overbudget() -> void:
 	var hud: HudBuild = ctx["hud"]
 
 	var structures: Array = [
-		{"type": "nucleus", "origin": [9, 9]},
+		{"type": "nucleus", "origin": [18, 18]},
 	]
 	# 12 macrophages * 100 ATP = 1200 ATP > 1000 ATP
 	for i in range(12):
-		structures.append({"type": "macrophage", "origin": [2, 2 + i]})
+		structures.append({"type": "macrophage", "origin": [2, 2 + 3 * i]})
 
 	var base_dict := {
 		"format": "bio_siege.base",
 		"version": 1,
-		"grid": {"width": 20, "height": 20},
+		"grid": {"width": 40, "height": 40},
 		"structures": structures,
 	}
 	var json_str: String = SnapshotIO.to_json(base_dict)

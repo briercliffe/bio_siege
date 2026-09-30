@@ -6,7 +6,7 @@
       "atp": 0
     },
     "hp": 2000,
-    "footprint": [2, 2],
+    "footprint": [4, 4],
     "buildable": false,
     "is_targetable": true,
     "visible_to_attacker": true,
@@ -24,7 +24,7 @@
     "display_name": "Mucous Wall",
     "role": "Blocks paths",
     "cost": {
-      "atp": 10
+      "atp": 5
     },
     "hp": 300,
     "footprint": [1, 1],
@@ -43,12 +43,12 @@
   },
   "macrophage": {
     "display_name": "Macrophage",
-    "role": "Splash damage, 2-tile range",
+    "role": "Splash damage, 4-tile range",
     "cost": {
       "atp": 100
     },
     "hp": 500,
-    "footprint": [1, 1],
+    "footprint": [3, 3],
     "buildable": true,
     "is_targetable": true,
     "visible_to_attacker": true,
@@ -70,12 +70,12 @@
   },
   "b_cell": {
     "display_name": "B-Cell",
-    "role": "Sniper, 6-tile range",
+    "role": "Sniper, 12-tile range",
     "cost": {
       "atp": 150
     },
     "hp": 250,
-    "footprint": [1, 1],
+    "footprint": [3, 3],
     "buildable": true,
     "is_targetable": true,
     "visible_to_attacker": true,

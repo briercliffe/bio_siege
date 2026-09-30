@@ -94,25 +94,25 @@ func test_goal_cell_for_nucleus() -> void:
 	u3.pos = Vector2i(10000, 500)
 	assert_eq(Targeting.goal_cell_for(u3, nucleus), Vector2i(9, 9))
 
-# 8. Tower range: B-Cell (range 6000) targets in-range, lower id on tie
+# 8. Tower range: B-Cell (range 12000) targets in-range, lower id on tie
 func test_tower_range_b_cell() -> void:
 	var b_cell := StructureState.create(1, "b_cell", _cfg.structures["b_cell"], Vector2i(5, 5))
-	# Tower center is (5500, 5500), attack_range_mt = 6000
+	# 3x3 tower center is (6500, 6500), attack_range_mt = 12000
 
 	var p_out := PathogenState.create(10, "rhinovirus", _cfg.pathogens["rhinovirus"], Vector2i(0, 0))
-	p_out.pos = Vector2i(5500, 12500) # dist 7000 > 6000
+	p_out.pos = Vector2i(6500, 19500) # dist 13000 > 12000
 
 	var p_in := PathogenState.create(20, "rhinovirus", _cfg.pathogens["rhinovirus"], Vector2i(0, 0))
-	p_in.pos = Vector2i(5500, 9500) # dist 4000 <= 6000
+	p_in.pos = Vector2i(6500, 14500) # dist 8000 <= 12000
 
 	assert_eq(Targeting.pick_unit_target(b_cell, [p_out, p_in]), 20, "B-Cell should target in-range unit (20)")
 
-	# Tie: two units in range at same distance (3000)
+	# Tie: two units in range at same distance (6000)
 	var p_tie_a := PathogenState.create(30, "rhinovirus", _cfg.pathogens["rhinovirus"], Vector2i(0, 0))
-	p_tie_a.pos = Vector2i(8500, 5500)
+	p_tie_a.pos = Vector2i(12500, 6500)
 
 	var p_tie_b := PathogenState.create(15, "rhinovirus", _cfg.pathogens["rhinovirus"], Vector2i(0, 0))
-	p_tie_b.pos = Vector2i(5500, 8500)
+	p_tie_b.pos = Vector2i(6500, 12500)
 
 	assert_eq(Targeting.pick_unit_target(b_cell, [p_tie_a, p_tie_b]), 15, "Tie goes to lowest unit id (15)")
 	assert_eq(Targeting.pick_unit_target(b_cell, [p_tie_b, p_tie_a]), 15, "Tie result is order independent")
@@ -121,17 +121,17 @@ func test_tower_range_b_cell() -> void:
 func test_tower_keeps_target() -> void:
 	var b_cell := StructureState.create(1, "b_cell", _cfg.structures["b_cell"], Vector2i(5, 5))
 	var target := PathogenState.create(10, "rhinovirus", _cfg.pathogens["rhinovirus"], Vector2i(0, 0))
-	target.pos = Vector2i(5500, 8500) # dist 3000 <= 6000
+	target.pos = Vector2i(6500, 12500) # dist 6000 <= 12000
 
 	# Alive and in range -> true
 	assert_true(Targeting.tower_keeps_target(b_cell, target))
 
 	# Moves out of range -> false
-	target.pos = Vector2i(5500, 12500) # dist 7000 > 6000
+	target.pos = Vector2i(6500, 19500) # dist 13000 > 12000
 	assert_false(Targeting.tower_keeps_target(b_cell, target), "Out of range should return false")
 
 	# In range but dead -> false
-	target.pos = Vector2i(5500, 8500)
+	target.pos = Vector2i(6500, 12500)
 	target.alive = false
 	assert_false(Targeting.tower_keeps_target(b_cell, target), "Dead target should return false")
 
@@ -143,18 +143,18 @@ func test_tower_keeps_target() -> void:
 	b_cell.alive = false
 	assert_false(Targeting.tower_keeps_target(b_cell, target), "Dead tower should return false")
 
-# 10. Macrophage range (2000) ignores 2500 mt unit
+# 10. Macrophage range (4000) ignores a unit at 5000 mt
 func test_macrophage_range_ignores_distant_unit() -> void:
 	var macro := StructureState.create(1, "macrophage", _cfg.structures["macrophage"], Vector2i(5, 5))
-	# Center is (5500, 5500), attack_range_mt = 2000
+	# 3x3 center is (6500, 6500), attack_range_mt = 4000
 
 	var p_2500 := PathogenState.create(1, "rhinovirus", _cfg.pathogens["rhinovirus"], Vector2i(0, 0))
-	p_2500.pos = Vector2i(8000, 5500) # dist 2500 > 2000
-	assert_eq(Targeting.pick_unit_target(macro, [p_2500]), 0, "Macrophage should ignore unit at 2500 mt")
+	p_2500.pos = Vector2i(11500, 6500) # dist 5000 > 4000
+	assert_eq(Targeting.pick_unit_target(macro, [p_2500]), 0, "Macrophage should ignore unit at 5000 mt")
 
 	var p_2000 := PathogenState.create(2, "rhinovirus", _cfg.pathogens["rhinovirus"], Vector2i(0, 0))
-	p_2000.pos = Vector2i(7500, 5500) # dist 2000 <= 2000
-	assert_eq(Targeting.pick_unit_target(macro, [p_2000]), 2, "Macrophage should target unit at 2000 mt")
+	p_2000.pos = Vector2i(10500, 6500) # dist 4000 <= 4000
+	assert_eq(Targeting.pick_unit_target(macro, [p_2000]), 2, "Macrophage should target unit at 4000 mt")
 
 # Edge cases
 func test_edge_cases() -> void:

@@ -75,7 +75,7 @@ func test_walled_nucleus() -> void:
 	assert_not_null(s)
 	if s != null:
 		assert_eq(s.type_id, "mucous_wall")
-		assert_eq(s.origin, Vector2i(8, 10), "First structure_destroyed must be the wall at (8, 10).\n" + _format_structure_events(sim, events))
+		assert_eq(s.origin, Vector2i(17, 20), "First structure_destroyed must be the wall at (17, 20).\n" + _format_structure_events(sim, events))
 
 
 func test_short_wall() -> void:
@@ -121,7 +121,7 @@ func test_long_wall() -> void:
 	assert_not_null(s)
 	if s != null:
 		assert_eq(s.type_id, "mucous_wall")
-		assert_eq(s.origin, Vector2i(5, 10), "First structure_destroyed must be the wall at (5, 10).\n" + _format_structure_events(sim, events))
+		assert_eq(s.origin, Vector2i(10, 20), "First structure_destroyed must be the wall at (10, 20).\n" + _format_structure_events(sim, events))
 
 
 func test_bacteriophage_priority() -> void:

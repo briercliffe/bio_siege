@@ -168,4 +168,4 @@ These are proposals to raise as issues. None of them has been applied.
 
 - The tray cards, HUD icons and How-to-play badges still use flat shape icons. Cropped model renders could replace them.
 - The Switching sides transition still uses flat shapes.
-- A few stat readouts on the canvas use 2x-grid numbers (B-Cell range 12 tiles, Rhinovirus speed 5 tiles/s). The model sheet uses the 1x JSON values. Pick one convention for the UI when the data changes land.
+- **Readout convention (decided):** every player-facing distance or speed is shown in on-screen tiles, meaning 40x40 tiles. It is computed from the converted fields, never from the raw JSON number: range in tiles is `StructureDef.attack_range_mt / 1000.0`, and speed in tiles per second is `PathogenDef.speed_mt_per_tick * config.tick_rate / 1000.0`. This matches the mockups ("Sniper, 12-tile range", "Speed 5 tiles/s").

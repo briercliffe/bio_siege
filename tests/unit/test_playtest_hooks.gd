@@ -206,7 +206,7 @@ func test_synthesis_phase_plays_place_sound_on_nucleus_move() -> void:
 
 	_silence()
 	phase.build_controller.select_tool("move_nucleus")
-	phase.grid_view.cell_pressed.emit(Vector2i(9, 9))
+	phase.grid_view.cell_pressed.emit(Vector2i(18, 18))
 	phase.grid_view.cell_released.emit(Vector2i(4, 4))
 	assert_eq(session.grid.get_structure(1).origin, Vector2i(4, 4))
 	assert_true(_is_playing("place"))
