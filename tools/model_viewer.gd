@@ -9,13 +9,15 @@ extends Control
 ##   godot --path . tools/model_viewer.tscn -- --contact-sheet=<absolute path to a .png>
 ## The PNG is written and the editor quits. Never commit contact sheets: attach them to PRs.
 ## --walls-sheet=<absolute path to a .png> writes the "walls" layout alone at T = 40 instead.
+## --towers-sheet=<absolute path to a .png> writes the Macrophage, B-Cell and Nucleus idle close-ups at
+## T = 80, the framing of model_macrophage.png, model_bcell.png and model_nucleus.png.
 
 const POST_ID: String = "post"
 const WALLS_ID: String = "walls"
 const STATE_NAMES: Array[String] = ["IDLE", "MOVE", "WINDUP", "STRIKE", "RECOVER", "HIT", "DEAD", "Attack loop"]
 const STATE_ATTACK_LOOP: int = 7
 const TILE_SIZES: Array[int] = [14, 28, 40, 56]
-const SCRUB_MAX_S: float = 2.0
+const SCRUB_MAX_S: float = 3.0
 const TICKS_PER_S: float = 20.0
 const SPEEDS: Array[float] = [0.25, 1.0]
 const SPEED_LABELS: Array[String] = ["0.25x", "1x"]
@@ -26,6 +28,8 @@ const STAGE_PAD_TILES: float = 6.0
 const CELL_PAD_TILES: float = 3.4
 const CELL_SIZE: Vector2i = Vector2i(240, 240)
 const CELL_TILE_PX: float = 56.0
+## The towers are 3 to 4.6 tiles tall and the Nucleus ring 5.2 wide, so their cells use a smaller T.
+const CELL_TOWER_TILE_PX: float = 32.0
 const CELL_ANCHOR: Vector2 = Vector2(120.0, 185.0)
 const CELL_DEATH_T: float = 0.5
 const CELL_GAIT: float = 0.25
@@ -46,6 +50,18 @@ const WALLS_SHEET_TILE_PX: float = 40.0
 const WALLS_SHEET_SIZE: Vector2i = Vector2i(1000, 460)
 const WALL_HURT_FRAC: float = 0.3
 const WALL_TAP_MODES: Array[String] = ["hurt", "destroy", "attack"]
+
+## The tower close-ups: one cell per model at T = 80, like the model_*.png mockups.
+const TOWER_IDS: Array[String] = ["macrophage", "b_cell", "nucleus"]
+const TOWERS_CELL_SIZE: Vector2i = Vector2i(700, 600)
+const TOWERS_TILE_PX: float = 80.0
+const TOWERS_ANCHOR: Vector2 = Vector2(350.0, 470.0)
+const TOWERS_PAD_TILES: float = 5.0
+const TOWERS_SHEET_TIME_S: float = 0.5
+## Screen-space aim the viewer gives a tower in its attack states (down and to the facing side).
+const TOWER_AIM: Vector2 = Vector2(0.8, 0.6)
+const HP_FRACS: Array[float] = [1.0, 0.5, 0.1]
+const HP_LABELS: Array[String] = ["100%", "50%", "10%"]
 
 ## Columns of the contact sheet, in order.
 const SHEET_STATES: Array[int] = [
@@ -107,6 +123,8 @@ var show_anchor: bool = false
 var show_footprint: bool = false
 var show_gait: bool = false
 var show_bounds: bool = false
+## Health fraction handed to the pose (the Nucleus pulse speeds up as it falls).
+var hp_frac: float = 1.0
 
 ## Walls entry state: layout cells, and the cells marked hurt, destroyed or under attack (cell -> true).
 var wall_cells: Array[Vector2i] = []
@@ -129,6 +147,7 @@ var facing_buttons: Array[Button] = []
 var tile_buttons: Array[Button] = []
 var theme_buttons: Array[Button] = []
 var speed_buttons: Array[Button] = []
+var hp_buttons: Array[Button] = []
 
 var _holder: Control = null
 var _bg: ColorRect = null
@@ -174,6 +193,9 @@ func _ready() -> void:
 	var walls_path: String = _cli_arg("--walls-sheet=")
 	if walls_path != "":
 		_run_cli_walls_export.call_deferred(walls_path)
+	var towers_path: String = _cli_arg("--towers-sheet=")
+	if towers_path != "":
+		_run_cli_towers_export.call_deferred(towers_path)
 
 
 func _collect_model_ids() -> Array[String]:
@@ -275,6 +297,9 @@ func _build_left_panel() -> Control:
 
 	box.add_child(_caption("Theme"))
 	theme_buttons = _radio_row(box, ["Day", "Night"], 0, _on_theme_pressed)
+
+	box.add_child(_caption("Health"))
+	hp_buttons = _radio_row(box, HP_LABELS, 0, _on_hp_pressed)
 
 	export_button = _button("Export contact sheet", false)
 	export_button.pressed.connect(func() -> void: export_contact_sheet())
@@ -426,6 +451,12 @@ func _on_theme_pressed(index: int) -> void:
 	night = index == 1
 	_set_radio(theme_buttons, index)
 	_apply_theme()
+	_refresh()
+
+
+func _on_hp_pressed(index: int) -> void:
+	hp_frac = HP_FRACS[index]
+	_set_radio(hp_buttons, index)
 	_refresh()
 
 
@@ -649,6 +680,19 @@ func _speed_tiles_s(id: String) -> float:
 	return 0.0
 
 
+## True for a structure that fires (the Macrophage and the B-Cell).
+func _is_tower(id: String) -> bool:
+	if config == null or not config.structures.has(id):
+		return false
+	var sd: StructureDef = config.structures[id]
+	return sd.has_attack
+
+
+## The viewer's aim for a tower: down and toward the facing side, as if a target stood there.
+func _tower_aim(face_right: bool) -> Vector2:
+	return Vector2(TOWER_AIM.x * (1.0 if face_right else -1.0), TOWER_AIM.y).normalized()
+
+
 ## Builds a pose straight from a state and the scrubber time. No sim runs: the fake tick counter is
 ## time * 20 ticks/s, and AnimDriver supplies the same timing the game uses.
 func pose_for(id: String, state: int, time: float) -> ModelPose:
@@ -656,8 +700,11 @@ func pose_for(id: String, state: int, time: float) -> ModelPose:
 	pose.facing_right = facing_right
 	pose.time = time
 	pose.seed = absi(id.hash())
+	pose.hp_frac = hp_frac
 	var ticks: int = int(floorf(time * TICKS_PER_S))
 	var interval: int = _attack_interval_ticks(id)
+	if _is_tower(id) and _tower_pose(pose, id, state, ticks, interval):
+		return pose
 	match state:
 		ModelPose.Anim.MOVE:
 			pose.anim = ModelPose.Anim.MOVE
@@ -691,6 +738,31 @@ func pose_for(id: String, state: int, time: float) -> ModelPose:
 	return pose
 
 
+## Tower attack states with AnimDriver.tower_attack(), the timing the battle uses (the B-Cell charges and
+## recoils rather than winding up). The tower aims at TOWER_AIM while attacking. Returns false for the
+## states that are the same as a pathogen's.
+func _tower_pose(pose: ModelPose, id: String, state: int, ticks: int, interval: int) -> bool:
+	var res: Vector2
+	match state:
+		ModelPose.Anim.WINDUP:
+			var charge: int = AnimDriver.TOWER_CHARGE_TICKS if id == AnimDriver.B_CELL_ID else AnimDriver.windup_ticks(interval)
+			res = AnimDriver.tower_attack(id, true, maxi(charge - ticks, 1), interval, AnimDriver.NEVER)
+		ModelPose.Anim.STRIKE:
+			res = AnimDriver.tower_attack(id, true, interval, interval, 0)
+		ModelPose.Anim.RECOVER:
+			var recover: int = AnimDriver.TOWER_RECOIL_TICKS if id == AnimDriver.B_CELL_ID else AnimDriver.recover_ticks(interval)
+			res = AnimDriver.tower_attack(id, true, interval, interval, clampi(ticks, 1, recover))
+		STATE_ATTACK_LOOP:
+			var k: int = ticks % maxi(interval, MIN_CYCLE_TICKS)
+			res = AnimDriver.tower_attack(id, true, interval - k, interval, k)
+		_:
+			return false
+	pose.anim = int(res.x) as ModelPose.Anim
+	pose.attack_t = res.y
+	pose.aim = _tower_aim(facing_right)
+	return true
+
+
 ## Wall entries share the Mucous Wall's timings.
 func _anim_id(id: String) -> String:
 	return "mucous_wall" if id == WALLS_ID or id == POST_ID else id
@@ -707,13 +779,17 @@ func sheet_pose(id: String, state: int) -> ModelPose:
 	pose.time = 0.5
 	pose.seed = absi(id.hash())
 	pose.anim = state as ModelPose.Anim
+	var bcell: bool = id == AnimDriver.B_CELL_ID
+	if _is_tower(id) and (state == ModelPose.Anim.WINDUP or state == ModelPose.Anim.STRIKE):
+		pose.aim = _tower_aim(true)
 	match state:
 		ModelPose.Anim.MOVE:
 			pose.gait_phase = CELL_GAIT
 		ModelPose.Anim.WINDUP:
-			pose.attack_t = 0.4
+			# The B-Cell's WINDUP is its charge, 0 to 1; show it nearly full.
+			pose.attack_t = 0.9 if bcell else 0.4
 		ModelPose.Anim.STRIKE:
-			pose.attack_t = AnimDriver.STRIKE_T
+			pose.attack_t = 1.0 if bcell else AnimDriver.STRIKE_T
 		ModelPose.Anim.HIT:
 			pose.hit_t = 1.0
 			pose.shake = 1.0
@@ -813,7 +889,8 @@ func _draw_bounds(ci: CanvasItem, proj: IsoProjection, id: String) -> void:
 # --- contact sheet ----------------------------------------------------------
 
 func _sheet_cell_draw(cell: Control, id: String, state: int) -> void:
-	var proj := IsoProjection.new(CELL_TILE_PX, CELL_ANCHOR)
+	var big: bool = config != null and config.structures.has(id) and id != "mucous_wall"
+	var proj := IsoProjection.new(CELL_TOWER_TILE_PX if big else CELL_TILE_PX, CELL_ANCHOR)
 	cell.draw_rect(Rect2(Vector2.ZERO, Vector2(CELL_SIZE)), NIGHT_BG if night else DAY_BG)
 	if id == WALLS_ID:
 		var wp: IsoProjection = _walls_projection(WALLS_CELL_TILE_PX)
@@ -910,6 +987,40 @@ func render_walls_sheet() -> Image:
 	var img: Image = vp.get_texture().get_image()
 	vp.queue_free()
 	return img
+
+
+## The three tower close-ups side by side at T = 80 on a pad, idle. Needs a renderer.
+func render_towers_sheet() -> Image:
+	var size := Vector2i(TOWERS_CELL_SIZE.x * TOWER_IDS.size(), TOWERS_CELL_SIZE.y)
+	var vp := SubViewport.new()
+	vp.size = size
+	vp.transparent_bg = false
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(vp)
+	for i: int in range(TOWER_IDS.size()):
+		var cell := Cell.new()
+		cell.position = Vector2(i * TOWERS_CELL_SIZE.x, 0.0)
+		cell.size = Vector2(TOWERS_CELL_SIZE)
+		cell.clip_contents = true
+		var id: String = TOWER_IDS[i]
+		cell.draw_cb = func(ci: Control) -> void:
+			ci.draw_rect(Rect2(Vector2.ZERO, Vector2(TOWERS_CELL_SIZE)), NIGHT_BG if night else DAY_BG)
+			var proj := IsoProjection.new(TOWERS_TILE_PX, TOWERS_ANCHOR)
+			_draw_pad(ci, proj, TOWERS_PAD_TILES, night)
+			_draw_model(ci, proj, id, pose_for(id, ModelPose.Anim.IDLE, TOWERS_SHEET_TIME_S), true)
+			ci.draw_string(ThemeDB.fallback_font, Vector2(12.0, 26.0), id + " (T = 80)", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, LABEL_NIGHT if night else LABEL_DAY)
+		vp.add_child(cell)
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var img: Image = vp.get_texture().get_image()
+	vp.queue_free()
+	return img
+
+
+func _run_cli_towers_export(path: String) -> void:
+	var img: Image = await render_towers_sheet()
+	var err: int = img.save_png(path) if img != null else ERR_UNAVAILABLE
+	get_tree().quit(0 if err == OK else 1)
 
 
 func _run_cli_walls_export(path: String) -> void:

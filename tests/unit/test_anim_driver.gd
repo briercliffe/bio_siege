@@ -226,6 +226,21 @@ func test_bcell_charge_ramp_and_recoil() -> void:
 	assert_eq(pose.anim, ModelPose.Anim.IDLE)
 
 
+func test_tower_attack_pure_timings() -> void:
+	var charge: Vector2 = AnimDriver.tower_attack("b_cell", true, 3, 24, AnimDriver.NEVER)
+	assert_eq(int(charge.x), ModelPose.Anim.WINDUP)
+	assert_almost_eq(charge.y, 0.5, 0.0001)
+	assert_eq(int(AnimDriver.tower_attack("b_cell", false, 3, 24, AnimDriver.NEVER).x), ModelPose.Anim.IDLE, "no charge without a target")
+	assert_eq(AnimDriver.tower_attack("b_cell", true, 24, 24, 0), Vector2(float(ModelPose.Anim.STRIKE), 1.0))
+	var recoil: Vector2 = AnimDriver.tower_attack("b_cell", true, 21, 24, 3)
+	assert_eq(int(recoil.x), ModelPose.Anim.RECOVER)
+	assert_almost_eq(recoil.y, 0.5, 0.0001)
+	assert_eq(int(AnimDriver.tower_attack("macrophage", true, 8, 20, AnimDriver.NEVER).x), ModelPose.Anim.WINDUP, "macrophage windup is 8 ticks")
+	assert_eq(int(AnimDriver.tower_attack("macrophage", true, 9, 20, AnimDriver.NEVER).x), ModelPose.Anim.IDLE)
+	assert_eq(AnimDriver.tower_attack("macrophage", true, 20, 20, 0), Vector2(float(ModelPose.Anim.STRIKE), AnimDriver.STRIKE_T))
+	assert_eq(int(AnimDriver.tower_attack("macrophage", true, 19, 20, 1).x), ModelPose.Anim.RECOVER)
+
+
 func test_nucleus_and_walls_never_attack() -> void:
 	var sim: BattleSim = SimFixtures.make_sim([{"type": "mucous_wall", "origin": Vector2i(5, 5)}], [], 1, config)
 	var driver := AnimDriver.new()

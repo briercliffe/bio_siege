@@ -222,30 +222,33 @@ func _tower_attack(pose: ModelPose, s: StructureState, sim_tick: int, aim_ground
 		if screen.length_squared() > 0.000001:
 			pose.aim = screen.normalized()
 		pose.facing_right = facing_right(anchor, aim_ground, pose.facing_right)
-	var interval: int = s.def.attack_interval_ticks
 	var since_fire: int = sim_tick - int(_fire_s.get(s.id, NEVER))
-	if s.type_id == B_CELL_ID:
+	var res: Vector2 = tower_attack(s.type_id, s.target_id != 0, s.attack_cooldown, s.def.attack_interval_ticks, since_fire)
+	pose.anim = int(res.x) as ModelPose.Anim
+	pose.attack_t = res.y
+
+
+## Returns Vector2(anim, attack_t) for a tower. The B-Cell charges over the last TOWER_CHARGE_TICKS of its
+## cooldown (WINDUP, attack_t 0 to 1), fires (STRIKE, 1) and recoils for TOWER_RECOIL_TICKS (RECOVER, 0 to
+## 1). Other towers use the pathogen windup, strike and recover timing.
+static func tower_attack(type_id: String, has_target: bool, cooldown: int, interval_ticks: int, since_fire: int) -> Vector2:
+	if type_id == B_CELL_ID:
 		if since_fire == 0:
-			pose.anim = ModelPose.Anim.STRIKE
-			pose.attack_t = 1.0
-		elif since_fire > 0 and since_fire <= TOWER_RECOIL_TICKS:
-			pose.anim = ModelPose.Anim.RECOVER
-			pose.attack_t = float(since_fire) / float(TOWER_RECOIL_TICKS)
-		elif s.target_id != 0 and s.attack_cooldown <= TOWER_CHARGE_TICKS:
-			pose.anim = ModelPose.Anim.WINDUP
-			pose.attack_t = 1.0 - float(s.attack_cooldown) / float(TOWER_CHARGE_TICKS)
-		return
-	var windup: int = windup_ticks(interval)
-	var recover: int = recover_ticks(interval)
+			return Vector2(float(ModelPose.Anim.STRIKE), 1.0)
+		if since_fire > 0 and since_fire <= TOWER_RECOIL_TICKS:
+			return Vector2(float(ModelPose.Anim.RECOVER), float(since_fire) / float(TOWER_RECOIL_TICKS))
+		if has_target and cooldown <= TOWER_CHARGE_TICKS:
+			return Vector2(float(ModelPose.Anim.WINDUP), 1.0 - float(cooldown) / float(TOWER_CHARGE_TICKS))
+		return Vector2(float(ModelPose.Anim.IDLE), 0.0)
+	var windup: int = windup_ticks(interval_ticks)
+	var recover: int = recover_ticks(interval_ticks)
 	if since_fire == 0:
-		pose.anim = ModelPose.Anim.STRIKE
-		pose.attack_t = STRIKE_T
-	elif since_fire > 0 and since_fire <= recover:
-		pose.anim = ModelPose.Anim.RECOVER
-		pose.attack_t = 0.6 + 0.4 * float(since_fire) / float(recover)
-	elif s.target_id != 0 and windup > 0 and s.attack_cooldown <= windup:
-		pose.anim = ModelPose.Anim.WINDUP
-		pose.attack_t = 0.4 * (1.0 - float(s.attack_cooldown) / float(windup))
+		return Vector2(float(ModelPose.Anim.STRIKE), STRIKE_T)
+	if since_fire > 0 and since_fire <= recover:
+		return Vector2(float(ModelPose.Anim.RECOVER), 0.6 + 0.4 * float(since_fire) / float(recover))
+	if has_target and windup > 0 and cooldown <= windup:
+		return Vector2(float(ModelPose.Anim.WINDUP), 0.4 * (1.0 - float(cooldown) / float(windup)))
+	return Vector2(float(ModelPose.Anim.IDLE), 0.0)
 
 
 func _apply_hit(pose: ModelPose, ticks_since_hit: int) -> void:
