@@ -54,6 +54,9 @@ func _exit_tree() -> void:
 	if army != null and army.changed.is_connected(_on_army_changed):
 		army.changed.disconnect(_on_army_changed)
 
+func _ready() -> void:
+	set_process_unhandled_input(true)
+
 func _process(_delta: float) -> void:
 	if deploy_mode:
 		queue_redraw()
