@@ -19,6 +19,12 @@ class DrawProbe extends Node2D:
 		PaintKit.horizontal_gradient_rect(self, rect, Color.WHITE, Color.BLACK)
 		var cols: Array[Color] = [Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW, Color.WHITE]
 		PaintKit.cylinder(self, Vector2(50.0, 50.0), 14.0, 1.0, 0.0, 0.75, cols)
+		PaintKit.oval(self, Transform2D(0.0, Vector2(30.0, 30.0)), Vector2(0.0, -1.0), Vector2(2.0, 0.7), 14.0, Color.RED)
+		PaintKit.oval(self, Transform2D.IDENTITY, Vector2.ZERO, Vector2(0.0, 1.0), 14.0, Color.RED)
+		var ped: Array[Color] = [Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW, Color.WHITE, Color.BLACK]
+		for flat: bool in [false, true]:
+			PaintKit.pedestal(self, Transform2D(0.0, Vector2(60.0, 60.0)), 14.0, 1.0, 0.75, ped, flat)
+		draw_set_transform(Vector2.ZERO)
 		var pose := ModelPose.new()
 		pose.hit_t = 0.5
 		pose.death_t = 0.25

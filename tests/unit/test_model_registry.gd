@@ -27,8 +27,15 @@ func test_every_config_id_has_a_cached_painter() -> void:
 			assert_true(a is StaphPainter, "real painter registered: %s" % id)
 		elif id == "mucous_wall":
 			assert_true(a is WallPainter, "lone-cell wall painter registered: %s" % id)
+		elif id == "macrophage":
+			assert_true(a is MacrophagePainter, "real painter registered: %s" % id)
+		elif id == "b_cell":
+			assert_true(a is BCellPainter, "real painter registered: %s" % id)
+		elif id == "nucleus":
+			assert_true(a is NucleusPainter, "real painter registered: %s" % id)
 		else:
 			assert_true(a is PlaceholderPainter, "placeholder until a real painter is registered: %s" % id)
+	assert_true(ModelRegistry.painter_for("not_a_model") is PlaceholderPainter, "unknown ids fall back to a placeholder")
 
 
 func test_heights_match_the_spec() -> void:
@@ -40,10 +47,11 @@ func test_heights_match_the_spec() -> void:
 		assert_almost_eq(ModelRegistry.painter_for(id).height_tiles(), float(expected[id]), 0.0001, id)
 
 
-func test_placeholder_painter_uses_config_look() -> void:
+func test_configure_leaves_real_painters_alone() -> void:
+	# Every config id has a real painter now, so configure() has no placeholder to style. The Nucleus
+	# ignores its rounded_square placeholder shape and is always the dome.
 	ModelRegistry.configure(config)
-	# Every pathogen has a real painter now; structures still use placeholders.
-	var def: StructureDef = config.structures["macrophage"]
-	var painter: PlaceholderPainter = ModelRegistry.painter_for("macrophage") as PlaceholderPainter
-	assert_eq(painter.shape, def.placeholder_shape)
-	assert_eq(painter.color, def.placeholder_color)
+	assert_eq((config.structures["nucleus"] as StructureDef).placeholder_shape, "rounded_square")
+	assert_true(ModelRegistry.painter_for("nucleus") is NucleusPainter)
+	assert_true(ModelRegistry.painter_for("macrophage") is MacrophagePainter)
+	assert_true(ModelRegistry.painter_for("b_cell") is BCellPainter)
