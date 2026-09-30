@@ -61,6 +61,10 @@ const GATHER_BACK: float = 0.2
 const GATHER_SCALE_Y: float = 0.92
 const WINDUP_END: float = 0.4
 const HEAVE_FROM: float = 0.3
+## The heave peaks here rather than at WINDUP_END: the last windup frame AnimDriver produces has
+## attack_t = WINDUP_END * (1 - 1 / windup ticks), about 0.367 for the capped 12-tick windup, and
+## WINDUP_END itself is only reached on the strike tick.
+const HEAVE_TO: float = 0.36
 const HEAVE_T: float = 0.3
 const RECOVER_START: float = 0.6
 const SLAM_SQUASH: Vector2 = Vector2(1.14, 0.86)
@@ -92,7 +96,8 @@ const TRAIL_COLOR: Color = Color(0.94, 0.8, 0.35, 1.0)
 const TRAIL_FADE_S: float = 1.5
 
 
-## Fixed-size ring of past positions, in tiles of screen space so it survives a change of zoom.
+## Fixed-size ring of past positions, in tiles of screen space (anchor / t, projection origin included).
+## UnitLayer resets the painter when the tile size or origin changes, so a stale trail is never drawn.
 class Trail extends RefCounted:
 	var pts: PackedVector2Array = PackedVector2Array()
 	var head: int = 0       # next slot to write
@@ -172,6 +177,15 @@ func paint_ground(ci: CanvasItem, anchor: Vector2, pose: ModelPose, t: float) ->
 	ci.draw_set_transform(Vector2.ZERO)
 
 
+## Returns every trail to the pool. Trails are keyed by seed and stored in screen tiles, so they are stale
+## once a battle ends or the projection moves.
+func reset() -> void:
+	for tr_var: Variant in _trails.values():
+		var tr: Trail = tr_var
+		_pool.append(tr)
+	_trails.clear()
+
+
 func _release(seed_id: int) -> void:
 	var tr: Trail = _trails.get(seed_id)
 	if tr != null:
@@ -205,7 +219,7 @@ func paint(ci: CanvasItem, anchor: Vector2, pose: ModelPose, t: float) -> void:
 			shift = -GATHER_BACK * k
 			sq.y = lerpf(1.0, GATHER_SCALE_Y, k)
 			# The heave: the cluster jumps at the end of the windup and lands on the strike tick.
-			lift = -HEAVE_T * Easing.ease_in_out(clampf((pose.attack_t - HEAVE_FROM) / (WINDUP_END - HEAVE_FROM), 0.0, 1.0))
+			lift = -HEAVE_T * Easing.ease_in_out(clampf((pose.attack_t - HEAVE_FROM) / (HEAVE_TO - HEAVE_FROM), 0.0, 1.0))
 		ModelPose.Anim.STRIKE:
 			sq = SLAM_SQUASH
 		ModelPose.Anim.RECOVER:

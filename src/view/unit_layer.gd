@@ -80,6 +80,7 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 	driver = AnimDriver.new()
 	view_time = 0.0
 	ModelRegistry.configure(config, projection.scale if projection != null else IsoProjection.DEFAULT_SCALE)
+	ModelRegistry.reset_painters()
 	_dying_p.clear()
 	_dying_s.clear()
 	_scorch.clear()
@@ -250,6 +251,8 @@ func _refresh_wall_cache() -> void:
 	if key != _faces_key:
 		_faces_key = key
 		_wall_faces.clear()
+		# Painter state such as the staph trails is stored in screen space.
+		ModelRegistry.reset_painters()
 
 
 func _faces_for(s: StructureState) -> Array[PackedVector2Array]:

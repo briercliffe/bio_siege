@@ -46,7 +46,7 @@ const CRACK_A: Array[Vector2] = [Vector2(0.2, 0.2), Vector2(0.62, 0.6)]
 const CRACK_B: Array[Vector2] = [Vector2(0.72, 0.12), Vector2(0.4, 0.82)]
 const CRACK_WIDTH_PX_AT_14: float = 1.5
 
-## Below this tile size the sheath stripes, facets, highlight and collar are skipped (issue: detail cutoff).
+## Below this tile size the sheath stripes, facets and highlight are skipped (issue: detail cutoff).
 const LOW_DETAIL_T_PX: float = 10.0
 ## Below this tile size the legs are plain polylines, the stripes, pads, underside, highlight and the
 ## baseplate shading are skipped and the sheath is one flat rect. Every draw command costs around 10 to 15
@@ -185,9 +185,9 @@ func paint(ci: CanvasItem, anchor: Vector2, pose: ModelPose, t: float) -> void:
 	# Back legs (drawn first), then the injection glow and the baseplate.
 	for i: int in range(2):
 		var sg: float = float(i * 2 - 1)
-		_paint_leg(ci, t, sg, BACK_HIP, BACK_KNEE, BACK_FOOT, BACK_THICK, body_dy, foot_b, lift_b, splay, _cols[C_BACK_LEG])
+		var back_foot: Vector2 = _paint_leg(ci, t, sg, BACK_HIP, BACK_KNEE, BACK_FOOT, BACK_THICK, body_dy, foot_b, lift_b, splay, _cols[C_BACK_LEG])
 		if not low:
-			_oval(ci, base, Vector2(BACK_FOOT.x * sg + foot_b, BACK_FOOT.y + lift_b + PAD_DROP), BACK_PAD, t, _cols[C_BACK_PAD])
+			_oval(ci, base, back_foot + Vector2(0.0, PAD_DROP), BACK_PAD, t, _cols[C_BACK_PAD])
 	if not low:
 		_oval(ci, base, UNDER_RECT.get_center() + Vector2(0.0, body_dy), UNDER_RECT.size, t, _cols[C_UNDER])
 	if glow > 0.0:
@@ -198,9 +198,9 @@ func paint(ci: CanvasItem, anchor: Vector2, pose: ModelPose, t: float) -> void:
 
 	for i: int in range(2):
 		var sg: float = float(i * 2 - 1)
-		_paint_leg(ci, t, sg, FRONT_HIP, FRONT_KNEE, FRONT_FOOT, FRONT_THICK, body_dy, foot_f, lift_f, splay, _cols[C_FRONT_LEG])
+		var front_foot: Vector2 = _paint_leg(ci, t, sg, FRONT_HIP, FRONT_KNEE, FRONT_FOOT, FRONT_THICK, body_dy, foot_f, lift_f, splay, _cols[C_FRONT_LEG])
 		if not low:
-			_oval(ci, base, Vector2(FRONT_FOOT.x * sg + foot_f, FRONT_FOOT.y + lift_f + PAD_DROP), FRONT_PAD, t, _cols[C_FRONT_PAD])
+			_oval(ci, base, front_foot + Vector2(0.0, PAD_DROP), FRONT_PAD, t, _cols[C_FRONT_PAD])
 
 	# Tail sheath and collar drive down together on the strike.
 	var dy: float = body_dy + sheath_dy
@@ -215,8 +215,7 @@ func paint(ci: CanvasItem, anchor: Vector2, pose: ModelPose, t: float) -> void:
 		for f: float in STRIPE_AT:
 			var y: float = sheath.position.y + sheath.size.y * f
 			ci.draw_line(Vector2(sheath.position.x, y), Vector2(sheath.end.x, y), _cols[C_STRIPE], stripe_w)
-	if t >= LOW_DETAIL_T_PX:
-		_oval(ci, base, COLLAR_RECT.get_center() + Vector2(0.0, dy), COLLAR_RECT.size, t, _cols[C_COLLAR])
+	_oval(ci, base, COLLAR_RECT.get_center() + Vector2(0.0, dy), COLLAR_RECT.size, t, _cols[C_COLLAR])
 
 	# Head: rotated about the top of the collar. The hex is one gradient polygon, the facets are the two
 	# halves of it, light on the left and dark on the right.
@@ -238,8 +237,9 @@ func paint(ci: CanvasItem, anchor: Vector2, pose: ModelPose, t: float) -> void:
 
 
 ## One leg: hip to knee to foot. The feet stay on the ground while the hip drops with the body and the knee
-## follows halfway. `splay` rotates knee and foot outward about the hip (death).
-func _paint_leg(ci: CanvasItem, t: float, sg: float, hip: Vector2, knee: Vector2, foot: Vector2, thick: float, body_dy: float, foot_x: float, lift: float, splay: float, col: Color) -> void:
+## follows halfway. `splay` rotates knee and foot outward about the hip (death). Returns the foot in tiles,
+## so the pad sits on it.
+func _paint_leg(ci: CanvasItem, t: float, sg: float, hip: Vector2, knee: Vector2, foot: Vector2, thick: float, body_dy: float, foot_x: float, lift: float, splay: float, col: Color) -> Vector2:
 	var h: Vector2 = Vector2(hip.x * sg, hip.y + body_dy)
 	var k: Vector2 = Vector2(knee.x * sg + foot_x * 0.5, knee.y + body_dy * 0.5 + lift * 0.5)
 	var f: Vector2 = Vector2(foot.x * sg + foot_x, foot.y + lift)
@@ -254,6 +254,8 @@ func _paint_leg(ci: CanvasItem, t: float, sg: float, hip: Vector2, knee: Vector2
 		ci.draw_polyline(_leg, col, width)
 	else:
 		PaintKit.bar(ci, h * t, k * t, width, col)
+		PaintKit.bar(ci, k * t, f * t, width, col)
+	return f
 
 
 ## Radial glow under the baseplate: three stacked circles, brightest at the centre.

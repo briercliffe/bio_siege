@@ -138,3 +138,61 @@ func test_death_through_every_pop_threshold_draws_cleanly() -> void:
 	await wait_process_frames(2)
 	assert_gt(host.draw_count, 0)
 	assert_eq(get_logger().get_errors().size(), 0)
+
+
+func _lay_trail(ci: CanvasItem, painter: StaphPainter, seed_id: int) -> void:
+	for i: int in range(10):
+		var pose: ModelPose = _ground_pose(seed_id, ModelPose.Anim.MOVE)
+		pose.time = float(i) * 0.05
+		painter.paint_ground(ci, Vector2(100.0 + float(i) * 14.0, 100.0), pose, 14.0)
+
+
+func test_reset_returns_every_trail() -> void:
+	var host := DrawHost.new()
+	add_child_autofree(host)
+	var painter := StaphPainter.new()
+	host.draw_cb = func(ci: CanvasItem) -> void:
+		_lay_trail(ci, painter, 4)
+		_lay_trail(ci, painter, 5)
+		assert_gt(painter.trail_count(4), 0)
+		assert_gt(painter.trail_count(5), 0)
+		painter.reset()
+		assert_eq(painter.trail_count(4), 0, "reset clears a live unit's trail")
+		assert_eq(painter.trail_count(5), 0)
+		# A new unit that reuses the seed (ids restart each battle) starts with no trail.
+		painter.paint_ground(ci, Vector2(500.0, 100.0), _ground_pose(4, ModelPose.Anim.MOVE), 14.0)
+		assert_eq(painter.trail_count(4), 0)
+	host.queue_redraw()
+	await wait_process_frames(2)
+	assert_gt(host.draw_count, 0)
+	assert_eq(get_logger().get_errors().size(), 0)
+
+
+func test_registry_reset_painters_clears_the_cached_staph_trails() -> void:
+	var host := DrawHost.new()
+	add_child_autofree(host)
+	var painter: StaphPainter = ModelRegistry.painter_for("staphylococcus") as StaphPainter
+	host.draw_cb = func(ci: CanvasItem) -> void:
+		_lay_trail(ci, painter, 11)
+		assert_gt(painter.trail_count(11), 0)
+		ModelRegistry.reset_painters()
+		assert_eq(painter.trail_count(11), 0)
+	host.queue_redraw()
+	await wait_process_frames(2)
+	assert_gt(host.draw_count, 0)
+	assert_eq(get_logger().get_errors().size(), 0)
+
+
+func test_unit_layer_setup_resets_the_staph_trails() -> void:
+	var host := DrawHost.new()
+	add_child_autofree(host)
+	var painter: StaphPainter = ModelRegistry.painter_for("staphylococcus") as StaphPainter
+	host.draw_cb = func(ci: CanvasItem) -> void:
+		_lay_trail(ci, painter, 12)
+	host.queue_redraw()
+	await wait_process_frames(2)
+	assert_gt(painter.trail_count(12), 0)
+	var layer := UnitLayer.new()
+	add_child_autofree(layer)
+	layer.setup(null, null, null, null, null)
+	assert_eq(painter.trail_count(12), 0, "a new battle starts with no trails")

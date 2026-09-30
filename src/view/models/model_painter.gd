@@ -9,8 +9,17 @@ func paint(_ci: CanvasItem, _anchor: Vector2, _pose: ModelPose, _t_px: float) ->
 	pass
 
 
-## Optional decals drawn before all sprites.
+## Optional ground decals (trails, shockwaves). UnitLayer calls this for each unit just before that unit's
+## paint(), inside the depth-sorted pass, so a decal sorts with its unit: it covers anything painted
+## earlier (units behind) and is covered by anything painted later (units in front).
 func paint_ground(_ci: CanvasItem, _anchor: Vector2, _pose: ModelPose, _t_px: float) -> void:
+	pass
+
+
+## Virtual. Drops any per-unit state the painter keeps between frames (painters are cached and shared, and
+## entity ids restart with each battle). UnitLayer calls it through ModelRegistry.reset_painters() at the
+## start of a battle and whenever the projection's tile size or origin changes. No-op by default.
+func reset() -> void:
 	pass
 
 

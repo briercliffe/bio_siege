@@ -107,3 +107,25 @@ func test_head_draws_cleanly_for_both_facings() -> void:
 	host.queue_redraw()
 	await wait_process_frames(2)
 	assert_eq(get_logger().get_errors().size(), 0)
+
+
+func test_leg_returns_the_foot_it_draws_to_and_splay_moves_it() -> void:
+	var host := DrawHost.new()
+	add_child_autofree(host)
+	var painter := PhagePainter.new()
+	var feet: Array[Vector2] = []
+	host.draw_cb = func(ci: CanvasItem) -> void:
+		for t: float in [14.0, 56.0]:
+			feet.append(painter._paint_leg(ci, t, 1.0, PhagePainter.FRONT_HIP, PhagePainter.FRONT_KNEE, PhagePainter.FRONT_FOOT, PhagePainter.FRONT_THICK, 0.0, 0.0, 0.0, 0.0, Color.WHITE))
+			feet.append(painter._paint_leg(ci, t, 1.0, PhagePainter.FRONT_HIP, PhagePainter.FRONT_KNEE, PhagePainter.FRONT_FOOT, PhagePainter.FRONT_THICK, 0.0, 0.0, 0.0, deg_to_rad(PhagePainter.SPLAY_DEG), Color.WHITE))
+		ci.draw_set_transform(Vector2.ZERO)
+	host.queue_redraw()
+	await wait_process_frames(2)
+	assert_eq(feet.size(), 4)
+	var hip: Vector2 = PhagePainter.FRONT_HIP
+	var expected: Vector2 = hip + (PhagePainter.FRONT_FOOT - hip).rotated(-deg_to_rad(PhagePainter.SPLAY_DEG))
+	for i: int in [0, 2]:
+		assert_almost_eq(feet[i], PhagePainter.FRONT_FOOT, Vector2(0.0001, 0.0001), "unsplayed foot is the canvas foot")
+		assert_almost_eq(feet[i + 1], expected, Vector2(0.0001, 0.0001), "the pad follows the splayed foot")
+		assert_almost_eq((feet[i + 1] - hip).length(), (PhagePainter.FRONT_FOOT - hip).length(), 0.0001, "splay keeps the leg length")
+	assert_eq(get_logger().get_errors().size(), 0)
