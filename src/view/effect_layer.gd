@@ -365,7 +365,7 @@ func _alpha() -> float:
 # --- ground pass (called by UnitLayer before its sprites) ---------------------
 
 func draw_ground(ci: CanvasItem) -> void:
-	if not build_ground():
+	if not build_ground() or (_scorch.ni == 0 and _splash.ni == 0):
 		return
 	ci.draw_set_transform_matrix(projection.ground_transform())
 	_scorch.flush(ci)
