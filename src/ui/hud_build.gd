@@ -162,8 +162,8 @@ var btn_menu: IconButton = null
 var btn_finalize: PillButton = null
 var btn_undo: PillButton = null
 
-## Living Base widgets: extra wallet pills, the Mitochondria "Stored" block, the Raid button, the Upgrades button
-## (with the amino_upgrades flag) and the Defense log button (hidden until LB-17 switches it on).
+## Living Base widgets: extra wallet pills, the Mitochondria "Stored" block, the Raid button, the Defense log
+## button and the Upgrades button (with the amino_upgrades flag).
 var aa_pill: PillPanel = null
 var aa_label: Label = null
 var dna_pill: PillPanel = null
@@ -562,16 +562,13 @@ func _update_living_base() -> void:
 	_layout_wallet_pills()
 
 
-## LB-17 switches the Defense log button on here. Upgrades shows with the amino_upgrades flag.
-func show_living_base_buttons(defense_log: bool) -> void:
-	btn_defense_log.visible = defense_log and is_living_base()
-	_sync_lb_buttons()
-
-
+## Defense log shows in Living Base; Upgrades shows with the amino_upgrades flag.
 func _sync_lb_buttons() -> void:
-	var upgrades: bool = is_living_base() and session.config.flag("amino_upgrades")
+	var lb: bool = is_living_base()
+	var upgrades: bool = lb and session.config.flag("amino_upgrades")
+	btn_defense_log.visible = lb
 	btn_upgrades.visible = upgrades
-	lb_buttons.visible = btn_defense_log.visible or upgrades
+	lb_buttons.visible = lb
 
 
 func _layout_wallet_pills() -> void:

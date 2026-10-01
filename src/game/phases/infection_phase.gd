@@ -2,6 +2,8 @@ class_name InfectionPhase
 extends Control
 
 const GridViewScene: PackedScene = preload("res://src/view/grid_view.tscn")
+const REPLAY_TITLE: String = "REPLAY"
+const REPLAY_SUBTITLE: String = "Recorded raid"
 const HudCombatScene: PackedScene = preload("res://src/ui/hud_combat.tscn")
 
 var session: Session = null
@@ -162,7 +164,9 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 
 	_dispatch_events()
 	_update_grid_layout()
-	if session != null and session.live_defense:
+	if session != null and session.replay_mode:
+		hud_combat.phase_pill.set_phase(REPLAY_TITLE, REPLAY_SUBTITLE)
+	elif session != null and session.live_defense:
 		_show_defender_intro()
 
 
@@ -303,6 +307,16 @@ func _abandon(reason: String, to: GameStateMachine.Phase) -> void:
 	if runner != null:
 		runner.paused = true
 		runner.is_running = false
+	if session != null and session.replay_mode:
+		# Leaving a replay changes nothing: both Restart and Quit go back to the base.
+		var log_replay: Node = logger if logger != null else SessionLogger
+		if log_replay != null and log_replay.has_method("log_event"):
+			log_replay.call("log_event", "battle_abandoned", {"reason": reason, "tick": tick})
+		if session.living_flow != null:
+			session.living_flow.end_replay()
+		if fsm != null:
+			fsm.force_transition(GameStateMachine.Phase.SYNTHESIS)
+		return
 	if session != null and session.live_defense:
 		# Abandoning a live AI raid applies nothing. Restart plays the same raid again.
 		var again: bool = to == GameStateMachine.Phase.INCUBATION
@@ -418,7 +432,23 @@ func _route_event(ev: Dictionary) -> void:
 var settings_path: String = GameSettings.DEFAULT_PATH
 
 
+## A replayed raid has no side effects: nothing is resolved, learned, bred or logged. It ends back at the base.
+func _finish_replay(sim: BattleSim) -> void:
+	if session.living_flow != null:
+		session.living_flow.end_replay(sim.state_hash() if sim != null else "")
+	else:
+		session.replay_mode = false
+		session.replay_expected_hash = ""
+		session.clear_attack_target()
+		session.battle_setup = null
+	if fsm != null:
+		fsm.force_transition(GameStateMachine.Phase.SYNTHESIS)
+
+
 func _on_battle_finished(sim: BattleSim) -> void:
+	if session != null and session.replay_mode:
+		_finish_replay(sim)
+		return
 	if session != null and sim != null:
 		var tick_rate: int = session.config.tick_rate if (session.config != null and session.config.tick_rate > 0) else 20
 		var battle_s: float = float(sim.tick) / float(tick_rate)

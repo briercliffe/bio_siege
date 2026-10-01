@@ -44,6 +44,7 @@ func enter(p_session: Session, defer_raids: bool = false) -> void:
 	session.profile = profile
 	session.living_flow = self
 	session.live_defense = false
+	session.replay_mode = false
 	session.clear_attack_target()
 	_apply_profile_to_session()
 	_plan_away_raids(now)
@@ -142,6 +143,46 @@ func finish_live_defense(sim: BattleSim) -> Dictionary:
 	_load_defender_state_into_session()
 	sync_profile_from_session()
 	return entry
+
+
+## Sets up the replay of defense-log entry `index` (0 = newest): its recorded setup becomes the battle and its
+## structures the attack target. Nothing about the profile changes. Returns false for a missing entry or replay.
+func begin_replay(index: int) -> bool:
+	if not is_active() or index < 0 or index >= session.profile.defense_log.size():
+		return false
+	var battle: Variant = session.profile.defense_log[index].get("battle", null)
+	if not (battle is Dictionary):
+		return false
+	var setup: BattleSetup = SnapshotIO.setup_from_battle(battle as Dictionary)
+	var layout: Array[Dictionary] = []
+	for entry: Dictionary in setup.structures:
+		layout.append(entry.duplicate(true))
+	session.battle_setup = setup
+	session.attack_layout = layout
+	session.attack_memory = ImmuneMemory.new()
+	session.attack_populations = {}
+	session.attack_opponent_id = ""
+	session.army = Army.new(session.config)
+	session.prediction_structure_id = 0
+	session.last_result = {}
+	session.last_launch = {}
+	session.live_defense = false
+	session.replay_mode = true
+	session.replay_expected_hash = str(((battle as Dictionary).get("result", {}) as Dictionary).get("final_state_hash", ""))
+	return true
+
+
+## Ends a replay (finished or abandoned): the replay flags and the attack target are cleared. When the final
+## hash differs from the recorded one, a notice is queued for the next Synthesis visit.
+func end_replay(final_hash: String = "") -> void:
+	if session == null:
+		return
+	if final_hash != "" and session.replay_expected_hash != "" and final_hash != session.replay_expected_hash:
+		notices.append("Replay differs from the recorded raid (data changed since).")
+	session.replay_mode = false
+	session.replay_expected_hash = ""
+	session.clear_attack_target()
+	session.battle_setup = null
 
 
 ## Leaves a live defense: the target and the live flag are cleared and the profile saved.
