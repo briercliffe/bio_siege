@@ -30,6 +30,9 @@ const PATHOGEN_SIZE_T: Dictionary = {
 const DEFAULT_PATHOGEN_SIZE_T: Vector2 = Vector2(1.2, 1.25)
 
 const WALL_TYPE_ID: String = "mucous_wall"
+## Draw pathogens from the baked atlas (SpriteBaker) instead of painting them every frame. On because the
+## measurements in docs/PERF_BASELINE.md ("After M6") show the live painters miss the frame budget.
+const USE_BAKED_SPRITES: bool = true
 const CRACK_PULSE_LO: float = 0.6
 const CRACK_PULSE_HI: float = 1.0
 
@@ -63,6 +66,8 @@ var _breached: Dictionary = {}
 var _expired: Array[int] = []
 
 var driver: AnimDriver = AnimDriver.new()
+var baker: SpriteBaker = null
+var _baked_key: Vector2 = Vector2(-1.0, -1.0)
 ## Its ground decals are painted in this layer's ground pass, under the sprites: scorch before the plates,
 ## splash rings after them.
 var effects: EffectLayer = null
@@ -95,6 +100,7 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 	view_time = 0.0
 	ModelRegistry.configure(config, projection.scale if projection != null else IsoProjection.DEFAULT_SCALE)
 	ModelRegistry.reset_painters()
+	_bake_sprites()
 	_dying_p.clear()
 	_dying_s.clear()
 	_goo.clear()
@@ -113,6 +119,8 @@ func set_reduce_flashes(value: bool) -> void:
 func _process(delta: float) -> void:
 	if sim == null:
 		return
+	if baker != null and projection != null and _bake_key() != _baked_key:
+		_bake_sprites()
 	if is_live():
 		view_time += delta
 		queue_redraw()
@@ -351,6 +359,29 @@ func _refresh_wall_cache() -> void:
 	walls.rebuild(_wall_cells, projection)
 
 
+## Bakes (or rebakes, when T or the screen scale changed) the pathogen atlas. Until it is ready the
+## pathogens are painted live.
+func _bake_sprites() -> void:
+	if not USE_BAKED_SPRITES or config == null or projection == null or not is_inside_tree():
+		return
+	_baked_key = _bake_key()
+	if baker == null:
+		baker = SpriteBaker.new()
+		baker.name = "SpriteBaker"
+		add_child(baker, false, Node.INTERNAL_MODE_FRONT)
+	var ids: Array[String] = []
+	for id_var: Variant in config.pathogens:
+		ids.append(str(id_var))
+	ids.sort()
+	baker.bake(ids, projection.tile_px, _bake_key().y)
+
+
+## (tile px, screen scale): what an atlas depends on besides the types.
+func _bake_key() -> Vector2:
+	var xf: Transform2D = get_viewport().get_final_transform() * get_global_transform_with_canvas()
+	return Vector2(projection.tile_px, xf.get_scale().x)
+
+
 func _wall_pose(s: StructureState) -> ModelPose:
 	return driver.pose_for_structure(s, sim.tick, Vector2.ZERO, view_time)
 
@@ -421,4 +452,6 @@ func _draw_pathogen(p: PathogenState) -> void:
 	var foot: Vector2 = projection.ground_to_screen(ground)
 	# A painter's ground decals (trail, shockwave) go down just before the unit, so they sort with it.
 	painter.paint_ground(self, foot, pose, projection.tile_px)
+	if USE_BAKED_SPRITES and baker != null and baker.draw(self, p.type_id, pose, foot):
+		return
 	painter.paint(self, foot, pose, projection.tile_px)
