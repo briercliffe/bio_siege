@@ -9,7 +9,6 @@ const DEFAULT_PATH: String = "user://settings.cfg"
 
 const SECTION_GAME: String = "game"
 const KEY_SEEN_HOW_TO_PLAY: String = "seen_how_to_play"
-const KEY_BEST_OUTBREAK: String = "best_outbreak_score"
 
 const SECTION_AUDIO: String = "audio"
 const KEY_MASTER_VOLUME: String = "master_volume"

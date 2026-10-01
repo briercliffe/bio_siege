@@ -24,7 +24,6 @@
     "phage_hijack": false,
     "strains": false,
     "immune_memory": false,
-    "outbreak_mode": false,
     "intent_lines_default": true
   },
   "immune_memory": { "max_level": 3, "seed_pct_per_level": 25, "decay_raids": 2, "slots": 3, "drift_pct": 50 }

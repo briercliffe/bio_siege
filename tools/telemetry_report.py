@@ -75,22 +75,6 @@ def defense_share_of(launch: Optional[Dict[str, Any]]) -> Any:
     return round(base / total, 3)
 
 
-def extract_outbreak_runs(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """outbreak_run_end events, each attributed to the flags of the most recent launch."""
-    runs: List[Dict[str, Any]] = []
-    last_launch: Optional[Dict[str, Any]] = None
-    for ev in events:
-        name = ev.get("event")
-        if name == "launch":
-            last_launch = ev
-        elif name == "outbreak_run_end":
-            runs.append({
-                "flags_key": flags_key_of(last_launch),
-                "generations_cleared": ev.get("generations_cleared", ""),
-            })
-    return runs
-
-
 def extract_battles(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     battles: List[Dict[str, Any]] = []
     current_launch: Optional[Dict[str, Any]] = None
@@ -151,10 +135,13 @@ def _prediction_outcomes(battles: List[Dict[str, Any]]) -> List[bool]:
     ]
 
 
-def identity_metrics_lines(battles: List[Dict[str, Any]], outbreak_runs: List[Dict[str, Any]]) -> List[str]:
-    """The 'Identity metrics' summary section, one block per flags_key."""
+def identity_metrics_lines(battles: List[Dict[str, Any]]) -> List[str]:
+    """The 'Identity metrics' summary section, one block per flags_key.
+
+    Outbreak mode was removed (#149); old logs with outbreak_* events are still read, and those events are ignored.
+    """
     lines: List[str] = ["", "Identity metrics (by flag set):"]
-    keys = sorted({str(b.get("flags_key", "none")) for b in battles} | {str(r["flags_key"]) for r in outbreak_runs})
+    keys = sorted({str(b.get("flags_key", "none")) for b in battles})
     if not keys:
         lines.append("  (no battles)")
         return lines
@@ -163,8 +150,6 @@ def identity_metrics_lines(battles: List[Dict[str, Any]], outbreak_runs: List[Di
         shares = [float(b["largest_strain_share"]) for b in group if _is_number(b.get("largest_strain_share"))]
         defs = [float(b["defense_share"]) for b in group if _is_number(b.get("defense_share"))]
         scores = [float(b["score"]) for b in group if _is_number(b.get("score"))]
-        cleared = [float(r["generations_cleared"]) for r in outbreak_runs
-                   if r["flags_key"] == key and _is_number(r["generations_cleared"])]
         preds = _prediction_outcomes(group)
         lines.append(f"  [{key}]")
         lines.append(f"    battles: {len(group)}")
@@ -177,10 +162,6 @@ def identity_metrics_lines(battles: List[Dict[str, Any]], outbreak_runs: List[Di
             if defs else "    battles with defense_share > 0.20: n/a"
         )
         lines.append(f"    median score: {statistics.median(scores):g}" if scores else "    median score: n/a")
-        lines.append(
-            f"    outbreak median generations_cleared: {statistics.median(cleared):g}" if cleared
-            else "    outbreak median generations_cleared: n/a"
-        )
         correct = sum(1 for p in preds if p)
         lines.append(
             f"    prediction accuracy: {correct}/{len(preds)} ({correct / len(preds) * 100:.1f}%)" if preds
@@ -316,7 +297,7 @@ def generate_report(events: List[Dict[str, Any]], out_dir: str) -> None:
             f"  - Map Feel Breakdown: {map_feels}",
         ])
 
-    lines.extend(identity_metrics_lines(battles, extract_outbreak_runs(events)))
+    lines.extend(identity_metrics_lines(battles))
 
     with open(summary_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")

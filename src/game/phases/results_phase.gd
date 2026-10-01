@@ -76,7 +76,6 @@ var title_label: Label = null
 var reason_label: Label = null
 var score_label: Label = null
 var memory_label: Label = null
-var outbreak_label: Label = null
 
 # Stat tiles
 var tile_battle_time: StatTile = null
@@ -101,8 +100,6 @@ var split_widths: Dictionary = {}
 var btn_re_raid: PillButton = null
 var btn_edit_base: PillButton = null
 var btn_new_base: PillButton = null
-var btn_new_outbreak: PillButton = null
-var btn_retry_base: PillButton = null
 
 # Right column
 var final_card: FloatingCard = null
@@ -183,14 +180,10 @@ func _build_left_column() -> void:
 	reason_label.name = "ReasonLabel"
 	head.add_child(reason_label)
 
-	# Lines for the optional flags (raid score, immune memory, outbreak run). Hidden in Lab mode.
+	# Lines for the optional flags (raid score, immune memory). Hidden when their flags are off.
 	var extras := HudParts.vbox(4)
 	extras.name = "FlagLines"
 	head.add_child(extras)
-	outbreak_label = HudParts.wrapping(HudParts.label("", 16, 700, _ink))
-	outbreak_label.name = "OutbreakLabel"
-	outbreak_label.visible = false
-	extras.add_child(outbreak_label)
 	score_label = HudParts.wrapping(HudParts.label("", 14, 700, _ink))
 	score_label.name = "ScoreLabel"
 	score_label.visible = false
@@ -219,12 +212,6 @@ func _build_left_column() -> void:
 			PillButton.Variant.SECONDARY, EDIT_WIDTH, "edit_base")
 	btn_new_base = _make_choice_button(buttons, "BtnNewBase", "New base", "Reset to 1000 ATP",
 			PillButton.Variant.SECONDARY, NEW_BASE_WIDTH, "new_base")
-	btn_new_outbreak = _make_choice_button(buttons, "BtnNewOutbreak", "New outbreak", "Fresh run, new base",
-			PillButton.Variant.PRIMARY, RE_RAID_WIDTH, "new_outbreak")
-	btn_new_outbreak.visible = false
-	btn_retry_base = _make_choice_button(buttons, "BtnRetryBase", "Retry this base", "Same base, run restarts",
-			PillButton.Variant.SECONDARY, EDIT_WIDTH, "retry_base")
-	btn_retry_base.visible = false
 
 
 func _make_tile(parent: Control, label: String, node_name: String) -> StatTile:
@@ -414,7 +401,6 @@ func _populate() -> void:
 	_populate_score(res, is_attacker_win)
 	_populate_memory(res)
 	_populate_atp_split()
-	_populate_outbreak(res)
 	_update_new_base_label()
 	_populate_survey()
 
@@ -616,61 +602,11 @@ func _populate_atp_split() -> void:
 	(legend_values["unspent"] as Label).text = str(unspent_atp)
 
 
-## Outbreak header line and button set (outbreak_mode flag). Identical to Lab mode when there is no run.
-func _populate_outbreak(res: Dictionary) -> void:
-	var run: Dictionary = {}
-	if res.has("outbreak") and res["outbreak"] is Dictionary:
-		run = res["outbreak"]
-	var active: bool = not run.is_empty()
-	var ended: bool = active and bool(run.get("ended", false))
-	outbreak_label.visible = active
-	outbreak_label.text = ""
-	btn_new_outbreak.visible = ended
-	btn_retry_base.visible = ended
-	btn_re_raid.visible = true
-	btn_edit_base.visible = true
-	_set_button(btn_re_raid, "Re-raid", "Same base, new army", RE_RAID_WIDTH)
-	_set_button(btn_edit_base, "Edit base", "Back to Synthesis", EDIT_WIDTH)
-	if not active:
-		return
-
-	var total: int = int(run.get("total_score", 0))
-	var text: String
-	if ended:
-		var cleared: int = (run.get("generation_scores", []) as Array).size()
-		var best: int = int(res.get("outbreak_best", total))
-		text = "Outbreak contained after %d %s · Run score %s · Best %s" % [
-			cleared, "generation" if cleared == 1 else "generations", _group(total), _group(best)]
-		btn_re_raid.visible = false
-		btn_edit_base.visible = false
-	else:
-		var scores: Array = run.get("generation_scores", [])
-		var last_score: int = int(scores[scores.size() - 1]) if not scores.is_empty() else 0
-		text = "Generation %d cleared · +%s · Run total %s" % [int(run.get("generation", 1)) - 1, _group(last_score), _group(total)]
-		_set_button(btn_re_raid, "Next generation", "Raid again", RE_RAID_WIDTH)
-		_set_button(btn_edit_base, "Next generation", "Edit base first", EDIT_WIDTH)
-	outbreak_label.text = text
-	stats["outbreak_generation"] = str(int(run.get("generation", 1)))
-	stats["outbreak_total"] = str(total)
-	stats["outbreak_ended"] = str(ended)
-
-
-## 1480 -> "1,480"
-static func _group(value: int) -> String:
-	var digits: String = str(absi(value))
-	var out: String = ""
-	while digits.length() > 3:
-		out = "," + digits.substr(digits.length() - 3) + out
-		digits = digits.substr(0, digits.length() - 3)
-	return ("-" if value < 0 else "") + digits + out
-
-
 func _update_new_base_label() -> void:
 	var start_atp: int = 1000
 	if session != null and session.config != null:
 		start_atp = int(session.config.start_wallet.get("atp", 1000))
-	var in_run: bool = outbreak_label.visible
-	_set_button(btn_new_base, "Abandon outbreak" if in_run else "New base", "Reset to %d ATP" % start_atp, NEW_BASE_WIDTH)
+	_set_button(btn_new_base, "New base", "Reset to %d ATP" % start_atp, NEW_BASE_WIDTH)
 
 
 ## Called by GameStateMachine after a config hot reload was applied (#27).
@@ -740,18 +676,9 @@ static func apply_choice(choice: String, session: Session, fsm: GameStateMachine
 				session.army.refund_all(session.wallet)
 			if fsm != null:
 				fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
-		"retry_base":
-			if session.army != null:
-				session.army.refund_all(session.wallet)
-			session.memory = ImmuneMemory.new()
-			session.outbreak = OutbreakRun.new()
-			if fsm != null:
-				fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
-		"new_base", "new_outbreak":
+		"new_base":
 			session.best_score = 0
 			session.memory = ImmuneMemory.new()
-			if choice == "new_outbreak" or session.outbreak != null:
-				session.outbreak = OutbreakRun.new()
 			if session.wallet != null and session.config != null:
 				session.wallet.reset(session.config.start_wallet)
 			if session.grid != null:

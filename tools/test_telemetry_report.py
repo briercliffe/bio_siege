@@ -136,10 +136,10 @@ class TestIdentityMetrics(unittest.TestCase):
         self.assertIn("[bcell_analysis+immune_memory]", text)
         both_block, none_block = text.split("[bcell_analysis+immune_memory]")[1].split("[none]")
         self.assertIn("battles: 1", none_block)
-        self.assertIn("outbreak median generations_cleared: n/a", none_block)
         self.assertIn("battles: 2", both_block)
         self.assertIn("median score: 510", both_block)
-        self.assertIn("outbreak median generations_cleared: 4", both_block)
+        # The fixture still holds an old outbreak_run_end event (#149): it is read and ignored.
+        self.assertNotIn("outbreak", text)
         self.assertIn("prediction accuracy: 1/2 (50.0%)", both_block)
 
     def test_old_logs_leave_new_columns_empty(self):

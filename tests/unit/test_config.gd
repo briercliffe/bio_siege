@@ -716,3 +716,13 @@ func test_config_without_immune_memory_block_loads() -> void:
 	assert_true(res.is_ok())
 	assert_eq(res.config.memory_slots, 0)
 	assert_false(res.config.memory_enabled())
+
+
+func test_outbreak_flag_removed_but_tolerated() -> void:
+	# Outbreak was removed (#149): the shipped data has no flag, and an old config that still sets it loads.
+	var shipped: ConfigLoadResult = GameConfig.load_from_dir("res://data")
+	assert_true(shipped.is_ok())
+	assert_false(shipped.config.feature_flags.has("outbreak_mode"))
+	var res: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["feature_flags"]["outbreak_mode"] = true)
+	assert_true(res.is_ok())
+	assert_true(res.config.flag("outbreak_mode"))
