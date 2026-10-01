@@ -58,7 +58,7 @@ func test_query_methods() -> void:
 
 	# structure_ids alphabetical
 	var s_ids: Array[String] = cfg.structure_ids()
-	assert_eq(s_ids, ["b_cell", "macrophage", "mitochondria", "mucous_wall", "nucleus"])
+	assert_eq(s_ids, ["b_cell", "dendritic_cell", "macrophage", "mitochondria", "mucous_wall", "nucleus"])
 
 	# pathogen_ids alphabetical
 	var p_ids: Array[String] = cfg.pathogen_ids()
@@ -392,7 +392,7 @@ func test_game_data_autoload() -> void:
 	assert_not_null(GameData, "GameData autoload must exist")
 	assert_not_null(GameData.config, "GameData.config must be loaded")
 	assert_eq(GameData.load_errors.size(), 0, "GameData.load_errors should be empty")
-	assert_eq(GameData.config.structure_ids().size(), 5)
+	assert_eq(GameData.config.structure_ids().size(), 6)
 	assert_eq(GameData.config.pathogen_ids().size(), 3)
 
 # -----------------------------------------------------------------------------

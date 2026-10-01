@@ -69,6 +69,29 @@
       "color": "#e74c3c"
     }
   },
+  "dendritic_cell": {
+    "display_name": "Dendritic Cell",
+    "role": "Shares B-Cell analysis nearby",
+    "cost": {
+      "atp": 120
+    },
+    "hp": 300,
+    "footprint": [2, 2],
+    "buildable": true,
+    "is_targetable": true,
+    "visible_to_attacker": true,
+    "path_weight": 15,
+    "tags": ["support"],
+    "attack": null,
+    "damage_multipliers": {},
+    "levels": [],
+    "requires_flag": "dendritic_cell",
+    "presenter": { "radius_tiles": 4.0 },
+    "placeholder": {
+      "shape": "diamond",
+      "color": "#a29bfe"
+    }
+  },
   "macrophage": {
     "display_name": "Macrophage",
     "role": "Splash damage, 4-tile range",

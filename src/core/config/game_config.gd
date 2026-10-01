@@ -448,6 +448,11 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 			s.slow_aura_speed_pct = roundi(float(aura.get("speed_multiplier", 1.0)) * 100.0)
 			s.slow_aura_chebyshev = str(aura.get("adjacency", "orthogonal")) == "chebyshev"
 
+		var presenter_cfg: Variant = s_data.get("presenter", null)
+		if presenter_cfg is Dictionary:
+			s.has_presenter = true
+			s.presenter_radius_mt = roundi(float((presenter_cfg as Dictionary).get("radius_tiles", 0.0)) * float(config.grid_scale) * 1000.0)
+
 		var trap_cfg: Variant = s_data.get("trap", null)
 		if trap_cfg is Dictionary:
 			var trap: Dictionary = trap_cfg
@@ -659,6 +664,25 @@ static func _validate_slow_aura(id: String, s_data: Dictionary, errors: PackedSt
 		var adj: Variant = a["adjacency"]
 		if typeof(adj) != TYPE_STRING or (str(adj) != "orthogonal" and str(adj) != "chebyshev"):
 			errors.append("structures.json: %s.slow_aura.adjacency: must be \"orthogonal\" or \"chebyshev\" (got %s)" % [id, _format_val(adj)])
+
+static func _validate_presenter(id: String, s_data: Dictionary, errors: PackedStringArray) -> void:
+	var p_val: Variant = s_data["presenter"]
+	if typeof(p_val) != TYPE_DICTIONARY:
+		errors.append("structures.json: %s.presenter: must be a JSON object (got %s)" % [id, _format_val(p_val)])
+		return
+	var p: Dictionary = p_val
+	for pk_var: Variant in p.keys():
+		var pk: String = str(pk_var)
+		if not pk.begins_with("_") and pk != "radius_tiles":
+			errors.append("structures.json: %s.presenter.%s: unknown key (got %s)" % [id, pk, pk])
+	if not p.has("radius_tiles"):
+		errors.append("structures.json: %s.presenter.radius_tiles: missing required field (got null)" % [id])
+		return
+	var r: Variant = p["radius_tiles"]
+	if typeof(r) != TYPE_INT and typeof(r) != TYPE_FLOAT:
+		errors.append("structures.json: %s.presenter.radius_tiles: must be a number (got %s)" % [id, _format_val(r)])
+	elif float(r) <= 0.0:
+		errors.append("structures.json: %s.presenter.radius_tiles: must be > 0 (got %s)" % [id, _format_val(r)])
 
 static func _validate_trap(id: String, s_data: Dictionary, errors: PackedStringArray) -> void:
 	var t_val: Variant = s_data["trap"]
@@ -1273,7 +1297,7 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 		"is_targetable", "visible_to_attacker", "path_weight", "tags",
 		"attack", "damage_multipliers", "levels", "placeholder"
 	]
-	var optional_keys: Array[String] = ["analysis", "requires_flag", "generator", "slow_aura", "trap"]
+	var optional_keys: Array[String] = ["analysis", "requires_flag", "generator", "slow_aura", "trap", "presenter"]
 
 	var core_count: int = 0
 
@@ -1309,6 +1333,9 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 
 		if s_data.has("trap"):
 			_validate_trap(id, s_data, errors)
+
+		if s_data.has("presenter"):
+			_validate_presenter(id, s_data, errors)
 
 		if s_data.has("requires_flag"):
 			var rf: Variant = s_data["requires_flag"]

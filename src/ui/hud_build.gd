@@ -629,7 +629,7 @@ func _update_left_card() -> void:
 		(selection_tiles["interval"] as StatTile).setup("Fire interval",
 				"%.1f s" % (float(sdef.attack_interval_ticks) / float(tick_rate)) if sdef.has_attack else DASH)
 		(selection_tiles["footprint"] as StatTile).setup("Footprint", "%d × %d" % [sdef.footprint.x, sdef.footprint.y])
-		selection_desc_label.text = UnitCopy.description(sdef.id)
+		selection_desc_label.text = UnitCopy.description(sdef.id, cfg)
 		cost_badge_label.text = "%d ATP" % int(sdef.cost.get("atp", 0))
 
 

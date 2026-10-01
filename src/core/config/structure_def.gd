@@ -36,6 +36,9 @@ var slow_aura_chebyshev: bool = false
 var has_trap: bool = false
 var trap_root_ticks: int = 0
 var trap_target_tags: PackedStringArray = PackedStringArray()
+## Antigen presenter (Dendritic Cell, behind the dendritic_cell flag): shares B-Cell analysis within this radius.
+var has_presenter: bool = false
+var presenter_radius_mt: int = 0
 var has_generator: bool = false
 var generator_atp_per_hour: int = 0
 var generator_storage: int = 0

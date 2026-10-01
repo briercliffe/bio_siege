@@ -80,7 +80,10 @@ func test_mitochondria_only_with_living_base_on() -> void:
 	_cfg.feature_flags["living_base"] = true
 	assert_eq(_count(AiBaseGenerator.generate(_cfg, "cold", 3)["layout"], "mitochondria"), 1)
 	assert_eq(_count(AiBaseGenerator.generate(_cfg, "flu", 3)["layout"], "mitochondria"), 2)
-	assert_eq(_count(AiBaseGenerator.generate(_cfg, "pneumonia", 3)["layout"], "dendritic_cell"), 0, "no Dendritic Cell until LB-13")
+	assert_eq(_count(AiBaseGenerator.generate(_cfg, "pneumonia", 3)["layout"], "dendritic_cell"), 0, "no Dendritic Cell with its flag off")
+	_cfg.feature_flags["dendritic_cell"] = true
+	assert_eq(_count(AiBaseGenerator.generate(_cfg, "pneumonia", 3)["layout"], "dendritic_cell"), 1)
+	assert_eq(_count(AiBaseGenerator.generate(_cfg, "flu", 3)["layout"], "dendritic_cell"), 0)
 
 
 func test_tower_weights_pick_the_towers() -> void:
