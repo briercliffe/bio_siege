@@ -441,6 +441,13 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 
 		s.requires_flag = str(s_data.get("requires_flag", ""))
 
+		var aura_cfg: Variant = s_data.get("slow_aura", null)
+		if aura_cfg is Dictionary:
+			var aura: Dictionary = aura_cfg
+			s.has_slow_aura = true
+			s.slow_aura_speed_pct = roundi(float(aura.get("speed_multiplier", 1.0)) * 100.0)
+			s.slow_aura_chebyshev = str(aura.get("adjacency", "orthogonal")) == "chebyshev"
+
 		var gen_cfg: Variant = s_data.get("generator", null)
 		if gen_cfg is Dictionary:
 			var gen: Dictionary = gen_cfg
@@ -619,6 +626,31 @@ static func _validate_hijack(id: String, hj_val: Variant, errors: PackedStringAr
 			errors.append("pathogens.json: %s.hijack.turncoat_max_damage: must be an integer (got %s)" % [id, _format_val(tm)])
 		elif int(tm) < 0:
 			errors.append("pathogens.json: %s.hijack.turncoat_max_damage: must be >= 0 (got %s)" % [id, _format_val(tm)])
+
+static func _validate_slow_aura(id: String, s_data: Dictionary, errors: PackedStringArray) -> void:
+	var a_val: Variant = s_data["slow_aura"]
+	if typeof(a_val) != TYPE_DICTIONARY:
+		errors.append("structures.json: %s.slow_aura: must be a JSON object (got %s)" % [id, _format_val(a_val)])
+		return
+	var a: Dictionary = a_val
+	var allowed: Array[String] = ["speed_multiplier", "adjacency"]
+	for ak_var: Variant in a.keys():
+		var ak: String = str(ak_var)
+		if not ak.begins_with("_") and not allowed.has(ak):
+			errors.append("structures.json: %s.slow_aura.%s: unknown key (got %s)" % [id, ak, ak])
+	for req: String in allowed:
+		if not a.has(req):
+			errors.append("structures.json: %s.slow_aura.%s: missing required field (got null)" % [id, req])
+	if a.has("speed_multiplier"):
+		var m: Variant = a["speed_multiplier"]
+		if typeof(m) != TYPE_INT and typeof(m) != TYPE_FLOAT:
+			errors.append("structures.json: %s.slow_aura.speed_multiplier: must be a number (got %s)" % [id, _format_val(m)])
+		elif float(m) <= 0.0 or float(m) > 1.0:
+			errors.append("structures.json: %s.slow_aura.speed_multiplier: must be > 0 and <= 1 (got %s)" % [id, _format_val(m)])
+	if a.has("adjacency"):
+		var adj: Variant = a["adjacency"]
+		if typeof(adj) != TYPE_STRING or (str(adj) != "orthogonal" and str(adj) != "chebyshev"):
+			errors.append("structures.json: %s.slow_aura.adjacency: must be \"orthogonal\" or \"chebyshev\" (got %s)" % [id, _format_val(adj)])
 
 static func _validate_generator(id: String, s_data: Dictionary, errors: PackedStringArray) -> void:
 	var g_val: Variant = s_data["generator"]
@@ -1204,7 +1236,7 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 		"is_targetable", "visible_to_attacker", "path_weight", "tags",
 		"attack", "damage_multipliers", "levels", "placeholder"
 	]
-	var optional_keys: Array[String] = ["analysis", "requires_flag", "generator"]
+	var optional_keys: Array[String] = ["analysis", "requires_flag", "generator", "slow_aura"]
 
 	var core_count: int = 0
 
@@ -1234,6 +1266,9 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 
 		if s_data.has("generator"):
 			_validate_generator(id, s_data, errors)
+
+		if s_data.has("slow_aura"):
+			_validate_slow_aura(id, s_data, errors)
 
 		if s_data.has("requires_flag"):
 			var rf: Variant = s_data["requires_flag"]

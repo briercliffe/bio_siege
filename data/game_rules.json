@@ -28,6 +28,7 @@
     "coevolution": false,
     "living_base": false,
     "debug_dna": false,
+    "mucous_slow": false,
     "intent_lines_default": true
   },
   "living_base": {

@@ -14,6 +14,7 @@ const WALL_POST_BIAS: float = 0.001
 const WALL_CRACKS_BIAS: float = 0.002
 
 const PLATE_TOWER_RADIUS: float = 1.9
+const SLOW_BAND_COLOR: Color = Color(0.78, 0.72, 0.54, 0.22)
 const PLATE_CORE_RADIUS: float = 2.8
 const STRUCTURE_WIDTH_SCALE: float = 1.4
 const CRACK_PULSE_PERIOD_S: float = 0.8
@@ -82,6 +83,8 @@ var paused: bool = false
 ## Connected wall segments for the live wall cells. Rebuilt when a wall is destroyed or the projection changes.
 var walls: WallRenderer = WallRenderer.new()
 var _wall_cells: Dictionary = {}
+var _slow_version: int = -1
+var _slow_cell_list: Array[Vector2i] = []
 var _walls_dirty: bool = true
 ## Destroyed walls, by structure id, whose goo decal stays on the ground for the rest of the battle.
 var _goo: Array[int] = []
@@ -395,6 +398,7 @@ func _wall_part_pose(s: StructureState) -> ModelPose:
 func _draw_ground_decals() -> void:
 	if effects != null:
 		effects.draw_scorch(self)
+	_draw_slow_bands()
 	draw_set_transform_matrix(projection.ground_transform())
 	for s: StructureState in sim.structures:
 		if not s.alive or s.def == null or s.def.has_tag("wall"):
@@ -417,6 +421,24 @@ func _draw_ground_decals() -> void:
 		var age: int = driver.structure_death_age(sid, sim.tick)
 		walls.paint_goo(self, gs.origin, clampf(float(age) / goo_ticks, 0.0, 1.0) if age >= 0 else 1.0)
 	walls.paint_shadows(self)
+
+
+## Mucous slow (mucous_slow flag): a faint band on the cells next to a wall. The cell list is cached and rebuilt
+## only when the sim rebuilds its slow cells (a wall was destroyed). Read-only.
+func _draw_slow_bands() -> void:
+	if sim == null or projection == null:
+		return
+	if sim.slow_version != _slow_version:
+		_slow_version = sim.slow_version
+		_slow_cell_list.clear()
+		for cell: Variant in sim.slow_cells().keys():
+			_slow_cell_list.append(cell as Vector2i)
+	if _slow_cell_list.is_empty():
+		return
+	draw_set_transform_matrix(projection.ground_transform())
+	for cell: Vector2i in _slow_cell_list:
+		draw_rect(Rect2(Vector2(cell), Vector2.ONE), SLOW_BAND_COLOR)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
 func _draw_structure(s: StructureState) -> void:

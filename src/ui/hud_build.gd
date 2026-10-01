@@ -622,7 +622,7 @@ func _update_left_card() -> void:
 		icon_disc.icon_id = sdef.id
 		icon_disc.config = cfg
 		selection_name_label.text = sdef.display_name
-		selection_role_label.text = sdef.role
+		selection_role_label.text = UnitCopy.role(sdef, cfg)
 		var tick_rate: int = maxi(cfg.tick_rate, 1)
 		(selection_tiles["health"] as StatTile).setup("Health", str(sdef.hp))
 		(selection_tiles["damage"] as StatTile).setup("Damage", str(sdef.attack_damage) if sdef.has_attack else DASH)

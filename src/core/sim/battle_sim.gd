@@ -36,6 +36,11 @@ var _turncoat_on: bool = false
 var _turncoat_hit_tick: Dictionary = {}  # structure id -> last tick it took turncoat damage
 var turncoat_damage_dealt: int = 0
 var _coevo_on: bool = false
+var _slow_on: bool = false
+## cell -> speed percent for cells next to a Mucous Wall (mucous_slow). Rebuilt when a structure is destroyed.
+var _slow_cells: Dictionary = {}
+## Bumped on every rebuild so the view can cache what it draws. Not part of state_hash().
+var slow_version: int = 0
 var _pools: Dictionary = {}  # type_id -> BreedPool
 var _survival_granted: bool = false
 
@@ -49,6 +54,7 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 	_turncoat_on = _hijack_on and p_config.flag("phage_turncoat")
 	_strains_on = p_config != null and p_config.flag("strains")
 	_coevo_on = p_config != null and p_config.coevolution_enabled()
+	_slow_on = p_config != null and p_config.flag("mucous_slow")
 	if _biofilm_on:
 		for pd: PathogenDef in p_config.pathogens.values():
 			if pd.has_biofilm and (_biofilm_regroup_ticks == 0 or pd.biofilm_regroup_ticks < _biofilm_regroup_ticks):
@@ -147,8 +153,37 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 			"pos": p_state.pos,
 		})
 
+	if _slow_on:
+		_rebuild_slow_cells()
+
 	if _analysis_on and not setup.memory_seed.is_empty():
 		_apply_memory_seed(setup.memory_seed)
+
+
+## cell -> speed percent: every free neighbour of every alive structure with a slow aura, at the lowest percent
+## seen. Cells a structure occupies are never slowed.
+func _rebuild_slow_cells() -> void:
+	_slow_cells.clear()
+	for s: StructureState in structures:
+		if not s.alive or s.def == null or not s.def.has_slow_aura:
+			continue
+		for cell: Vector2i in s.cells():
+			for dy: int in range(-1, 2):
+				for dx: int in range(-1, 2):
+					if dx == 0 and dy == 0:
+						continue
+					if dx != 0 and dy != 0 and not s.def.slow_aura_chebyshev:
+						continue
+					var n := Vector2i(cell.x + dx, cell.y + dy)
+					if _occupancy.has(n):
+						continue
+					_slow_cells[n] = mini(int(_slow_cells.get(n, 100)), s.def.slow_aura_speed_pct)
+	slow_version += 1
+
+
+## cell -> speed percent (empty unless mucous_slow is on). Read-only for the view.
+func slow_cells() -> Dictionary:
+	return _slow_cells
 
 
 ## Immune memory: pre-load every analysis tower with partial (or full) exposure.
@@ -594,6 +629,14 @@ func _update_pathogen(p: PathogenState) -> void:
 	var key: String = StatusEffects.key_pathogen(p.id)
 	var at_center: bool = (p.pos == FixedMath.cell_center(p.cell))
 
+	# Mucous slow: a pathogen whose last reached cell touches a wall moves slower this tick. p.cell is the last
+	# cell centre reached, which keeps this integer and simple. The one-tick effect is re-applied every tick
+	# on the cell, and the "mucous" source means two walls never stack.
+	if _slow_on:
+		var slow_pct: int = int(_slow_cells.get(p.cell, 100))
+		if slow_pct < 100:
+			status.add(key, StatusEffects.Kind.SPEED_PCT, slow_pct, 1, "mucous")
+
 	# 1. Cooldown
 	if p.attack_cooldown > 0:
 		p.attack_cooldown -= 1
@@ -833,6 +876,8 @@ func _damage_structure(s: StructureState, dmg: int, unit_id: int) -> void:
 		for cell: Vector2i in s.cells():
 			_occupancy.erase(cell)
 			path_service.clear_cell(cell)
+		if _slow_on:
+			_rebuild_slow_cells()
 		_emit_event(SimEvents.STRUCTURE_DESTROYED, {
 			"structure_id": s.id,
 			"structure_type": s.type_id,
