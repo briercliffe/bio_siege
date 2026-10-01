@@ -1,5 +1,19 @@
 extends GutTest
 
+const SAVES_ROOT: String = "user://test_hud_spawn_saves"
+
+func after_each() -> void:
+	_remove_tree(SAVES_ROOT)
+
+static func _remove_tree(dir_path: String) -> void:
+	if not DirAccess.dir_exists_absolute(dir_path):
+		return
+	for sub: String in DirAccess.get_directories_at(dir_path):
+		_remove_tree("%s/%s" % [dir_path, sub])
+	for file_name: String in DirAccess.get_files_at(dir_path):
+		DirAccess.remove_absolute("%s/%s" % [dir_path, file_name])
+	DirAccess.remove_absolute(dir_path)
+
 func _load_config() -> GameConfig:
 	var res: ConfigLoadResult = GameConfig.load_from_dir("res://data")
 	assert_true(res.is_ok(), "Config should load successfully from res://data")
@@ -307,19 +321,36 @@ func test_menu_button_size() -> void:
 	assert_true(hud.btn_menu.custom_minimum_size.y >= 48.0)
 
 
-func test_export_army() -> void:
+func test_menu_offers_save_and_import() -> void:
 	var session: Session = _create_session()
 	var hud: HudSpawn = _setup_hud(session)
+	assert_eq(hud.popup_menu.item_count, 2)
+	assert_eq(hud.popup_menu.get_item_text(0), "Save army…")
+	assert_eq(hud.popup_menu.get_item_text(1), "Import…")
+	watch_signals(hud)
+	hud.popup_menu.id_pressed.emit(HudSpawn.MENU_IMPORT)
+	assert_signal_emitted_with_parameters(hud, "library_requested", ["army"])
 
+
+func test_save_army_asks_for_a_name_and_saves_to_the_library() -> void:
+	var session: Session = _create_session()
+	var hud: HudSpawn = _setup_hud(session)
+	hud.saves_root = SAVES_ROOT
 	session.army.buy("rhinovirus", session.wallet)
 	session.army.deploy("rhinovirus", Vector2i(0, 5))
+	hud.popup_menu.id_pressed.emit(HudSpawn.MENU_SAVE)
+	assert_true(hud.save_dialog.visible)
+	assert_eq(hud.save_dialog.name_edit.text, "Army 1")
+	hud.save_dialog.btn_save.pressed.emit()
+	assert_false(hud.save_dialog.visible)
+	assert_eq(hud.last_toast_message, "Saved 'Army 1'")
 
-	var json_str: String = hud.export_army()
-	assert_gt(json_str.length(), 0)
-
-	var parsed: Dictionary = SnapshotIO.parse_army(json_str, session.config)
+	var lib := SaveLibrary.new(SAVES_ROOT)
+	var slots: Array[Dictionary] = lib.list("army")
+	assert_eq(slots.size(), 1)
+	var parsed: Dictionary = SnapshotIO.parse_army(lib.export_json(slots[0]["path"]), session.config)
 	assert_true(parsed["ok"])
-	assert_eq(hud.last_toast_message, "Army copied to clipboard")
+	assert_eq(parsed["units"].size(), 1)
 
 
 func test_import_army_success() -> void:

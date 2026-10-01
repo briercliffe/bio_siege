@@ -3,6 +3,8 @@ extends Control
 
 signal load_requested(text: String)
 signal canceled
+## "Choose file" was pressed (web builds only show it).
+signal file_requested
 
 var backdrop: ColorRect = null
 var panel: PanelContainer = null
@@ -11,6 +13,7 @@ var text_edit: TextEdit = null
 var error_label: Label = null
 var btn_cancel: Button = null
 var btn_load: Button = null
+var btn_file: Button = null
 
 func _init() -> void:
 	visible = false
@@ -120,6 +123,27 @@ func _wire_nodes() -> void:
 		btn_cancel.pressed.connect(_on_cancel_pressed)
 	if btn_load != null and not btn_load.pressed.is_connected(_on_load_pressed):
 		btn_load.pressed.connect(_on_load_pressed)
+
+
+## Adds a "Choose file" button next to Cancel and Load, or hides it again.
+func show_file_button(on: bool) -> void:
+	_ensure_nodes()
+	if btn_file == null and on and btn_load != null:
+		btn_file = Button.new()
+		btn_file.name = "BtnFile"
+		btn_file.text = "Choose file"
+		btn_file.custom_minimum_size = Vector2(140.0, 48.0)
+		btn_file.pressed.connect(file_requested.emit)
+		btn_load.get_parent().add_child(btn_file)
+		btn_load.get_parent().move_child(btn_file, 0)
+	if btn_file != null:
+		btn_file.visible = on
+
+
+func set_text(text: String) -> void:
+	_ensure_nodes()
+	if text_edit != null:
+		text_edit.text = text
 
 
 func open(title: String = "Import") -> void:

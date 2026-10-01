@@ -3,11 +3,18 @@ extends Control
 
 signal finalize_requested
 signal help_requested
+## "Import…" in the menu: open the Saved bases and armies screen on the Bases tab.
+signal library_requested(kind: String)
 
 const ATP_OVER_BUDGET_COLOR: Color = Color("#e74c3c")
 const CARD_SCENE: PackedScene = preload("res://src/ui/hud_card.tscn")
 const CONFIRMATION_SCENE: PackedScene = preload("res://src/ui/confirmation_popup.tscn")
 const IMPORT_DIALOG_SCENE: PackedScene = preload("res://src/ui/import_dialog.tscn")
+const MENU_SAVE: int = 0
+const MENU_IMPORT: int = 1
+const MENU_SAVE_TEXT: String = "Save base…"
+const MENU_IMPORT_TEXT: String = "Import…"
+const DEFAULT_NAME: String = "Base %d"
 
 var session: Session = null
 var controller: BuildController = null
@@ -24,6 +31,9 @@ var btn_mute: MuteButton = null
 var btn_menu: Button = null
 var popup_menu: PopupMenu = null
 var import_dialog: ImportDialog = null
+var save_dialog: SaveNameDialog = null
+## The save library folder; the Synthesis phase passes the game's, tests pass a temp one.
+var saves_root: String = SaveLibrary.DEFAULT_ROOT
 var last_toast_message: String = ""
 var memory_panel: MemoryPanel = null
 
@@ -64,10 +74,7 @@ func _ensure_nodes() -> void:
 
 	if top_bar != null:
 		if popup_menu == null:
-			popup_menu = PopupMenu.new()
-			popup_menu.name = "PopupMenu"
-			popup_menu.add_item("Export base", 0)
-			popup_menu.add_item("Import base", 1)
+			popup_menu = _make_popup_menu()
 			add_child(popup_menu)
 		if import_dialog == null:
 			import_dialog = IMPORT_DIALOG_SCENE.instantiate() as ImportDialog
@@ -195,10 +202,7 @@ func _ensure_nodes() -> void:
 	confirmation_dialog.name = "ConfirmationDialog"
 	add_child(confirmation_dialog)
 
-	popup_menu = PopupMenu.new()
-	popup_menu.name = "PopupMenu"
-	popup_menu.add_item("Export base", 0)
-	popup_menu.add_item("Import base", 1)
+	popup_menu = _make_popup_menu()
 	add_child(popup_menu)
 
 	import_dialog = ImportDialog.new()
@@ -207,7 +211,19 @@ func _ensure_nodes() -> void:
 
 	_wire_static_nodes()
 
+static func _make_popup_menu() -> PopupMenu:
+	var menu := PopupMenu.new()
+	menu.name = "PopupMenu"
+	menu.add_item(MENU_SAVE_TEXT, MENU_SAVE)
+	menu.add_item(MENU_IMPORT_TEXT, MENU_IMPORT)
+	return menu
+
 func _wire_static_nodes() -> void:
+	if save_dialog == null:
+		save_dialog = SaveNameDialog.new()
+		save_dialog.name = "SaveDialog"
+		add_child(save_dialog)
+		save_dialog.save_requested.connect(save_base)
 	if atp_icon != null and not atp_icon.draw.is_connected(_on_atp_icon_draw):
 		atp_icon.draw.connect(_on_atp_icon_draw)
 	if btn_finalize != null and not btn_finalize.pressed.is_connected(_on_finalize_button_pressed):
@@ -502,10 +518,10 @@ func _on_btn_menu_pressed() -> void:
 
 func _on_popup_menu_item_selected(id: int) -> void:
 	match id:
-		0:
-			export_base()
-		1:
-			open_import_dialog()
+		MENU_SAVE:
+			open_save_dialog()
+		MENU_IMPORT:
+			library_requested.emit(SaveLibrary.KIND_BASE)
 
 
 func open_import_dialog() -> void:
@@ -513,23 +529,26 @@ func open_import_dialog() -> void:
 		import_dialog.open("Import Base")
 
 
-func export_base() -> String:
-	if session == null or session.grid == null:
-		return ""
-	var base_dict: Dictionary = SnapshotIO.base_to_dict(session.grid, session.memory)
-	var json_str: String = SnapshotIO.to_json(base_dict)
-	DisplayServer.clipboard_set(json_str)
-	_show_toast("Base copied to clipboard")
+## "Save base…": asks for a name, defaulting to "Base N" after the slots already saved.
+func open_save_dialog() -> void:
+	_ensure_nodes()
+	var n: int = SaveLibrary.new(saves_root).count(SaveLibrary.KIND_BASE) + 1
+	save_dialog.open(MENU_SAVE_TEXT, DEFAULT_NAME % n)
 
-	if not DirAccess.dir_exists_absolute("user://bases"):
-		DirAccess.make_dir_recursive_absolute("user://bases")
-	var unix_time: int = int(Time.get_unix_time_from_system())
-	var file_path: String = "user://bases/base_%d.json" % unix_time
-	var file := FileAccess.open(file_path, FileAccess.WRITE)
-	if file != null:
-		file.store_string(json_str)
-		file.close()
-	return json_str
+
+## Saves the current base as a library slot. Errors (a full library) show in the name dialog.
+func save_base(slot_name: String) -> Dictionary:
+	_ensure_nodes()
+	if session == null or session.grid == null:
+		return {"ok": false, "path": "", "error": "Nothing to save"}
+	var lib := SaveLibrary.new(saves_root)
+	var res: Dictionary = lib.save_base(slot_name, session.grid, session.config, session.memory)
+	if not bool(res.get("ok", false)):
+		save_dialog.set_error(str(res.get("error", "")))
+		return res
+	save_dialog.close()
+	_show_toast("Saved '%s'" % slot_name)
+	return res
 
 
 func import_base(json_text: String) -> bool:
@@ -542,28 +561,12 @@ func import_base(json_text: String) -> bool:
 			import_dialog.set_error(err_msg)
 		return false
 
-	var layout: Array = res.get("layout", [])
-	var total_cost: int = 0
-	for item: Variant in layout:
-		if item is Dictionary:
-			var tid: String = str(item.get("type", ""))
-			var sdef: StructureDef = session.config.structures.get(tid)
-			var is_core: bool = (sdef != null and sdef.has_tag("core")) or (tid == "nucleus")
-			if not is_core and sdef != null:
-				total_cost += int(sdef.cost.get("atp", 0))
-
-	var budget: int = int(session.config.start_wallet.get("atp", 1000))
-	if total_cost > budget:
-		var err_msg := "This base costs %d ATP; the budget is %d" % [total_cost, budget]
+	var apply_error: String = SaveLibrary.apply_base(session, res)
+	if not apply_error.is_empty():
 		if import_dialog != null:
-			import_dialog.set_error(err_msg)
+			import_dialog.set_error(apply_error)
 		return false
-
-	session.wallet.reset(session.config.start_wallet)
-	session.grid.load_layout(layout, session.wallet)
-	if session.config.memory_enabled():
-		session.memory = ImmuneMemory.from_dict(res.get("memory", {}), session.config)
-		_sync_memory_panel()
+	_sync_memory_panel()
 	if import_dialog != null:
 		import_dialog.close()
 	_show_toast("Base loaded")

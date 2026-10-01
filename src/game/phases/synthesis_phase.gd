@@ -3,6 +3,8 @@ extends Control
 
 var session: Session = null
 var fsm: GameStateMachine = null
+## Save library folder for the HUD's save menu entry; GameStateMachine sets it before setup().
+var saves_root: String = SaveLibrary.DEFAULT_ROOT
 
 var grid_view: GridView = null
 var build_controller: BuildController = null
@@ -47,12 +49,17 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 		if not build_controller.nucleus_moved.is_connected(_on_nucleus_moved):
 			build_controller.nucleus_moved.connect(_on_nucleus_moved)
 
+	if hud_build != null:
+		hud_build.saves_root = saves_root
+
 	if hud_build != null and session != null and build_controller != null:
 		hud_build.setup(session, build_controller)
 		if not hud_build.finalize_requested.is_connected(_on_finalize_requested):
 			hud_build.finalize_requested.connect(_on_finalize_requested)
 		if not hud_build.help_requested.is_connected(_on_help_requested):
 			hud_build.help_requested.connect(_on_help_requested)
+		if not hud_build.library_requested.is_connected(_on_library_requested):
+			hud_build.library_requested.connect(_on_library_requested)
 
 	_update_grid_layout()
 
@@ -132,6 +139,10 @@ func _on_place_failed(reason: int) -> void:
 func _on_help_requested() -> void:
 	if fsm != null:
 		fsm.how_to_play_requested.emit()
+
+func _on_library_requested(kind: String) -> void:
+	if fsm != null:
+		fsm.library_requested.emit(kind)
 
 func _on_placed(_type_id: String, _cell: Vector2i) -> void:
 	Sfx.play("place")
