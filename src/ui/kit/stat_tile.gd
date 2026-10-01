@@ -35,6 +35,14 @@ func setup(label_text: String, value_text: String, suffix_text: String = "") -> 
 	_refresh()
 
 
+func value_text() -> String:
+	return _value.text
+
+
+func suffix_text() -> String:
+	return _suffix.text
+
+
 func set_night(value: bool) -> void:
 	night = value
 	_refresh()

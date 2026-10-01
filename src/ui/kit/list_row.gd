@@ -7,6 +7,8 @@ const ROW_HEIGHT: float = 48.0
 
 var night: bool = false:
 	set = set_night
+## Format of the muted text after the count; `%d` is the total.
+var suffix_format: String = "of %d out"
 
 var _icon: IconSlot = IconSlot.new("", 24.0)
 var _name: Label = Label.new()
@@ -36,7 +38,12 @@ func setup(icon_id: String, display_name: String, count: int, total: int, config
 	_icon.config = config
 	_name.text = display_name
 	_count.text = str(count)
-	_of_text.text = "of %d out" % total
+	_of_text.text = suffix_format % total
+
+
+## The visible count and suffix, e.g. "4 of 5".
+func count_text() -> String:
+	return "%s %s" % [_count.text, _of_text.text]
 
 
 func set_night(value: bool) -> void:
