@@ -5,11 +5,13 @@ var structures: Array[Dictionary] = []
 var units: Array[Dictionary] = []
 var seed: int = 0
 var memory_seed: Dictionary = {}  # strain_key -> int pct (0..100)
+var populations: Dictionary = {}  # type_id -> BreedPool.to_dict() (coevolution)
 
-static func create(p_structures: Array, p_units: Array, p_seed: int, p_memory_seed: Dictionary = {}) -> BattleSetup:
+static func create(p_structures: Array, p_units: Array, p_seed: int, p_memory_seed: Dictionary = {}, p_populations: Dictionary = {}) -> BattleSetup:
 	var setup: BattleSetup = BattleSetup.new()
 	setup.seed = p_seed
 	setup.memory_seed = p_memory_seed.duplicate(true)
+	setup.populations = p_populations.duplicate(true)
 	for item: Variant in p_structures:
 		if item is Dictionary:
 			setup.structures.append((item as Dictionary).duplicate(true))
@@ -19,7 +21,7 @@ static func create(p_structures: Array, p_units: Array, p_seed: int, p_memory_se
 	return setup
 
 func duplicate_setup() -> BattleSetup:
-	return create(structures, units, seed, memory_seed)
+	return create(structures, units, seed, memory_seed, populations)
 
 func to_dict() -> Dictionary:
 	var d: Dictionary = {
@@ -29,6 +31,8 @@ func to_dict() -> Dictionary:
 	}
 	if not memory_seed.is_empty():
 		d["memory_seed"] = memory_seed.duplicate(true)
+	if not populations.is_empty():
+		d["populations"] = populations.duplicate(true)
 	return d
 
 static func from_dict(d: Dictionary) -> BattleSetup:
@@ -44,7 +48,9 @@ static func from_dict(d: Dictionary) -> BattleSetup:
 			if typeof(mv) == TYPE_FLOAT and is_equal_approx(float(mv), roundf(float(mv))):
 				mv = int(mv)
 			ms[mk] = mv
-	return create(s, u, sd, ms)
+	var pops_val: Variant = d.get("populations", {})
+	var pops: Dictionary = pops_val if pops_val is Dictionary else {}
+	return create(s, u, sd, ms, pops)
 
 func validate(config: GameConfig) -> PackedStringArray:
 	var errors: PackedStringArray = PackedStringArray()
@@ -56,6 +62,14 @@ func validate(config: GameConfig) -> PackedStringArray:
 		var mv: Variant = memory_seed[mk]
 		if typeof(mk) != TYPE_STRING or typeof(mv) != TYPE_INT or int(mv) < 0 or int(mv) > 100:
 			errors.append("Invalid memory_seed entry '%s'" % [str(mk)])
+
+	if config.coevolution_enabled():
+		for pk: Variant in populations.keys():
+			var pv: Variant = populations[pk]
+			if typeof(pk) != TYPE_STRING or not config.is_breeding_type(str(pk)):
+				errors.append("Invalid populations entry '%s': not a breeding type" % [str(pk)])
+			elif not (pv is Dictionary) or not ((pv as Dictionary).get("genomes", null) is Array):
+				errors.append("Invalid populations entry '%s': expected an object with a genomes array" % [str(pk)])
 
 	var core_count: int = 0
 	var occupied_cells: Dictionary = {}

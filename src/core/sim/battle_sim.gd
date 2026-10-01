@@ -35,6 +35,9 @@ var hijacks_interrupted: int = 0
 var _turncoat_on: bool = false
 var _turncoat_hit_tick: Dictionary = {}  # structure id -> last tick it took turncoat damage
 var turncoat_damage_dealt: int = 0
+var _coevo_on: bool = false
+var _pools: Dictionary = {}  # type_id -> BreedPool
+var _survival_granted: bool = false
 
 
 func _init(p_config: GameConfig, setup: BattleSetup) -> void:
@@ -45,6 +48,7 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 	_hijack_on = p_config != null and p_config.flag("phage_hijack")
 	_turncoat_on = _hijack_on and p_config.flag("phage_turncoat")
 	_strains_on = p_config != null and p_config.flag("strains")
+	_coevo_on = p_config != null and p_config.coevolution_enabled()
 	if _biofilm_on:
 		for pd: PathogenDef in p_config.pathogens.values():
 			if pd.has_biofilm and (_biofilm_regroup_ticks == 0 or pd.biofilm_regroup_ticks < _biofilm_regroup_ticks):
@@ -79,6 +83,16 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 		config.max_path_recalcs_per_tick
 	)
 
+	var structure_genome_counts: Dictionary = {}
+	var pathogen_genome_counts: Dictionary = {}
+	if _coevo_on:
+		for pool_type: String in config.coevo_types:
+			var pop: Variant = setup.populations.get(pool_type, null)
+			if pop is Dictionary:
+				_pools[pool_type] = BreedPool.from_dict(pop, pool_type, config)
+			else:
+				_pools[pool_type] = BreedPool.wild_pool(pool_type, config)
+
 	for i: int in range(setup.structures.size()):
 		var s_data: Dictionary = setup.structures[i]
 		var type_id: String = str(s_data.get("type", ""))
@@ -93,6 +107,10 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 		var sid: int = i + 1
 		var s_state := StructureState.create(sid, type_id, s_def, origin)
 		structures.append(s_state)
+		if _coevo_on and config.is_breeding_type(type_id):
+			var sn: int = int(structure_genome_counts.get(type_id, 0))
+			s_state.genome_index = sn % config.coevo_pool_size
+			structure_genome_counts[type_id] = sn + 1
 
 		if s_def.has_tag("core") or type_id == "nucleus":
 			nucleus_id = sid
@@ -118,6 +136,10 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 			u_strain = p_def.strain(str(u_data.get("strain", "wild")))
 		var p_state := PathogenState.create(uid, type_id, p_def, cell, u_strain)
 		pathogens.append(p_state)
+		if _coevo_on and config.is_breeding_type(type_id):
+			var pn: int = int(pathogen_genome_counts.get(type_id, 0))
+			p_state.genome_index = pn % config.coevo_pool_size
+			pathogen_genome_counts[type_id] = pn + 1
 
 		_emit_event(SimEvents.UNIT_SPAWNED, {
 			"unit_id": p_state.id,
@@ -262,6 +284,13 @@ func state_hash() -> String:
 		bkeys.sort()
 		for bk: Variant in bkeys:
 			lines.append("B:%d:%d" % [int(bk), int(biofilm.group_of[bk])])
+	if _coevo_on:
+		for s: StructureState in structures:
+			if s.genome_index >= 0:
+				lines.append("G:S:%d:%d" % [s.id, s.genome_index])
+		for p: PathogenState in pathogens:
+			if p.genome_index >= 0:
+				lines.append("G:P:%d:%d" % [p.id, p.genome_index])
 	var combined: String = "\n".join(lines)
 	return combined.sha256_text()
 
@@ -298,6 +327,12 @@ func _apply_pathogen_damage(p: PathogenState, amount: int, source_structure_id: 
 	if p == null or not p.alive:
 		return
 	p.hp = maxi(0, p.hp - amount)
+	if _coevo_on and source_structure_id != 0:
+		var src: StructureState = structure(source_structure_id)
+		if src != null and src.genome_index >= 0:
+			var src_pool: BreedPool = _pools.get(src.type_id, null)
+			if src_pool != null:
+				src_pool.add_fitness(src.genome_index, amount)
 	_emit_event(SimEvents.PATHOGEN_DAMAGED, {
 		"unit_id": p.id,
 		"amount": amount,
@@ -320,6 +355,50 @@ func _apply_pathogen_damage(p: PathogenState, amount: int, source_structure_id: 
 		})
 
 
+## Receptor-vs-antigen damage percent (100 = x1). Missing pools or genomes mean no change.
+func _match_pct(attacker_type: String, attacker_index: int, defender_type: String, defender_index: int) -> int:
+	var a_pool: BreedPool = _pools.get(attacker_type, null)
+	var d_pool: BreedPool = _pools.get(defender_type, null)
+	if a_pool == null or d_pool == null:
+		return 100
+	if attacker_index < 0 or attacker_index >= a_pool.genomes.size() or defender_index < 0 or defender_index >= d_pool.genomes.size():
+		return 100
+	return a_pool.match_pct(a_pool.genomes[attacker_index], d_pool.genomes[defender_index], config)
+
+
+## Adds the survival bonus once to every alive genome. No-op when coevolution is off.
+func grant_survival_bonus() -> void:
+	if not _coevo_on or _survival_granted:
+		return
+	_survival_granted = true
+	var alive_by_type: Dictionary = {}
+	for s: StructureState in structures:
+		if s.alive and s.genome_index >= 0:
+			_collect_alive(alive_by_type, s.type_id, s.genome_index)
+	for p: PathogenState in pathogens:
+		if p.alive and p.genome_index >= 0:
+			_collect_alive(alive_by_type, p.type_id, p.genome_index)
+	for type_id: Variant in alive_by_type.keys():
+		var pool: BreedPool = _pools.get(str(type_id), null)
+		if pool != null:
+			pool.apply_survival(alive_by_type[type_id], config)
+
+
+func _collect_alive(into: Dictionary, type_id: String, index: int) -> void:
+	if not into.has(type_id):
+		var fresh: Array[int] = []
+		into[type_id] = fresh
+	(into[type_id] as Array[int]).append(index)
+
+
+## type_id -> copy of that pool's fitness array. Empty when coevolution is off.
+func fitness_by_type() -> Dictionary:
+	var out: Dictionary = {}
+	for type_id: Variant in _pools.keys():
+		out[type_id] = (_pools[type_id] as BreedPool).fitness.duplicate()
+	return out
+
+
 func _tower_damage(s: StructureState, victim: PathogenState) -> int:
 	if s == null or s.def == null or victim == null or victim.def == null:
 		return 0
@@ -330,6 +409,8 @@ func _tower_damage(s: StructureState, victim: PathogenState) -> int:
 	var dmg: int = FixedMath.apply_pct(s.def.attack_damage, mult)
 	if _analysis_on and s.def.has_analysis and s.analyzed.has(victim.strain_key()):
 		dmg = FixedMath.apply_pct(dmg, s.def.analysis_multiplier_pct)
+	if _coevo_on and s.genome_index >= 0 and victim.genome_index >= 0:
+		dmg = FixedMath.apply_pct(dmg, _match_pct(s.type_id, s.genome_index, victim.type_id, victim.genome_index))
 	dmg = FixedMath.apply_pct(dmg, status.pct(StatusEffects.key_structure(s.id), StatusEffects.Kind.DAMAGE_DEALT_PCT))
 	dmg = FixedMath.apply_pct(dmg, status.pct(StatusEffects.key_pathogen(victim.id), StatusEffects.Kind.DAMAGE_TAKEN_PCT))
 	return maxi(dmg, 1)
@@ -713,6 +794,8 @@ func _pathogen_attack(p: PathogenState, victim: StructureState) -> void:
 		mult = best_mult
 
 	var dmg: int = FixedMath.apply_pct(p.attack_damage, mult)
+	if _coevo_on and p.genome_index >= 0 and victim.genome_index >= 0:
+		dmg = FixedMath.apply_pct(dmg, _match_pct(p.type_id, p.genome_index, victim.type_id, victim.genome_index))
 	var key_p: String = StatusEffects.key_pathogen(p.id)
 	var key_s: String = StatusEffects.key_structure(victim.id)
 	dmg = FixedMath.apply_pct(dmg, status.pct(key_p, StatusEffects.Kind.DAMAGE_DEALT_PCT))
@@ -720,6 +803,10 @@ func _pathogen_attack(p: PathogenState, victim: StructureState) -> void:
 	dmg = maxi(dmg, 1)
 
 	_damage_structure(victim, dmg, p.id)
+	if _coevo_on and p.genome_index >= 0:
+		var atk_pool: BreedPool = _pools.get(p.type_id, null)
+		if atk_pool != null:
+			atk_pool.add_fitness(p.genome_index, dmg)
 	p.attack_cooldown = maxi(1, FixedMath.apply_pct(p.def.attack_interval_ticks, status.pct(key_p, StatusEffects.Kind.ATTACK_INTERVAL_PCT)))
 	if first_contact_tick < 0:
 		first_contact_tick = tick
