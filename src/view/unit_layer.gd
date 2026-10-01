@@ -13,9 +13,6 @@ const KIND_WALL_CRACKS: int = 3
 const WALL_POST_BIAS: float = 0.001
 const WALL_CRACKS_BIAS: float = 0.002
 
-const SCORCH_DIAMETER_T: float = 3.6
-const SCORCH_RINGS: int = 5
-const SCORCH_ALPHA: float = 0.5
 const PLATE_TOWER_RADIUS: float = 1.9
 const PLATE_CORE_RADIUS: float = 2.8
 const STRUCTURE_WIDTH_SCALE: float = 1.4
@@ -62,11 +59,13 @@ var _sort_cmp: Callable = UnitLayer._item_before
 # Per-id death ticks, in reused dictionaries of ints. Hit flashes, strikes and poses live in the AnimDriver.
 var _dying_p: Dictionary = {}
 var _dying_s: Dictionary = {}
-var _scorch: Array[int] = []
 var _breached: Dictionary = {}
 var _expired: Array[int] = []
 
 var driver: AnimDriver = AnimDriver.new()
+## Its ground decals are painted in this layer's ground pass, under the sprites: scorch before the plates,
+## splash rings after them.
+var effects: EffectLayer = null
 ## Softer hit flashes and shake (Settings: Reduce screen flashes). Set by the phase; kept across setup().
 var reduce_flashes: bool = false:
 	set = set_reduce_flashes
@@ -96,7 +95,6 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 	ModelRegistry.reset_painters()
 	_dying_p.clear()
 	_dying_s.clear()
-	_scorch.clear()
 	_goo.clear()
 	_walls_dirty = true
 	_proj_key = Vector4(-1.0, 0.0, 0.0, 0.0)
@@ -182,8 +180,6 @@ func on_event(ev: Dictionary) -> void:
 				_walls_dirty = true
 				if not _goo.has(sid):
 					_goo.append(sid)
-			elif not _scorch.has(sid):
-				_scorch.append(sid)
 
 
 # --- draw order -------------------------------------------------------------
@@ -347,16 +343,9 @@ func _wall_part_pose(s: StructureState) -> ModelPose:
 
 
 func _draw_ground_decals() -> void:
+	if effects != null:
+		effects.draw_scorch(self)
 	draw_set_transform_matrix(projection.ground_transform())
-	var ring_alpha: float = SCORCH_ALPHA / float(SCORCH_RINGS) * 1.4
-	for sid: int in _scorch:
-		var dead: StructureState = sim.structure(sid)
-		if dead == null:
-			continue
-		var dc: Vector2 = structure_anchor(dead)
-		for i: int in range(SCORCH_RINGS):
-			var r: float = SCORCH_DIAMETER_T * 0.5 * (1.0 - float(i) / float(SCORCH_RINGS))
-			draw_circle(dc, r, Color(0.0, 0.0, 0.0, ring_alpha))
 	for s: StructureState in sim.structures:
 		if not s.alive or s.def == null or s.def.has_tag("wall"):
 			continue
@@ -368,6 +357,8 @@ func _draw_ground_decals() -> void:
 		else:
 			draw_circle(c, PLATE_TOWER_RADIUS, PLATE_FILL)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
+	if effects != null:
+		effects.draw_splashes(self)
 	var goo_ticks: float = float(AnimDriver.death_ticks_for(WALL_TYPE_ID))
 	for sid: int in _goo:
 		var gs: StructureState = sim.structure(sid)

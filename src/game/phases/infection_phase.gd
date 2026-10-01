@@ -12,11 +12,13 @@ var runner: BattleRunner = null
 var hud_combat: HudCombat = null
 var snapshots: BattleSnapshotBuffer = BattleSnapshotBuffer.new()
 
-# Isometric battle layers, back to front: GridView (ground), BiofilmView, UnitLayer, IntentLinesView, BattleOverlay.
+# Isometric battle layers, back to front: GridView (ground), BiofilmView, UnitLayer, BattleOverlay, EffectLayer.
+# UnitLayer also paints the EffectLayer's ground decals under its sprites.
 var biofilm_view: BiofilmView = null
 var unit_layer: UnitLayer = null
-var intent_lines_view: IntentLinesView = null
 var overlay: BattleOverlay = null
+var effect_layer: EffectLayer = null
+var effect_model: EffectModel = EffectModel.new()
 
 var _biofilm_changes: int = 0
 var _biofilm_max_group: int = 0
@@ -122,7 +124,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 	grid_view.draw_structures = false
 
 	_init_layers()
-	unit_layer.reduce_flashes = SettingsApply.reduce_flashes(settings_path)
+	var reduce: bool = SettingsApply.reduce_flashes(settings_path)
+	unit_layer.reduce_flashes = reduce
 
 	if runner == null:
 		runner = BattleRunner.new()
@@ -145,7 +148,10 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 	var projection: IsoProjection = grid_view.projection
 	unit_layer.setup(sim, cfg, projection, snapshots, runner)
 	overlay.setup(sim, cfg, projection, snapshots, runner)
-	intent_lines_view.setup(session, runner, snapshots, projection)
+	effect_model.reset()
+	effect_layer.session = session
+	effect_layer.setup(effect_model, sim, projection, snapshots, runner, reduce)
+	unit_layer.effects = effect_layer
 	if biofilm_view != null:
 		biofilm_view.setup(session, runner, snapshots, projection)
 	if hud_combat != null:
@@ -179,26 +185,29 @@ func _init_layers() -> void:
 		move_child(unit_layer, after.get_index() + 1)
 	after = unit_layer
 
-	if intent_lines_view == null:
-		intent_lines_view = IntentLinesView.new()
-		intent_lines_view.name = "IntentLinesView"
-		_insert_after(intent_lines_view, after)
-	else:
-		move_child(intent_lines_view, after.get_index() + 1)
-	after = intent_lines_view
-
 	if overlay == null:
 		overlay = BattleOverlay.new()
 		overlay.name = "BattleOverlay"
 		_insert_after(overlay, after)
 	else:
 		move_child(overlay, after.get_index() + 1)
+	after = overlay
+
+	if effect_layer == null:
+		effect_layer = EffectLayer.new()
+		effect_layer.name = "EffectLayer"
+		_insert_after(effect_layer, after)
+	else:
+		move_child(effect_layer, after.get_index() + 1)
 
 
 ## SettingsApply.GROUP hook: the Settings screen (opened from Pause) saved a change.
 func on_settings_changed() -> void:
+	var reduce: bool = SettingsApply.reduce_flashes(settings_path)
 	if unit_layer != null:
-		unit_layer.reduce_flashes = SettingsApply.reduce_flashes(settings_path)
+		unit_layer.reduce_flashes = reduce
+	if effect_layer != null:
+		effect_layer.reduce_flashes = reduce
 
 
 # --- Pause (screen 12) ---------------------------------------------------------
@@ -356,6 +365,8 @@ func _route_event(ev: Dictionary) -> void:
 		unit_layer.on_event(ev)
 	if overlay != null:
 		overlay.on_event(ev)
+	if effect_layer != null:
+		effect_layer.on_event(ev)
 
 
 var settings_path: String = GameSettings.DEFAULT_PATH

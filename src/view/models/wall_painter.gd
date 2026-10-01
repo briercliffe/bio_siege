@@ -24,6 +24,10 @@ func height_tiles() -> float:
 	return WallRenderer.HEIGHT_T
 
 
+func has_custom_death() -> bool:
+	return true
+
+
 func paint(ci: CanvasItem, anchor: Vector2, pose: ModelPose, t_px: float) -> void:
 	if t_px != _built_t:
 		_built_t = t_px

@@ -117,6 +117,10 @@ func height_tiles() -> float:
 	return HEIGHT_T
 
 
+func has_custom_death() -> bool:
+	return true
+
+
 ## Tilt of the antibody toward a screen-space aim direction, in radians: the angle of the aim from the
 ## vertical, folded so a target in front or behind leans the same side, clamped to +-AIM_MAX_DEG. Positive
 ## leans right. Zero for no target.

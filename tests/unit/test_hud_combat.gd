@@ -246,16 +246,21 @@ func test_wall_crack_pulse_stays_between_0_6_and_1_on_a_0_8s_cycle() -> void:
 	assert_almost_eq(UnitLayer.crack_pulse_alpha(0.1), UnitLayer.crack_pulse_alpha(0.9), 0.0001)
 
 
-func test_intent_lines_view_visibility() -> void:
+func test_intent_lines_follow_the_session_toggle() -> void:
 	var session: Session = _session()
 	session.intent_lines_enabled = true
-	var ilv := IntentLinesView.new()
-	add_child_autofree(ilv)
-	ilv.setup(session, null, null, null)
+	var sim: BattleSim = SimFixtures.make_sim([], [{"type": "rhinovirus", "cell": Vector2i(3, 3)}], 1, _config)
+	sim.pathogens[0].target_id = sim.nucleus_id
+	var layer := EffectLayer.new()
+	add_child_autofree(layer)
+	layer.session = session
+	layer.setup(EffectModel.new(), sim, IsoProjection.new(14.0, Vector2.ZERO), null, null, false)
 
-	ilv._process(0.016)
-	assert_true(ilv.visible)
+	layer.build_frame()
+	assert_true(layer.intent_lines_visible())
+	assert_gt(layer.last_intent_dashes, 0, "an attacking unit gets a dashed line to its target")
 
 	session.intent_lines_enabled = false
-	ilv._process(0.016)
-	assert_false(ilv.visible)
+	layer.build_frame()
+	assert_false(layer.intent_lines_visible())
+	assert_eq(layer.last_intent_dashes, 0)

@@ -26,3 +26,9 @@ func reset() -> void:
 ## Model height in tiles, used for health-bar placement and bounding boxes.
 func height_tiles() -> float:
 	return 1.0
+
+
+## Virtual. True when paint() draws its own death from pose.death_t; otherwise EffectLayer adds a generic
+## puff where the entity died.
+func has_custom_death() -> bool:
+	return false

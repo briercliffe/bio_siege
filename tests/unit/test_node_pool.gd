@@ -5,7 +5,10 @@ var root: Node2D
 
 
 func before_each() -> void:
-	test_scene = preload("res://src/view/death_vfx.tscn")
+	var proto := Node2D.new()
+	test_scene = PackedScene.new()
+	test_scene.pack(proto)
+	proto.free()
 	root = Node2D.new()
 	add_child(root)
 
