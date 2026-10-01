@@ -640,14 +640,14 @@ func test_spawn_tray_card_shows_new_cost_and_keeps_counts() -> void:
 	hud.refresh_config()
 	var card: HudSpawnCard = hud.get_card("rhinovirus")
 	assert_eq(card.cost_label.text, "5 ATP")
-	assert_eq(card.count_badge.text, "2 · 0 deployed")
-	assert_eq(hud.atp_label.text, "ATP 990")
+	assert_eq(card.count, 2)
+	assert_eq(hud.atp_label.text, "990")
 
 
 func test_spawn_tray_rebuilds_when_pathogen_removed() -> void:
 	var session := Session.new(_base)
 	var hud: HudSpawn = _make_spawn_hud(session)
-	hud._on_card_pressed(hud.get_card("staphylococcus"))
+	hud.get_card("staphylococcus").selected.emit()
 	assert_eq(hud.selected_type_id, "staphylococcus")
 	var no_staph: GameConfig = _variant(func(_r: Dictionary, _s: Dictionary, p: Dictionary) -> void:
 		p.erase("staphylococcus")
@@ -655,7 +655,7 @@ func test_spawn_tray_rebuilds_when_pathogen_removed() -> void:
 	session.apply_new_config(no_staph)
 	hud.refresh_config()
 	assert_null(hud.get_card("staphylococcus"))
-	assert_not_null(hud.get_recall_card())
+	assert_not_null(hud.get_card("rhinovirus"))
 	assert_eq(hud.selected_type_id, "")
 
 
@@ -670,7 +670,7 @@ func test_spawn_hud_shows_negative_atp_in_red() -> void:
 	)
 	session.apply_new_config(pricey)
 	hud.refresh_config()
-	assert_eq(hud.atp_label.text, "ATP -500")
+	assert_eq(hud.atp_label.text, "-500")
 	assert_eq(hud.atp_label.get_theme_color("font_color"), HudSpawn.ATP_OVER_BUDGET_COLOR)
 	session.army.refund_all(session.wallet)
 	assert_eq(hud.atp_label.get_theme_color("font_color"), normal)

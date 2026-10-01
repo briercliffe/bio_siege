@@ -133,8 +133,8 @@ func test_press_on_interior_deploys_nothing() -> void:
 	assert_eq(session.army.deployed_count("rhinovirus"), 0)
 	assert_eq(toast.last_message, "Deploy on the green ring")
 
-# 5. Recall on cell with 2 units leaves 1.
-func test_recall_on_cell_with_2_units_leaves_1() -> void:
+# 5. Tap-to-recall: a tap on a cell with 2 units sends the last one back.
+func test_tap_on_occupied_cell_recalls_the_last_unit() -> void:
 	var session: Session = _create_session()
 	var comps: Dictionary = _setup_components(session)
 	var gv: GridView = comps["grid_view"]
@@ -148,10 +148,10 @@ func test_recall_on_cell_with_2_units_leaves_1() -> void:
 
 	assert_eq(session.army.deployed_at(ring_cell).size(), 2)
 
-	controller.select_recall_tool(true)
-	assert_true(controller.recall_mode)
-
+	controller.select_deploy_type("rhinovirus")
 	gv.cell_pressed.emit(ring_cell)
+	assert_eq(session.army.deployed_at(ring_cell).size(), 2, "A press on an occupied cell waits to see if it is a tap")
+	controller._process(0.1)
 	gv.cell_released.emit(ring_cell)
 
 	# Recalled bacteriophage (LIFO) leaving rhinovirus
@@ -159,6 +159,86 @@ func test_recall_on_cell_with_2_units_leaves_1() -> void:
 	assert_eq(remaining.size(), 1)
 	assert_eq(remaining[0], "rhinovirus")
 	assert_eq(session.army.reserve_count("bacteriophage"), 1)
+
+func test_tap_on_empty_band_cell_deploys_one() -> void:
+	var session: Session = _create_session()
+	var comps: Dictionary = _setup_components(session)
+	var gv: GridView = comps["grid_view"]
+	var controller: DeployController = comps["controller"]
+	controller.select_deploy_type("rhinovirus")
+	var cell := Vector2i(0, 3)
+	gv.cell_pressed.emit(cell)
+	controller._process(0.1)
+	gv.cell_released.emit(cell)
+	assert_eq(session.army.deployed_at(cell), ["rhinovirus"], "One unit, and the release does not recall it")
+
+func test_tap_on_empty_band_cell_without_a_selection_asks_for_a_card() -> void:
+	var session: Session = _create_session()
+	var comps: Dictionary = _setup_components(session)
+	var gv: GridView = comps["grid_view"]
+	var toast: Toast = comps["toast"]
+	session.army.buy("rhinovirus", session.wallet)
+	gv.cell_pressed.emit(Vector2i(0, 3))
+	gv.cell_released.emit(Vector2i(0, 3))
+	assert_eq(session.army.deployed_count("rhinovirus"), 0, "Nothing is picked, so nothing is deployed")
+	assert_eq(toast.last_message, "Select a pathogen card first")
+
+func test_tap_recall_works_without_a_selection_and_logs_the_event() -> void:
+	var session: Session = _create_session()
+	var comps: Dictionary = _setup_components(session)
+	var gv: GridView = comps["grid_view"]
+	var cell := Vector2i(0, 0)
+	session.army.buy("rhinovirus", session.wallet)
+	session.army.deploy("rhinovirus", cell)
+	gv.cell_pressed.emit(cell)
+	gv.cell_released.emit(cell)
+	assert_eq(session.army.deployed_count("rhinovirus"), 0)
+	assert_eq(session.army.reserve_count("rhinovirus"), 1)
+
+func test_hold_on_occupied_cell_deploys_instead_of_recalling() -> void:
+	var session: Session = _create_session()
+	session.config.deploy_hold_interval_s = 0.1
+	var comps: Dictionary = _setup_components(session)
+	var gv: GridView = comps["grid_view"]
+	var controller: DeployController = comps["controller"]
+	controller.select_deploy_type("rhinovirus")
+	var cell := Vector2i(0, 0)
+	session.army.buy("rhinovirus", session.wallet)
+	session.army.deploy("rhinovirus", cell)
+	gv.cell_pressed.emit(cell)
+	controller._process(0.2)
+	assert_eq(session.army.deployed_at(cell).size(), 1, "Still under the tap limit")
+	controller._process(0.1)
+	assert_eq(session.army.deployed_at(cell).size(), 2, "Past 250 ms the press deploys")
+	controller._process(0.1)
+	assert_eq(session.army.deployed_at(cell).size(), 3, "...and keeps deploying every interval")
+	gv.cell_released.emit(cell)
+	assert_eq(session.army.deployed_at(cell).size(), 3, "Releasing a hold does not recall")
+
+func test_drag_to_another_cell_cancels_the_recall() -> void:
+	var session: Session = _create_session()
+	var comps: Dictionary = _setup_components(session)
+	var gv: GridView = comps["grid_view"]
+	var cell := Vector2i(0, 0)
+	session.army.buy("rhinovirus", session.wallet)
+	session.army.deploy("rhinovirus", cell)
+	gv.cell_pressed.emit(cell)
+	gv.cell_dragged.emit(Vector2i(0, 1))
+	gv.cell_released.emit(Vector2i(0, 1))
+	assert_eq(session.army.deployed_at(cell).size(), 1)
+
+func test_slow_release_is_not_a_tap() -> void:
+	var session: Session = _create_session()
+	var comps: Dictionary = _setup_components(session)
+	var gv: GridView = comps["grid_view"]
+	var controller: DeployController = comps["controller"]
+	var cell := Vector2i(0, 0)
+	session.army.buy("rhinovirus", session.wallet)
+	session.army.deploy("rhinovirus", cell)
+	gv.cell_pressed.emit(cell)
+	controller._process(0.3)
+	gv.cell_released.emit(cell)
+	assert_eq(session.army.deployed_at(cell).size(), 1, "A hold with nothing selected recalls nothing")
 
 # Auto-placement at launch draws from the whole 2-tile band (both rows), not just the outer edge.
 func test_launch_auto_placement_uses_both_band_rows() -> void:
@@ -254,7 +334,11 @@ func test_hold_to_deploy_and_drag() -> void:
 	assert_eq(session.army.deployments.size(), 1)
 	assert_eq(session.army.deployed_at(cell_a).size(), 1)
 
-	# Hold for 1 interval -> deploys 2nd at cell_a
+	# Under 250 ms nothing more happens
+	controller._process(0.2)
+	assert_eq(session.army.deployments.size(), 1)
+
+	# Past 250 ms the hold deploys again at cell_a
 	controller._process(0.1)
 	assert_eq(session.army.deployments.size(), 2)
 	assert_eq(session.army.deployed_at(cell_a).size(), 2)

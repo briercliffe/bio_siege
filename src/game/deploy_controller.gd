@@ -3,6 +3,10 @@ extends Node
 
 signal deployed(type_id: String, cell: Vector2i)
 
+## A press shorter than this on a band cell is a tap; a longer one is a hold that keeps deploying.
+const TAP_HOLD_S: float = 0.25
+const NO_TYPE_TOAST: String = "Select a pathogen card first"
+
 var session: Session = null
 var grid_view: GridView = null
 var hud: HudSpawn = null
@@ -10,19 +14,21 @@ var toast: Toast = null
 var fsm: GameStateMachine = null
 
 var selected_type: String = ""
-var recall_mode: bool = false
 var predict_mode: bool = false
 
 var _is_pressing: bool = false
 var _current_cell: Vector2i = Vector2i(-99999, -99999)
 var _hold_timer: float = 0.0
+var _press_elapsed: float = 0.0
+## True once the press has lasted TAP_HOLD_S, so it deploys on an interval instead of recalling.
+var _hold_active: bool = false
+## True while a press on an occupied cell may still turn out to be a tap that recalls a unit.
+var _pending_recall: bool = false
 
 func setup(p_session: Session, p_grid_view: GridView, p_hud: HudSpawn, p_toast: Toast = null, p_fsm: GameStateMachine = null) -> void:
 	if hud != null:
 		if hud.deploy_type_selected.is_connected(_on_hud_deploy_type_selected):
 			hud.deploy_type_selected.disconnect(_on_hud_deploy_type_selected)
-		if hud.recall_tool_selected.is_connected(_on_hud_recall_tool_selected):
-			hud.recall_tool_selected.disconnect(_on_hud_recall_tool_selected)
 		if hud.predict_mode_selected.is_connected(_on_hud_predict_mode_selected):
 			hud.predict_mode_selected.disconnect(_on_hud_predict_mode_selected)
 		if hud.launch_requested.is_connected(_on_hud_launch_requested):
@@ -45,6 +51,9 @@ func setup(p_session: Session, p_grid_view: GridView, p_hud: HudSpawn, p_toast: 
 
 	_is_pressing = false
 	_hold_timer = 0.0
+	_press_elapsed = 0.0
+	_hold_active = false
+	_pending_recall = false
 
 	if grid_view != null and session != null:
 		grid_view.army = session.army
@@ -53,12 +62,10 @@ func setup(p_session: Session, p_grid_view: GridView, p_hud: HudSpawn, p_toast: 
 
 	if hud != null:
 		hud.deploy_type_selected.connect(_on_hud_deploy_type_selected)
-		hud.recall_tool_selected.connect(_on_hud_recall_tool_selected)
 		hud.predict_mode_selected.connect(_on_hud_predict_mode_selected)
 		hud.launch_requested.connect(_on_hud_launch_requested)
 		if not hud.selected_type_id.is_empty():
 			selected_type = hud.selected_type_id
-		recall_mode = hud.recall_active
 		predict_mode = hud.predict_active
 
 	if grid_view != null:
@@ -68,33 +75,17 @@ func setup(p_session: Session, p_grid_view: GridView, p_hud: HudSpawn, p_toast: 
 
 func select_deploy_type(type_id: String) -> void:
 	selected_type = type_id
-	recall_mode = false
 
-func select_recall_tool(on: bool) -> void:
-	recall_mode = on
-
+## The pathogen type a deploy places: the one picked on the tray, or "" when none is selected.
 func _get_effective_deploy_type() -> String:
 	if not selected_type.is_empty():
 		return selected_type
 	if hud != null and not hud.selected_type_id.is_empty():
 		return hud.selected_type_id
-	if session != null and session.army != null:
-		for type_id: Variant in session.army.reserve.keys():
-			var tid: String = str(type_id)
-			if session.army.reserve_count(tid) > 0:
-				return tid
-	if session != null and session.config != null:
-		var p_ids: Array[String] = session.config.pathogen_ids()
-		if not p_ids.is_empty():
-			return p_ids[0]
 	return ""
 
 func _on_hud_deploy_type_selected(type_id: String) -> void:
 	selected_type = type_id
-	recall_mode = false
-
-func _on_hud_recall_tool_selected(on: bool) -> void:
-	recall_mode = on
 
 func _on_hud_predict_mode_selected(on: bool) -> void:
 	predict_mode = on
@@ -113,6 +104,8 @@ func _try_deploy(cell: Vector2i) -> bool:
 
 	var type_to_deploy: String = _get_effective_deploy_type()
 	if type_to_deploy.is_empty():
+		if toast != null:
+			toast.show_message(NO_TYPE_TOAST)
 		return false
 
 	if session.army.reserve_count(type_to_deploy) > 0:
@@ -153,15 +146,6 @@ func _on_cell_pressed(cell: Vector2i) -> void:
 						hud.set_predict_mode(false)
 		return
 
-	if recall_mode:
-		_is_pressing = false
-		if session.grid.is_deploy_zone(cell):
-			if session.army != null:
-				var recalled_type: String = session.army.recall_last_at(cell)
-				if not recalled_type.is_empty() and SessionLogger != null and SessionLogger.has_method("log_event"):
-					SessionLogger.log_event("unit_recalled", {"type": recalled_type, "cell": cell})
-		return
-
 	# In deploy mode
 	if not session.grid.is_deploy_zone(cell):
 		_is_pressing = false
@@ -172,6 +156,13 @@ func _on_cell_pressed(cell: Vector2i) -> void:
 	_is_pressing = true
 	_current_cell = cell
 	_hold_timer = 0.0
+	_press_elapsed = 0.0
+	_hold_active = false
+
+	# A press on a cell that already holds units waits to see whether it is a tap (recall) or a hold (deploy).
+	_pending_recall = session.army != null and not session.army.deployed_at(cell).is_empty()
+	if _pending_recall:
+		return
 
 	var ok: bool = _try_deploy(cell)
 	if not ok:
@@ -180,19 +171,44 @@ func _on_cell_pressed(cell: Vector2i) -> void:
 func _on_cell_dragged(cell: Vector2i) -> void:
 	if not _is_pressing:
 		return
+	if cell != _current_cell:
+		_pending_recall = false
 	_current_cell = cell
 
 func _on_cell_released(_cell: Vector2i) -> void:
+	if _is_pressing and _pending_recall and not _hold_active and _press_elapsed < TAP_HOLD_S:
+		_recall_at(_current_cell)
 	_is_pressing = false
+	_pending_recall = false
+	_hold_active = false
 	_hold_timer = 0.0
+	_press_elapsed = 0.0
+
+func _recall_at(cell: Vector2i) -> void:
+	if session == null or session.army == null:
+		return
+	var recalled_type: String = session.army.recall_last_at(cell)
+	if not recalled_type.is_empty() and SessionLogger != null and SessionLogger.has_method("log_event"):
+		SessionLogger.log_event("unit_recalled", {"type": recalled_type, "cell": cell})
 
 func _process(delta: float) -> void:
 	if not _is_pressing:
 		return
-	if recall_mode:
-		return
 	if session == null or session.grid == null or session.config == null:
 		return
+	_press_elapsed += delta
+	var hold_delta: float = delta
+	if not _hold_active:
+		if _press_elapsed < TAP_HOLD_S:
+			return
+		# The press became a hold: no recall any more, deploy once, then repeat on the interval.
+		_hold_active = true
+		_pending_recall = false
+		hold_delta = _press_elapsed - TAP_HOLD_S
+		_hold_timer = 0.0
+		if session.grid.is_deploy_zone(_current_cell) and not _try_deploy(_current_cell):
+			_is_pressing = false
+			return
 	if not session.grid.is_deploy_zone(_current_cell):
 		return
 
@@ -200,7 +216,7 @@ func _process(delta: float) -> void:
 	if interval <= 0.0:
 		interval = 0.1
 
-	_hold_timer += delta
+	_hold_timer += hold_delta
 	while _is_pressing and _hold_timer >= interval:
 		_hold_timer -= interval
 		var ok: bool = _try_deploy(_current_cell)

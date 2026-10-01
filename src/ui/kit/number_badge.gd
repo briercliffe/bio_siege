@@ -1,7 +1,7 @@
 class_name NumberBadge
 extends Control
 
-## 30 px accent circle with a white number ("Getting started" steps).
+## 30 px accent circle with the on-accent number ("Getting started" steps; white on day, dark green on night).
 
 const DIAMETER: float = 30.0
 
@@ -31,4 +31,4 @@ func set_number(value: int) -> void:
 func _draw() -> void:
 	var c: Vector2 = size * 0.5
 	draw_circle(c, minf(size.x, size.y) * 0.5, UiPalette.color(night, "accent"))
-	KitDraw.draw_text_centered(self, str(number), Rect2(Vector2.ZERO, size), 14, 800, Color.WHITE)
+	KitDraw.draw_text_centered(self, str(number), Rect2(Vector2.ZERO, size), 14, 800, UiPalette.color(night, "on_accent"))
