@@ -1,7 +1,7 @@
 [gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://src/game/phases/synthesis_phase.gd" id="1_synthesis"]
-[ext_resource type="Theme" path="res://src/ui/theme_build.tres" id="2_theme"]
+[ext_resource type="Theme" path="res://src/ui/theme_day.tres" id="2_theme"]
 [ext_resource type="PackedScene" path="res://src/view/grid_view.tscn" id="3_grid_view"]
 [ext_resource type="Script" path="res://src/game/build_controller.gd" id="4_build_controller"]
 [ext_resource type="PackedScene" path="res://src/ui/hud_build.tscn" id="5_hud_build"]

@@ -537,12 +537,12 @@ func _make_build_hud(session: Session) -> HudBuild:
 func test_build_tray_card_shows_new_cost() -> void:
 	var session := Session.new(_base)
 	var hud: HudBuild = _make_build_hud(session)
-	assert_eq(hud.get_card("b_cell").cost_label.text, "150 ATP")
+	assert_eq(hud.get_card("b_cell").cost_text, "150 ATP")
 
 	session.apply_new_config(_with_cost("b_cell", 120))
 	hud.refresh_config()
 
-	assert_eq(hud.get_card("b_cell").cost_label.text, "120 ATP")
+	assert_eq(hud.get_card("b_cell").cost_text, "120 ATP")
 	assert_eq(hud.get_card("b_cell").cost_atp, 120)
 
 
@@ -557,8 +557,10 @@ func test_build_tray_refreshes_names_and_roles_in_place() -> void:
 	session.apply_new_config(renamed)
 	hud.refresh_config()
 	assert_eq(hud.get_card("macrophage"), card_before, "same card node, updated in place")
-	assert_eq(card_before.name_label.text, "Big Eater")
-	assert_eq(card_before.role_label.text, "Eats things")
+	assert_eq(card_before.title, "Big Eater")
+	hud.controller.select_tool("macrophage")
+	assert_eq(hud.selection_name_label.text, "Big Eater")
+	assert_eq(hud.selection_role_label.text, "Eats things")
 
 
 func test_build_tray_rebuilds_when_structure_removed() -> void:
@@ -611,11 +613,11 @@ func test_build_hud_shows_negative_atp_in_red() -> void:
 	session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
 	session.apply_new_config(_with_cost("macrophage", 1500))
 	hud.refresh_config()
-	assert_eq(hud.atp_label.text, "ATP -500")
+	assert_eq(hud.atp_label.text, "-500")
 	assert_eq(hud.atp_label.get_theme_color("font_color"), HudBuild.ATP_OVER_BUDGET_COLOR)
 
 	session.grid.sell(session.grid.structure_id_at(Vector2i(3, 3)), session.wallet)
-	assert_eq(hud.atp_label.text, "ATP 1000")
+	assert_eq(hud.atp_label.text, "1000")
 	assert_eq(hud.atp_label.get_theme_color("font_color"), normal)
 
 
@@ -686,7 +688,7 @@ func test_synthesis_phase_refreshes_grid_and_tray_on_config_change() -> void:
 	fsm.on_config_reloaded(wide)
 	assert_eq(synth.grid_view.config, wide)
 	assert_eq(synth.grid_view.grid.width, 16)
-	assert_eq(synth.hud_build.get_card("b_cell").cost_label.text, "120 ATP")
+	assert_eq(synth.hud_build.get_card("b_cell").cost_text, "120 ATP")
 
 
 func test_incubation_phase_refreshes_grid_and_tray_on_config_change() -> void:

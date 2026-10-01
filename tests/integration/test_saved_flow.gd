@@ -82,7 +82,7 @@ func test_hud_import_opens_the_library_on_the_right_tab() -> void:
 	fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
 	var synth: SynthesisPhase = fsm.current_phase_scene as SynthesisPhase
 	assert_eq(synth.hud_build.saves_root, ROOT, "the FSM hands the folder to the phase and its HUD")
-	synth.hud_build.popup_menu.id_pressed.emit(HudBuild.MENU_IMPORT)
+	synth.hud_build.menu_button(HudBuild.MENU_IMPORT).pressed.emit()
 	assert_eq(stack.top_id(), "saved")
 	assert_eq((stack.top_screen() as SavedScreen).kind, "base")
 
@@ -117,7 +117,7 @@ func test_saved_base_loads_back_exactly() -> void:
 	session.grid.reset_with_nucleus()
 	assert_ne(_layout_of(session.grid), saved_layout)
 
-	hud.popup_menu.id_pressed.emit(HudBuild.MENU_IMPORT)
+	hud.menu_button(HudBuild.MENU_IMPORT).pressed.emit()
 	var screen: SavedScreen = stack.top_screen() as SavedScreen
 	assert_eq(screen.slot_cards.size(), 1)
 	assert_eq(screen.slot_cards[0].name_label.text, "Ring fort")
