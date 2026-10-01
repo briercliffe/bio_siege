@@ -19,6 +19,7 @@ var turncoat_until_tick: int = -1         # phage_turncoat: tick the window ends
 var turncoat_budget: int = 0              # friendly damage left in this window
 var turncoat_pct: int = 0                 # share of attack_damage dealt per friendly shot
 var turncoat_target_id: int = 0           # structure being shot, 0 = none
+var genome_index: int = -1                # coevolution: index into the type pool, -1 = none
 
 static func create(p_id: int, p_type_id: String, p_def: StructureDef, p_origin: Vector2i) -> StructureState:
 	var state := StructureState.new()

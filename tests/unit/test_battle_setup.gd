@@ -208,3 +208,27 @@ func test_memory_seed_round_trip_and_validation() -> void:
 
 	var bad: BattleSetup = BattleSetup.create(structs, units, 5, {"rhinovirus/wild": 101})
 	assert_gt(bad.validate(cfg).size(), 0)
+
+
+func test_populations_round_trip_and_validation() -> void:
+	var cfg: GameConfig = _load_config()
+	var structs: Array = [{"type": "nucleus", "origin": Vector2i(18, 18)}]
+	var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 0)}]
+	var plain: BattleSetup = BattleSetup.create(structs, units, 5)
+	assert_false(plain.to_dict().has("populations"))
+
+	var pops: Dictionary = {"rhinovirus": {"generation": 1, "genomes": [{"antigens": ["capsule_a", ""], "receptors": ["", ""]}]}}
+	var with_pops: BattleSetup = BattleSetup.create(structs, units, 5, {}, pops)
+	assert_eq(with_pops.to_dict()["populations"], pops)
+	assert_eq(BattleSetup.from_dict(with_pops.to_dict()).populations, pops)
+	assert_eq(with_pops.duplicate_setup().populations, pops)
+	assert_eq(BattleSetup.from_dict(plain.to_dict()).populations, {})
+
+	cfg.feature_flags["coevolution"] = true
+	assert_eq(with_pops.validate(cfg).size(), 0)
+	var bad_key: BattleSetup = BattleSetup.create(structs, units, 5, {}, {"nucleus": {"genomes": []}})
+	assert_gt(bad_key.validate(cfg).size(), 0)
+	var bad_val: BattleSetup = BattleSetup.create(structs, units, 5, {}, {"rhinovirus": {"genomes": "x"}})
+	assert_gt(bad_val.validate(cfg).size(), 0)
+	cfg.feature_flags["coevolution"] = false
+	assert_eq(bad_key.validate(cfg).size(), 0, "flag off ignores the block")

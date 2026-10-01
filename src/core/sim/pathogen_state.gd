@@ -23,6 +23,7 @@ var analysis_rate_pct: int = 100   # how fast B-Cells analyze this strain (100 =
 var channel_target_id: int = 0     # structure being hijacked, 0 = none
 var channel_ticks_left: int = 0
 var speed_mt_per_tick: int = 0
+var genome_index: int = -1         # coevolution: index into the type pool, -1 = none
 var attack_damage: int = 0
 
 static func create(p_id: int, p_type_id: String, p_def: PathogenDef, p_cell: Vector2i, p_strain: StrainDef = null) -> PathogenState:
