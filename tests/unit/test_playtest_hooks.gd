@@ -71,10 +71,10 @@ func test_spawn_hud_has_help_and_mute_buttons() -> void:
 	assert_signal_emit_count(hud, "help_requested", 1)
 
 
-func test_combat_hud_has_mute_button() -> void:
+func test_combat_hud_has_pause_button() -> void:
 	var hud: HudCombat = (load("res://src/ui/hud_combat.tscn") as PackedScene).instantiate() as HudCombat
 	add_child_autofree(hud)
-	_assert_button_ok(hud.btn_mute)
+	_assert_button_ok(hud.pause_button)
 
 
 func test_programmatic_huds_also_get_the_buttons() -> void:
@@ -88,7 +88,7 @@ func test_programmatic_huds_also_get_the_buttons() -> void:
 	_assert_button_ok(spawn.btn_mute)
 	var combat: HudCombat = HudCombat.new()
 	add_child_autofree(combat)
-	_assert_button_ok(combat.btn_mute)
+	_assert_button_ok(combat.pause_button)
 
 
 func test_mute_button_toggles_sfx_and_stays_in_sync() -> void:

@@ -21,9 +21,20 @@ var overlay: BattleOverlay = null
 var _biofilm_changes: int = 0
 var _biofilm_max_group: int = 0
 
-var banner_panel: Control = null
+## Island area between the HUD cards at 1280x720 (mockup 11): x 320..960, y 96..616.
+const ISLAND_INSET_X: float = 320.0
+const ISLAND_TOP: float = 96.0
+const ISLAND_BOTTOM_INSET: float = 104.0
+
+var background: AmbientBackground = null
+var banner_panel: FloatingCard = null
 var banner_label: Label = null
 var _banner_shown: bool = false
+
+var pause_menu: PauseMenu = null
+## The SessionLogger autoload; tests may swap in their own instance.
+var logger: Node = null
+var _abandoned: bool = false
 
 
 func _resolve_nodes() -> void:
@@ -31,12 +42,43 @@ func _resolve_nodes() -> void:
 		grid_view = get_node_or_null("GridView") as GridView
 	if hud_combat == null:
 		hud_combat = get_node_or_null("HudCombat") as HudCombat
+	if background == null:
+		background = AmbientBackground.new()
+		background.name = "Background"
+		background.night = true
+		background.set_anchors_preset(Control.PRESET_FULL_RECT)
+		add_child(background)
+		move_child(background, 0)
 	if banner_panel == null:
-		banner_panel = get_node_or_null("BannerPanel") as Control
-	if banner_panel != null and banner_label == null:
-		banner_label = banner_panel.get_node_or_null("BannerLabel") as Label
-	if banner_label == null:
-		banner_label = get_node_or_null("Label") as Label
+		_build_banner()
+	if pause_menu == null:
+		pause_menu = PauseMenu.new()
+		pause_menu.visible = false
+		pause_menu.resume_requested.connect(resume)
+		pause_menu.restart_requested.connect(restart_raid)
+		pause_menu.settings_requested.connect(open_settings)
+		pause_menu.quit_requested.connect(quit_to_menu)
+		add_child(pause_menu)
+
+
+## End-of-battle banner: a night FloatingCard centred over the board. It never takes input.
+func _build_banner() -> void:
+	var center := CenterContainer.new()
+	center.name = "BannerCenter"
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(center)
+	banner_panel = FloatingCard.new()
+	banner_panel.name = "BannerPanel"
+	banner_panel.night = true
+	banner_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner_panel.visible = false
+	center.add_child(banner_panel)
+	banner_label = Label.new()
+	banner_label.name = "BannerLabel"
+	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UiFonts.style_label(banner_label, 28, 800, UiPalette.color(true, "ink"))
+	banner_panel.add_child(banner_label)
 
 
 func _ready() -> void:
@@ -53,15 +95,21 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 	session = p_session
 	fsm = p_fsm
 	_banner_shown = false
+	_abandoned = false
 
 	_resolve_nodes()
 
 	if hud_combat == null:
 		hud_combat = HudCombatScene.instantiate() as HudCombat
 		add_child(hud_combat)
+		move_child(hud_combat, banner_panel.get_parent().get_index())
+	if not hud_combat.pause_requested.is_connected(pause):
+		hud_combat.pause_requested.connect(pause)
+	hud_combat.visible = true
+	hud_combat.pause_button.disabled = false
+	pause_menu.visible = false
 
-	if banner_panel != null:
-		banner_panel.visible = false
+	banner_panel.visible = false
 
 	if grid_view == null:
 		grid_view = GridViewScene.instantiate() as GridView
@@ -83,6 +131,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 		add_child(runner)
 		runner.ticked.connect(_on_runner_ticked)
 		runner.battle_finished.connect(_on_battle_finished)
+	runner.paused = false
+	unit_layer.paused = false
 
 	var cfg: GameConfig = session.config if session != null else null
 	var b_setup: BattleSetup = session.battle_setup if session != null else null
@@ -151,6 +201,82 @@ func on_settings_changed() -> void:
 		unit_layer.reduce_flashes = SettingsApply.reduce_flashes(settings_path)
 
 
+# --- Pause (screen 12) ---------------------------------------------------------
+# The sim only advances when BattleRunner steps it, so pausing is not stepping: the runner stops
+# accumulating time and the UnitLayer view clock stops. The tree itself is never paused, so the
+# Pause menu and the Settings screen above it keep processing input.
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		pause()
+
+
+func is_paused() -> bool:
+	return runner != null and runner.paused
+
+
+## A battle can be paused while it runs, until its result is known.
+func can_pause() -> bool:
+	return runner != null and runner.sim != null and runner.is_running and not runner.sim.finished and not _abandoned
+
+
+func pause() -> void:
+	if is_paused() or not can_pause():
+		return
+	runner.paused = true
+	if unit_layer != null:
+		unit_layer.paused = true
+	hud_combat.visible = false
+	pause_menu.visible = true
+
+
+func resume() -> void:
+	if not is_paused() or _abandoned:
+		return
+	runner.paused = false
+	if unit_layer != null:
+		unit_layer.paused = false
+	hud_combat.visible = true
+	pause_menu.visible = false
+
+
+## Back to Incubation with the same base: the army is refunded so the ATP budget is as before launch.
+func restart_raid() -> void:
+	_abandon("restart", GameStateMachine.Phase.INCUBATION)
+
+
+func quit_to_menu() -> void:
+	_abandon("quit", GameStateMachine.Phase.TITLE)
+
+
+## Settings opens over the Pause menu in the night theme; the battle stays paused behind it.
+func open_settings() -> void:
+	if fsm == null or fsm.screen_stack == null:
+		return
+	fsm.screen_stack.push("settings")
+	var top: Control = fsm.screen_stack.top_screen()
+	if top != null and "night" in top:
+		top.set("night", true)
+
+
+## An abandoned battle writes no battle log and no battle_end event, and never reaches Results.
+func _abandon(reason: String, to: GameStateMachine.Phase) -> void:
+	if _abandoned:
+		return
+	_abandoned = true
+	var tick: int = runner.sim.tick if runner != null and runner.sim != null else 0
+	if runner != null:
+		runner.paused = true
+		runner.is_running = false
+	if session != null and session.army != null:
+		session.army.refund_all(session.wallet)
+	var log_node: Node = logger if logger != null else SessionLogger
+	if log_node != null and log_node.has_method("log_event"):
+		log_node.call("log_event", "battle_abandoned", {"reason": reason, "tick": tick})
+	if fsm != null:
+		fsm.request_transition(to)
+
+
 func _insert_after(node: Node, after: Node) -> void:
 	add_child(node)
 	move_child(node, after.get_index() + 1)
@@ -189,6 +315,8 @@ func _show_end_banner() -> void:
 		banner_label.text = banner_text
 	if banner_panel != null:
 		banner_panel.visible = true
+	if hud_combat != null:
+		hud_combat.pause_button.disabled = true
 
 
 func _dispatch_events() -> void:
@@ -402,9 +530,9 @@ func _update_grid_layout() -> void:
 			r = Rect2(0.0, 0.0, 1280.0, 720.0)
 
 	var inset_rect: Rect2 = Rect2(
-		0.0,
-		64.0,
-		maxf(r.size.x, 10.0),
-		maxf(r.size.y - 64.0, 10.0)
+		ISLAND_INSET_X,
+		ISLAND_TOP,
+		maxf(r.size.x - ISLAND_INSET_X * 2.0, 10.0),
+		maxf(r.size.y - ISLAND_TOP - ISLAND_BOTTOM_INSET, 10.0)
 	)
 	grid_view.fit_to_rect(inset_rect)
