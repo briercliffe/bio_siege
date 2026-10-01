@@ -50,15 +50,21 @@ func _assert_button_ok(button: Button) -> void:
 
 # ---- HUD buttons -----------------------------------------------------------
 
-func test_build_hud_has_help_and_mute_buttons() -> void:
+func test_build_hud_menu_has_help_and_sound_items() -> void:
 	var hud: HudBuild = (load("res://src/ui/hud_build.tscn") as PackedScene).instantiate() as HudBuild
 	add_child_autofree(hud)
-	_assert_button_ok(hud.btn_help)
-	_assert_button_ok(hud.btn_mute)
-	assert_eq(hud.btn_help.text, "?")
+	_assert_button_ok(hud.btn_menu)
+	_assert_button_ok(hud.menu_button(HudBuild.MENU_HOW_TO_PLAY))
+	_assert_button_ok(hud.menu_button(HudBuild.MENU_SOUND))
 	watch_signals(hud)
-	hud.btn_help.pressed.emit()
+	hud.menu_button(HudBuild.MENU_HOW_TO_PLAY).pressed.emit()
 	assert_signal_emit_count(hud, "help_requested", 1)
+	hud.open_menu()
+	assert_eq(hud.menu_button(HudBuild.MENU_SOUND).text, "Sound: On")
+	hud.menu_button(HudBuild.MENU_SOUND).pressed.emit()
+	assert_true(Sfx.muted)
+	hud.open_menu()
+	assert_eq(hud.menu_button(HudBuild.MENU_SOUND).text, "Sound: Off")
 
 
 func test_spawn_hud_has_help_and_mute_buttons() -> void:
@@ -80,8 +86,8 @@ func test_combat_hud_has_pause_button() -> void:
 func test_programmatic_huds_also_get_the_buttons() -> void:
 	var build: HudBuild = HudBuild.new()
 	add_child_autofree(build)
-	_assert_button_ok(build.btn_help)
-	_assert_button_ok(build.btn_mute)
+	_assert_button_ok(build.btn_menu)
+	_assert_button_ok(build.menu_button(HudBuild.MENU_HOW_TO_PLAY))
 	var spawn: HudSpawn = HudSpawn.new()
 	add_child_autofree(spawn)
 	_assert_button_ok(spawn.btn_help)
@@ -228,7 +234,7 @@ func test_help_buttons_request_the_overlay_through_the_state_machine() -> void:
 	var synthesis: SynthesisPhase = (load("res://src/game/phases/synthesis_phase.tscn") as PackedScene).instantiate() as SynthesisPhase
 	add_child_autofree(synthesis)
 	synthesis.setup(session, fsm)
-	synthesis.hud_build.btn_help.pressed.emit()
+	synthesis.hud_build.menu_button(HudBuild.MENU_HOW_TO_PLAY).pressed.emit()
 	assert_signal_emit_count(fsm, "how_to_play_requested", 1)
 
 	var incubation: IncubationPhase = (load("res://src/game/phases/incubation_phase.tscn") as PackedScene).instantiate() as IncubationPhase

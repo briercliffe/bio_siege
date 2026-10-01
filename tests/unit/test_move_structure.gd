@@ -379,9 +379,9 @@ func test_hud_has_move_card_when_flag_on() -> void:
 	assert_true(move_card.is_move_nucleus)
 	assert_false(move_card.is_structure_card())
 	assert_eq(move_card.tool_id, "move_nucleus")
-	assert_eq(move_card.name_label.text, "Move Nucleus")
+	assert_eq(move_card.title, "Move Nucleus")
 	assert_eq(move_card.cost_atp, 0)
-	assert_eq(move_card.shape, session.config.structures["nucleus"].placeholder_shape)
+	assert_eq(move_card.icon_id, "nucleus")
 	assert_true(move_card.custom_minimum_size.x >= 48.0)
 	assert_true(move_card.custom_minimum_size.y >= 48.0)
 	assert_eq(hud.get_card("move_nucleus"), move_card)
@@ -444,7 +444,7 @@ func test_move_card_icon_draws_without_error() -> void:
 	var session: Session = _make_session(true)
 	var hud: HudBuild = _make_hud(session)["hud"]
 	var move_card: HudCard = hud.get_card("move_nucleus")
-	move_card.icon_control.queue_redraw()
+	move_card.queue_redraw()
 	await get_tree().process_frame
 	await get_tree().process_frame
 	assert_true(move_card.is_move_nucleus)

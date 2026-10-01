@@ -35,6 +35,10 @@ func setup(label_text: String, value_text: String, suffix_text: String = "") -> 
 	_refresh()
 
 
+func label_text() -> String:
+	return _label.text
+
+
 func value_text() -> String:
 	return _value.text
 
