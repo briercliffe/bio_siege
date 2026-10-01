@@ -29,6 +29,7 @@
     "living_base": false,
     "debug_dna": false,
     "mucous_slow": false,
+    "mucous_trap": false,
     "intent_lines_default": true
   },
   "living_base": {

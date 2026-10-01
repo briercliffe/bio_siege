@@ -36,6 +36,12 @@ var _turncoat_on: bool = false
 var _turncoat_hit_tick: Dictionary = {}  # structure id -> last tick it took turncoat damage
 var turncoat_damage_dealt: int = 0
 var _coevo_on: bool = false
+var _trap_on: bool = false
+## cell -> sorted Array[int] of Mucous Wall ids whose trap reaches that cell (orthogonal neighbours, free cells only).
+var _trap_cells: Dictionary = {}
+## unit id -> {wall id: true}: each unit is trapped at most once per wall.
+var _trapped_by: Dictionary = {}
+var units_trapped: int = 0
 var _slow_on: bool = false
 ## cell -> speed percent for cells next to a Mucous Wall (mucous_slow). Rebuilt when a structure is destroyed.
 var _slow_cells: Dictionary = {}
@@ -55,6 +61,7 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 	_strains_on = p_config != null and p_config.flag("strains")
 	_coevo_on = p_config != null and p_config.coevolution_enabled()
 	_slow_on = p_config != null and p_config.flag("mucous_slow")
+	_trap_on = p_config != null and p_config.flag("mucous_trap")
 	if _biofilm_on:
 		for pd: PathogenDef in p_config.pathogens.values():
 			if pd.has_biofilm and (_biofilm_regroup_ticks == 0 or pd.biofilm_regroup_ticks < _biofilm_regroup_ticks):
@@ -155,6 +162,8 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 
 	if _slow_on:
 		_rebuild_slow_cells()
+	if _trap_on:
+		_rebuild_trap_cells()
 
 	if _analysis_on and not setup.memory_seed.is_empty():
 		_apply_memory_seed(setup.memory_seed)
@@ -179,6 +188,62 @@ func _rebuild_slow_cells() -> void:
 						continue
 					_slow_cells[n] = mini(int(_slow_cells.get(n, 100)), s.def.slow_aura_speed_pct)
 	slow_version += 1
+
+
+## cell -> sorted wall ids for every free cell orthogonally next to an alive trap structure.
+func _rebuild_trap_cells() -> void:
+	_trap_cells.clear()
+	for s: StructureState in structures:
+		if not s.alive or s.def == null or not s.def.has_trap:
+			continue
+		for cell: Vector2i in s.cells():
+			for n: Vector2i in [cell + Vector2i.LEFT, cell + Vector2i.RIGHT, cell + Vector2i.UP, cell + Vector2i.DOWN]:
+				if _occupancy.has(n):
+					continue
+				if not _trap_cells.has(n):
+					_trap_cells[n] = []
+				var ids: Array = _trap_cells[n]
+				if not ids.has(s.id):
+					ids.append(s.id)
+					ids.sort()
+
+
+## Roots a trappable unit that touches a trap wall (its last reached cell is next to one, or the wall blocks it).
+## Each unit is trapped once per wall and at most once per tick. Rooting stops movement only: a unit that is
+## attacking a blocker keeps attacking.
+func _try_trap(p: PathogenState, key: String) -> void:
+	if status.has_flag(key, StatusEffects.Kind.ROOTED):
+		return
+	var wall_ids: Array = []
+	if _trap_cells.has(p.cell):
+		wall_ids.append_array(_trap_cells[p.cell] as Array)
+	if p.blocker_id != 0 and not wall_ids.has(p.blocker_id):
+		wall_ids.append(p.blocker_id)
+	for wall_id_var: Variant in wall_ids:
+		var wall_id: int = wall_id_var
+		var wall: StructureState = structure(wall_id)
+		if wall == null or not wall.alive or wall.def == null or not wall.def.has_trap:
+			continue
+		var tagged: bool = false
+		for tag: String in wall.def.trap_target_tags:
+			if p.def.has_tag(tag):
+				tagged = true
+				break
+		if not tagged:
+			continue
+		var done: Dictionary = _trapped_by.get(p.id, {})
+		if done.has(wall_id):
+			continue
+		done[wall_id] = true
+		_trapped_by[p.id] = done
+		status.add(key, StatusEffects.Kind.ROOTED, 1, wall.def.trap_root_ticks, "trap:%d" % wall_id)
+		units_trapped += 1
+		_emit_event(SimEvents.UNIT_TRAPPED, {
+			"unit_id": p.id,
+			"structure_id": wall_id,
+			"ticks": wall.def.trap_root_ticks,
+		})
+		return
 
 
 ## cell -> speed percent (empty unless mucous_slow is on). Read-only for the view.
@@ -303,6 +368,12 @@ func state_hash() -> String:
 	for p: PathogenState in pathogens:
 		if p.channel_target_id != 0:
 			lines.append("H:%d:%d:%d" % [p.id, p.channel_target_id, p.channel_ticks_left])
+	if _trap_on:
+		for p: PathogenState in pathogens:
+			if _trapped_by.has(p.id):
+				var wall_ids: Array = (_trapped_by[p.id] as Dictionary).keys()
+				wall_ids.sort()
+				lines.append("R:%d:%s" % [p.id, ",".join(wall_ids.map(func(w: Variant) -> String: return str(w)))])
 	if _turncoat_on:
 		for s: StructureState in structures:
 			if s.turncoat_until_tick >= 0:
@@ -636,6 +707,8 @@ func _update_pathogen(p: PathogenState) -> void:
 		var slow_pct: int = int(_slow_cells.get(p.cell, 100))
 		if slow_pct < 100:
 			status.add(key, StatusEffects.Kind.SPEED_PCT, slow_pct, 1, "mucous")
+	if _trap_on:
+		_try_trap(p, key)
 
 	# 1. Cooldown
 	if p.attack_cooldown > 0:
@@ -878,6 +951,8 @@ func _damage_structure(s: StructureState, dmg: int, unit_id: int) -> void:
 			path_service.clear_cell(cell)
 		if _slow_on:
 			_rebuild_slow_cells()
+		if _trap_on:
+			_rebuild_trap_cells()
 		_emit_event(SimEvents.STRUCTURE_DESTROYED, {
 			"structure_id": s.id,
 			"structure_type": s.type_id,
