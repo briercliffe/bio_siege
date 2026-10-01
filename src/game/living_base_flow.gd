@@ -169,7 +169,7 @@ func _plan_away_raids(now: int) -> void:
 func _load_defender_state_into_session() -> void:
 	var cfg: GameConfig = session.config
 	var profile: LivingBaseProfile = session.profile
-	session.memory = ImmuneMemory.from_dict(profile.memory, cfg)
+	session.memory = ImmuneMemory.from_dict(profile.memory, cfg, BaseUpgrades.memory_slots(cfg, profile.upgrades))
 	for type_id: Variant in profile.populations.keys():
 		var tid: String = str(type_id)
 		if cfg.is_breeding_type(tid) and cfg.structures.has(tid) and profile.populations[type_id] is Dictionary:
@@ -310,6 +310,16 @@ func raid_again() -> bool:
 	return false
 
 
+## Buys the next level of an Amino Acid upgrade from the live wallet, then saves. Returns whether it was bought.
+func buy_upgrade(upgrade_id: String) -> bool:
+	if not is_active():
+		return false
+	if not BaseUpgrades.buy(session.config, session.profile.upgrades, upgrade_id, session.wallet):
+		return false
+	sync_profile_from_session()
+	return true
+
+
 ## Moves the stored Mitochondria ATP into the wallet. Returns the amount collected.
 func collect() -> int:
 	if not is_active():
@@ -372,7 +382,7 @@ func _apply_profile_to_session() -> void:
 	session.grid.load_layout(profile.layout, LivingBaseProfile.unlimited_wallet())
 	session.army = Army.new(cfg)
 	session.wallet.reset(profile.wallet)
-	session.memory = ImmuneMemory.from_dict(profile.memory, cfg)
+	session.memory = ImmuneMemory.from_dict(profile.memory, cfg, BaseUpgrades.memory_slots(cfg, profile.upgrades))
 	session.reset_populations()
 	for type_id: Variant in profile.populations.keys():
 		var tid: String = str(type_id)

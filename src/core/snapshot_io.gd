@@ -118,6 +118,8 @@ static func battle_to_dict(config: GameConfig, setup: BattleSetup, sim: BattleSi
 	}
 	if setup != null and not setup.memory_seed.is_empty():
 		battle["memory_seed"] = setup.memory_seed.duplicate(true)
+	if setup != null and not setup.defender_mods.is_empty():
+		battle["defender_mods"] = setup.defender_mods.duplicate(true)
 	return battle
 
 
@@ -586,7 +588,16 @@ static func parse_battle(text: String, config: GameConfig) -> Dictionary:
 				"config_hash": "",
 			}
 
-	var setup: BattleSetup = BattleSetup.create(parsed_base.layout, parsed_army.units, seed_val, memory_seed, parsed_base.get("populations", {}))
+	var defender_mods: Dictionary = {}
+	var dm_val: Variant = d.get("defender_mods", {})
+	if dm_val is Dictionary:
+		for dk: Variant in (dm_val as Dictionary).keys():
+			var dv: Variant = (dm_val as Dictionary)[dk]
+			# JSON numbers parse as floats; whole values are coerced back to int.
+			if typeof(dv) == TYPE_FLOAT and is_equal_approx(float(dv), roundf(float(dv))):
+				dv = int(dv)
+			defender_mods[str(dk)] = dv
+	var setup: BattleSetup = BattleSetup.create(parsed_base.layout, parsed_army.units, seed_val, memory_seed, parsed_base.get("populations", {}), defender_mods)
 
 	return {
 		"ok": true,

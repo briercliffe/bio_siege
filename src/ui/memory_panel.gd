@@ -10,6 +10,8 @@ const EMPTY_TEXT: String = "No memory yet. B-Cells remember strains they fully a
 var session: Session = null
 var rows_box: VBoxContainer = null
 var title_label: Label = null
+## "3 / 4 slots": only shown once the base has bought a memory slot (Living Base upgrades).
+var slots_label: Label = null
 var empty_label: Label = null
 
 
@@ -67,6 +69,14 @@ func _init() -> void:
 	title_label.add_theme_font_size_override("font_size", 14)
 	outer.add_child(title_label)
 
+	slots_label = Label.new()
+	slots_label.name = "SlotsLabel"
+	slots_label.visible = false
+	slots_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slots_label.add_theme_font_size_override("font_size", 11)
+	slots_label.add_theme_color_override("font_color", Color("#9aa5b1"))
+	outer.add_child(slots_label)
+
 	empty_label = Label.new()
 	empty_label.name = "EmptyLabel"
 	empty_label.text = EMPTY_TEXT
@@ -116,6 +126,17 @@ static func strain_label(strain_key: String, config: GameConfig) -> String:
 	return "%s (%s)" % [p_name, variant_id]
 
 
+## "3 / 4 slots" for the player's own base once it has a memory-slot upgrade.
+func _refresh_slots(cfg: GameConfig, mem: ImmuneMemory) -> void:
+	slots_label.visible = false
+	if cfg == null or mem == null or session == null or session.profile == null or session.has_attack_target():
+		return
+	if BaseUpgrades.level(session.profile.upgrades, "memory_slot") <= 0:
+		return
+	slots_label.text = "%d / %d slots" % [mem.entries.size(), BaseUpgrades.memory_slots(cfg, session.profile.upgrades)]
+	slots_label.visible = true
+
+
 func refresh() -> void:
 	if rows_box == null:
 		return
@@ -124,6 +145,7 @@ func refresh() -> void:
 		c.queue_free()
 	var cfg: GameConfig = session.config if session != null else null
 	var mem: ImmuneMemory = session.defender_memory() if session != null else null
+	_refresh_slots(cfg, mem)
 	if cfg == null or mem == null or mem.is_empty():
 		empty_label.visible = true
 		return

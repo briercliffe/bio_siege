@@ -127,6 +127,8 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 		var s_def: StructureDef = config.structures[type_id]
 		var sid: int = i + 1
 		var s_state := StructureState.create(sid, type_id, s_def, origin)
+		if s_def.has_analysis and setup.defender_mods.has("analysis_threshold_pct"):
+			s_state.analysis_threshold_ticks = maxi(1, FixedMath.apply_pct(s_def.analysis_threshold_ticks, int(setup.defender_mods["analysis_threshold_pct"])))
 		structures.append(s_state)
 		if _coevo_on and config.is_breeding_type(type_id):
 			var sn: int = int(structure_genome_counts.get(type_id, 0))
@@ -272,7 +274,7 @@ func _apply_memory_seed(memory_seed: Dictionary) -> void:
 			var pct: int = int(memory_seed[key])
 			if pct <= 0:
 				continue
-			s.analysis_exposure[key] = s.def.analysis_threshold_ticks * pct
+			s.analysis_exposure[key] = s.analysis_threshold_ticks * pct
 			if pct >= 100:
 				s.analyzed[key] = true
 				_emit_event(SimEvents.ANALYSIS_COMPLETE, {"structure_id": s.id, "strain_key": key, "unit_type": key.get_slice("/", 0)})
@@ -644,7 +646,7 @@ func _accrue_analysis(s: StructureState) -> void:
 		return
 	var e: int = int(s.analysis_exposure.get(key, 0)) + tgt.analysis_rate_pct
 	s.analysis_exposure[key] = e
-	if e >= s.def.analysis_threshold_ticks * 100:
+	if e >= s.analysis_threshold_ticks * 100:
 		s.analyzed[key] = true
 		_emit_event(SimEvents.ANALYSIS_COMPLETE, {"structure_id": s.id, "strain_key": key, "unit_type": tgt.type_id})
 		if _presenter_on:
@@ -692,7 +694,7 @@ func _present(source: StructureState, key: String) -> void:
 			if not FixedMath.within(d.center, b.center, radius):
 				continue
 			b.analyzed[key] = true
-			b.analysis_exposure[key] = b.def.analysis_threshold_ticks * 100
+			b.analysis_exposure[key] = b.analysis_threshold_ticks * 100
 			analyses_shared += 1
 			_emit_event(SimEvents.ANALYSIS_SHARED, {
 				"presenter_id": d.id,

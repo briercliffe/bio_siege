@@ -20,13 +20,18 @@ static func build_setup(cfg: GameConfig, profile: LivingBaseProfile, raid_index:
 			var key: String = "%s/%s" % [str(u.get("type", "")), str(u.get("strain", "wild"))]
 			if not keys.has(key):
 				keys.append(key)
-		memory_seed = ImmuneMemory.from_dict(profile.memory, cfg).seed_map(keys, cfg)
+		memory_seed = ImmuneMemory.from_dict(profile.memory, cfg, BaseUpgrades.memory_slots(cfg, profile.upgrades)).seed_map(keys, cfg)
 	var populations: Dictionary = {}
 	if cfg.coevolution_enabled():
 		var pools: Dictionary = pools_for(cfg, profile)
 		for type_id: Variant in pools.keys():
 			populations[type_id] = (pools[type_id] as BreedPool).to_dict()
-	return BattleSetup.create(profile.layout, units, raid_seed, memory_seed, populations)
+	# The player's base defends with its upgrades; AI bases never get mods.
+	var mods: Dictionary = {}
+	var analysis_pct: int = BaseUpgrades.analysis_threshold_pct(cfg, profile.upgrades)
+	if analysis_pct != 100:
+		mods["analysis_threshold_pct"] = analysis_pct
+	return BattleSetup.create(profile.layout, units, raid_seed, memory_seed, populations, mods)
 
 
 ## Runs raid `raid_index` headless to the end, applies it to the profile and returns the defense-log entry.
@@ -40,9 +45,10 @@ static func resolve_offline(cfg: GameConfig, profile: LivingBaseProfile, raid_in
 ## Applies a finished AI raid to the profile: ATP lost from the Mitochondria, Amino Acids for kills, the
 ## base's memory and tower pools, the AI army's pools, and the raid counter. Returns the defense-log entry.
 static func apply_result(cfg: GameConfig, profile: LivingBaseProfile, setup: BattleSetup, sim: BattleSim, raid_index: int) -> Dictionary:
-	var memory: ImmuneMemory = ImmuneMemory.from_dict(profile.memory, cfg)
+	var slots: int = BaseUpgrades.memory_slots(cfg, profile.upgrades)
+	var memory: ImmuneMemory = ImmuneMemory.from_dict(profile.memory, cfg, slots)
 	var pools: Dictionary = pools_for(cfg, profile)
-	var res: Dictionary = RaidResolver.resolve(cfg, setup, sim, profile.stored_atp, memory, pools)
+	var res: Dictionary = RaidResolver.resolve(cfg, setup, sim, profile.stored_atp, memory, pools, slots, BaseUpgrades.memory_decay_raids(cfg, profile.upgrades))
 	profile.apply_defense_result(res)
 	profile.memory = memory.to_dict()
 	if cfg.coevolution_enabled():

@@ -214,18 +214,19 @@ static func from_dict(d: Dictionary, cfg: GameConfig) -> Dictionary:
 	if clamped_cur:
 		notices.append("Negative wallet amounts were reset to 0")
 
-	var mem_val: Variant = d.get("memory", {})
-	if typeof(mem_val) == TYPE_DICTIONARY:
-		p.memory = ImmuneMemory.from_dict(mem_val, cfg).to_dict()
-	p.populations = _clean_pools(d.get("populations", {}), cfg)
-	p.ai_army_populations = _clean_pools(d.get("ai_army_populations", {}), cfg)
-
 	var up_val: Variant = d.get("upgrades", {})
 	if typeof(up_val) == TYPE_DICTIONARY:
 		for k_var: Variant in (up_val as Dictionary).keys():
 			var lv: Variant = (up_val as Dictionary)[k_var]
 			if _is_whole(lv) and int(lv) >= 0:
 				p.upgrades[str(k_var)] = int(lv)
+
+	var mem_val: Variant = d.get("memory", {})
+	if typeof(mem_val) == TYPE_DICTIONARY:
+		p.memory = ImmuneMemory.from_dict(mem_val, cfg, BaseUpgrades.memory_slots(cfg, p.upgrades)).to_dict()
+	p.populations = _clean_pools(d.get("populations", {}), cfg)
+	p.ai_army_populations = _clean_pools(d.get("ai_army_populations", {}), cfg)
+
 	p.opponents = _dict_list(d.get("opponents", []))
 	p.defense_log = _dict_list(d.get("defense_log", []))
 	while p.defense_log.size() > maxi(1, cfg.lb_defense_log_size):
