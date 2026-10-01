@@ -39,6 +39,11 @@ var loot_dna_per_win: int = 0
 var ai_opponents_shown: int = 0 # AI base generator (#160)
 var ai_tower_weights: Dictionary = {} # structure id -> weight
 var ai_tiers: Array[Dictionary] = [] # {id, display_name, budget_atp, wall_pct, mitochondria, dendritic, stored_atp}
+var ai_raid_interval_s: int = 0 # AI raids on the player (#162)
+var ai_raid_max_pending: int = 0
+var ai_army_budget_pct: int = 0
+var ai_min_army_atp: int = 0
+var ai_pathogen_weights: Dictionary = {} # pathogen id -> weight
 var memory_seed_pct_per_level: int = 0
 var memory_decay_raids: int = 0
 var memory_slots: int = 0
@@ -262,6 +267,7 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 	if not rules_data.is_empty():
 		_validate_coevolution(rules_data, structures_data, pathogens_data, errors)
 		_validate_ai_bases(rules_data, structures_data, errors)
+		_validate_ai_raids(rules_data, pathogens_data, errors)
 
 	if not errors.is_empty():
 		result.errors = errors
@@ -345,6 +351,18 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 					"dendritic": int(td.get("dendritic", 0)),
 					"stored_atp": int(td.get("stored_atp", 0)),
 				})
+
+	var raids_raw: Variant = rules_data.get("ai_raids", null)
+	if typeof(raids_raw) == TYPE_DICTIONARY:
+		var rd: Dictionary = raids_raw
+		config.ai_raid_interval_s = int(rd.get("interval_hours", 0)) * 3600
+		config.ai_raid_max_pending = int(rd.get("max_pending", 0))
+		config.ai_army_budget_pct = int(rd.get("army_budget_pct_of_base", 0))
+		config.ai_min_army_atp = int(rd.get("min_army_atp", 0))
+		var pw: Variant = rd.get("pathogen_weights", {})
+		if typeof(pw) == TYPE_DICTIONARY:
+			for pk: Variant in (pw as Dictionary).keys():
+				config.ai_pathogen_weights[str(pk)] = int((pw as Dictionary)[pk])
 
 	var coevo_raw: Variant = rules_data.get("coevolution", null)
 	if typeof(coevo_raw) == TYPE_DICTIONARY:
@@ -680,7 +698,7 @@ static func _validate_rules(data: Dictionary, errors: PackedStringArray) -> void
 		"battle_timeout_s", "max_path_recalcs_per_tick", "empty_path_weight",
 		"deploy_hold_interval_s", "default_seed", "feature_flags"
 	]
-	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution", "living_base", "loot", "ai_bases"]
+	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution", "living_base", "loot", "ai_bases", "ai_raids"]
 	for k_var: Variant in data.keys():
 		var k: String = str(k_var)
 		if not k.begins_with("_") and not allowed_keys.has(k) and not optional_rule_keys.has(k):
@@ -859,7 +877,7 @@ static func _validate_immune_memory(data: Dictionary, errors: PackedStringArray)
 
 ## Optional rule block of integers, required only when `flag_name` is on (the immune_memory pattern).
 ## spec: key -> [min, max]; max -1 means unbounded.
-static func _validate_int_block(data: Dictionary, block: String, flag_name: String, spec: Dictionary, errors: PackedStringArray) -> void:
+static func _validate_int_block(data: Dictionary, block: String, flag_name: String, spec: Dictionary, errors: PackedStringArray, extra_keys: Array[String] = []) -> void:
 	var flags_val: Variant = data.get("feature_flags", null)
 	var flag_on: bool = false
 	if typeof(flags_val) == TYPE_DICTIONARY:
@@ -875,7 +893,7 @@ static func _validate_int_block(data: Dictionary, block: String, flag_name: Stri
 	var b: Dictionary = b_val
 	for bk_var: Variant in b.keys():
 		var bk: String = str(bk_var)
-		if not bk.begins_with("_") and not spec.has(bk):
+		if not bk.begins_with("_") and not spec.has(bk) and not extra_keys.has(bk):
 			errors.append("game_rules.json: %s.%s: unknown key (got %s)" % [block, bk, bk])
 	for key_var: Variant in spec.keys():
 		var key: String = str(key_var)
@@ -942,6 +960,33 @@ static func _validate_living_base(data: Dictionary, errors: PackedStringArray) -
 			errors.append("game_rules.json: living_base.%s: must be >= %d (got %s)" % [key, int(range_arr[0]), _format_val(v)])
 		elif int(v) > int(range_arr[1]):
 			errors.append("game_rules.json: living_base.%s: must be <= %d (got %s)" % [key, int(range_arr[1]), _format_val(v)])
+
+## ai_raids (#162): the integer fields plus pathogen_weights, whose keys must be pathogens.
+static func _validate_ai_raids(data: Dictionary, pathogens_data: Dictionary, errors: PackedStringArray) -> void:
+	_validate_int_block(data, "ai_raids", "living_base", {
+		"interval_hours": [1, 168], "max_pending": [0, 10],
+		"army_budget_pct_of_base": [10, 300], "min_army_atp": [0, -1]
+	}, errors, ["pathogen_weights"])
+	var block: Variant = data.get("ai_raids", null)
+	if typeof(block) != TYPE_DICTIONARY:
+		return
+	var b: Dictionary = block
+	if not b.has("pathogen_weights"):
+		errors.append("game_rules.json: ai_raids.pathogen_weights: missing required field (got null)")
+		return
+	var w_val: Variant = b["pathogen_weights"]
+	if typeof(w_val) != TYPE_DICTIONARY or (w_val as Dictionary).is_empty():
+		errors.append("game_rules.json: ai_raids.pathogen_weights: must be a non-empty JSON object (got %s)" % [_format_val(w_val)])
+		return
+	for wk_var: Variant in (w_val as Dictionary).keys():
+		var wk: String = str(wk_var)
+		if not pathogens_data.is_empty() and not pathogens_data.has(wk):
+			errors.append("game_rules.json: ai_raids.pathogen_weights.%s: must be a pathogen id (got %s)" % [wk, wk])
+		var wv: Variant = (w_val as Dictionary)[wk_var]
+		if not _is_whole_number(wv):
+			errors.append("game_rules.json: ai_raids.pathogen_weights.%s: must be an integer (got %s)" % [wk, _format_val(wv)])
+		elif int(wv) <= 0:
+			errors.append("game_rules.json: ai_raids.pathogen_weights.%s: must be > 0 (got %s)" % [wk, _format_val(wv)])
 
 ## ai_bases (#160): required when living_base is on. tower_weights keys must be buildable structures with an attack.
 static func _validate_ai_bases(data: Dictionary, structures_data: Dictionary, errors: PackedStringArray) -> void:
