@@ -190,9 +190,16 @@ static func from_dict(d: Dictionary, cfg: GameConfig) -> Dictionary:
 	if removed > 0:
 		notices.append("%d structures removed (no longer in the game)" % removed)
 	var grid := GridModel.new(cfg)
-	var err: GridModel.PlaceError = grid.load_layout(kept, unlimited_wallet())
-	if err != GridModel.PlaceError.OK:
-		return _fail("Living Base save has a base layout that does not fit the grid.")
+	if grid.load_layout(kept, unlimited_wallet()) != GridModel.PlaceError.OK:
+		# Keep what fits, one structure at a time, so one bad entry (an overlap after a footprint change)
+		# does not cost the player the whole base.
+		var fitting: Array = []
+		for entry: Dictionary in kept:
+			if grid.load_layout(fitting + [entry], unlimited_wallet()) == GridModel.PlaceError.OK:
+				fitting.append(entry)
+		if grid.load_layout(fitting, unlimited_wallet()) != GridModel.PlaceError.OK:
+			return _fail("Living Base save has a base layout that does not fit the grid.")
+		notices.append("%d structures removed (no longer fit the base)" % (kept.size() - fitting.size()))
 	p.layout = grid.to_layout()
 
 	# Wallet: known currencies only, never negative.
