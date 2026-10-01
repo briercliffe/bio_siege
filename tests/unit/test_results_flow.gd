@@ -775,3 +775,93 @@ func test_removed_outbreak_choices_do_nothing() -> void:
 		ResultsPhase.apply_choice(choice, session, fsm)
 	assert_eq(session.grid.to_layout(), layout)
 	assert_eq(fsm.phase, GameStateMachine.Phase.RESULTS)
+
+
+# --- coevolution (#144) ---
+
+func _coevo_cfg(on: bool = true) -> GameConfig:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	cfg.feature_flags["coevolution"] = on
+	return cfg
+
+
+func _finished_battle(session: Session, rhino_fitness_index: int = 1) -> void:
+	var structs: Array = [
+		{"type": "nucleus", "origin": Vector2i(18, 18)},
+		{"type": "macrophage", "origin": Vector2i(5, 5)},
+	]
+	var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 20)}]
+	session.battle_setup = BattleSetup.create(structs, units, session.seed)
+	var sim: BattleSim = SimFixtures.make_sim(structs, units, session.seed, session.config)
+	sim.finished = true
+	sim.outcome = "defender"
+	sim.end_reason = "timeout"
+	# Force the fitness: only rhinovirus index 1 scored, and nothing survives to earn a bonus.
+	sim._pools["rhinovirus"].fitness[rhino_fitness_index] = 10
+	sim._survival_granted = true
+	var inf := InfectionPhase.new()
+	add_child_autoqfree(inf)
+	inf.session = session
+	inf._on_battle_finished(sim)
+
+
+func test_new_base_clears_pools_and_re_raid_keeps_them() -> void:
+	var cfg: GameConfig = _coevo_cfg()
+	var session := Session.new(cfg)
+	var fsm := GameStateMachine.new()
+	add_child_autoqfree(fsm)
+	fsm.session = session
+	var pool: BreedPool = BreedPool.wild_pool("rhinovirus", cfg)
+	pool.generation = 4
+	pool.genomes[0] = Genome.from_slots([], ["binder_a", ""], cfg)
+	session.populations["rhinovirus"] = pool
+	for choice: String in ["re_raid", "edit_base"]:
+		fsm.phase = GameStateMachine.Phase.RESULTS
+		ResultsPhase.apply_choice(choice, session, fsm)
+		assert_eq((session.populations["rhinovirus"] as BreedPool).generation, 4)
+		assert_eq((session.populations["rhinovirus"] as BreedPool).genomes[0].receptors[0], "binder_a")
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("new_base", session, fsm)
+	assert_true(session.populations.is_empty())
+	assert_true(session.population("rhinovirus").is_wild())
+
+
+func test_battle_breeds_only_types_that_scored() -> void:
+	var session := Session.new(_coevo_cfg())
+	_finished_battle(session)
+	assert_eq(session.population("rhinovirus").generation, 1)
+	assert_eq(session.population("macrophage").generation, 0)
+	var evo: Array = session.last_result["evolution"]
+	assert_eq(evo.size(), session.config.coevo_types.size())
+	var by_type: Dictionary = {}
+	for e: Dictionary in evo:
+		by_type[e["type_id"]] = e
+	assert_true(by_type["rhinovirus"]["bred"])
+	assert_false(by_type["macrophage"]["bred"])
+	assert_eq(by_type["rhinovirus"]["top_parent"], 1)
+	assert_true(session.last_result["populations"].has("rhinovirus"))
+
+
+func test_flag_off_battle_leaves_no_pools() -> void:
+	var session := Session.new(_coevo_cfg(false))
+	var structs: Array = [{"type": "nucleus", "origin": Vector2i(18, 18)}]
+	var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 20)}]
+	session.battle_setup = BattleSetup.create(structs, units, session.seed)
+	var sim: BattleSim = SimFixtures.make_sim(structs, units, session.seed, session.config)
+	sim.run_to_end()
+	var inf := InfectionPhase.new()
+	add_child_autoqfree(inf)
+	inf.session = session
+	inf._on_battle_finished(sim)
+	assert_true(session.populations.is_empty())
+	assert_false(session.last_result.has("evolution"))
+	assert_false(session.last_result.has("populations"))
+
+
+func test_breeding_is_deterministic() -> void:
+	var children: Array = []
+	for i: int in range(2):
+		var session := Session.new(_coevo_cfg())
+		_finished_battle(session)
+		children.append(session.population("rhinovirus").to_dict())
+	assert_eq(children[0], children[1])

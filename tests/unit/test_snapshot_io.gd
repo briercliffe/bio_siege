@@ -308,3 +308,46 @@ func test_battle_memory_seed_round_trip() -> void:
 	assert_eq((parsed["setup"] as BattleSetup).memory_seed, {"rhinovirus/wild": 75})
 	var plain: Dictionary = SnapshotIO.battle_to_dict(config, base, BattleSim.new(config, base))
 	assert_false(plain.has("memory_seed"))
+
+
+func _two_pools() -> Dictionary:
+	return {
+		"rhinovirus": {"generation": 3, "genomes": [{"antigens": ["capsule_a", ""], "receptors": ["binder_a", ""]}]},
+		"macrophage": {"generation": 1, "genomes": [{"antigens": ["", "wall_b"], "receptors": ["", "hook_b"]}]},
+	}
+
+
+func test_base_populations_round_trip() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	var grid := GridModel.new(cfg)
+	grid.reset_with_nucleus()
+	assert_false(SnapshotIO.base_to_dict(grid).has("populations"))
+	assert_eq(SnapshotIO.parse_base(SnapshotIO.to_json(SnapshotIO.base_to_dict(grid)), cfg)["populations"], {})
+
+	var pools: Dictionary = _two_pools()
+	var d: Dictionary = SnapshotIO.base_to_dict(grid, null, pools)
+	assert_eq(d["version"], 1)
+	var parsed: Dictionary = SnapshotIO.parse_base(SnapshotIO.to_json(d), cfg)
+	assert_true(parsed["ok"])
+	for type_id: String in pools.keys():
+		var back: BreedPool = BreedPool.from_dict(parsed["populations"][type_id], type_id, cfg)
+		assert_eq(back.to_dict(), BreedPool.from_dict(pools[type_id], type_id, cfg).to_dict())
+	assert_eq(BreedPool.from_dict(parsed["populations"]["rhinovirus"], "rhinovirus", cfg).generation, 3)
+
+	d["populations"] = []
+	var bad: Dictionary = SnapshotIO.parse_base(SnapshotIO.to_json(d), cfg)
+	assert_false(bad["ok"])
+	assert_eq(bad["error"], "Invalid populations block")
+
+
+func test_battle_populations_round_trip() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	var base: BattleSetup = Scenarios.open_field(9)
+	var setup: BattleSetup = BattleSetup.create(base.structures, base.units, 9, {}, _two_pools())
+	var b_dict: Dictionary = SnapshotIO.battle_to_dict(cfg, setup, BattleSim.new(cfg, setup))
+	assert_eq(SnapshotIO.setup_from_battle(b_dict).populations, _two_pools())
+	var parsed: Dictionary = SnapshotIO.parse_battle(SnapshotIO.to_json(b_dict), cfg)
+	assert_true(parsed["ok"])
+	var rhino: Dictionary = (parsed["setup"] as BattleSetup).populations["rhinovirus"]
+	assert_eq(int(rhino["generation"]), 3)
+	assert_false(SnapshotIO.battle_to_dict(cfg, base, BattleSim.new(cfg, base))["base"].has("populations"))

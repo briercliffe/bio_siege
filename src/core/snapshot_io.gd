@@ -6,7 +6,7 @@ extends RefCounted
 ## Pure RefCounted with zero Node/OS/scene dependencies.
 
 
-static func base_to_dict(grid: GridModel, memory: ImmuneMemory = null) -> Dictionary:
+static func base_to_dict(grid: GridModel, memory: ImmuneMemory = null, populations: Dictionary = {}) -> Dictionary:
 	var structs_arr: Array = []
 	if grid != null:
 		for s: GridModel.PlacedStructure in grid.structures():
@@ -27,6 +27,8 @@ static func base_to_dict(grid: GridModel, memory: ImmuneMemory = null) -> Dictio
 	}
 	if memory != null and not memory.is_empty():
 		out["memory"] = memory.to_dict()
+	if not populations.is_empty():
+		out["populations"] = populations.duplicate(true)
 	return out
 
 
@@ -92,6 +94,9 @@ static func battle_to_dict(config: GameConfig, setup: BattleSetup, sim: BattleSi
 		},
 		"structures": structs_arr,
 	}
+	# Pools ride inside the base object, so the battle log gains no new top-level key.
+	if setup != null and not setup.populations.is_empty():
+		base_dict["populations"] = setup.populations.duplicate(true)
 
 	var army_dict: Dictionary = army_to_dict(setup.units if setup != null else [])
 
@@ -280,6 +285,17 @@ static func parse_base(text: String, config: GameConfig) -> Dictionary:
 			}
 		memory_out = (mem_val as Dictionary).duplicate(true)
 
+	var populations_out: Dictionary = {}
+	if d.has("populations"):
+		var pop_val: Variant = d["populations"]
+		if not (pop_val is Dictionary):
+			return {
+				"ok": false,
+				"error": "Invalid populations block",
+				"layout": [],
+			}
+		populations_out = (pop_val as Dictionary).duplicate(true)
+
 	if config != null:
 		var setup := BattleSetup.create(layout, [], 0)
 		var val_errors: PackedStringArray = setup.validate(config)
@@ -295,6 +311,7 @@ static func parse_base(text: String, config: GameConfig) -> Dictionary:
 		"error": "",
 		"layout": layout,
 		"memory": memory_out,
+		"populations": populations_out,
 	}
 
 
@@ -569,7 +586,7 @@ static func parse_battle(text: String, config: GameConfig) -> Dictionary:
 				"config_hash": "",
 			}
 
-	var setup: BattleSetup = BattleSetup.create(parsed_base.layout, parsed_army.units, seed_val, memory_seed)
+	var setup: BattleSetup = BattleSetup.create(parsed_base.layout, parsed_army.units, seed_val, memory_seed, parsed_base.get("populations", {}))
 
 	return {
 		"ok": true,
@@ -634,4 +651,6 @@ static func setup_from_battle(d: Dictionary) -> BattleSetup:
 	var memory_seed: Dictionary = {}
 	if ms_val is Dictionary:
 		memory_seed = _parse_memory_seed(ms_val as Dictionary)
-	return BattleSetup.create(structs_arr, units_arr, seed_val, memory_seed)
+	var pops_val: Variant = base_dict.get("populations", {})
+	var populations: Dictionary = pops_val if pops_val is Dictionary else {}
+	return BattleSetup.create(structs_arr, units_arr, seed_val, memory_seed, populations)

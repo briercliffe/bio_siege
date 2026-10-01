@@ -679,6 +679,7 @@ static func apply_choice(choice: String, session: Session, fsm: GameStateMachine
 		"new_base":
 			session.best_score = 0
 			session.memory = ImmuneMemory.new()
+			session.reset_populations()
 			if session.wallet != null and session.config != null:
 				session.wallet.reset(session.config.start_wallet)
 			if session.grid != null:
