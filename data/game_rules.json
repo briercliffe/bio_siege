@@ -41,6 +41,15 @@
     "amino_per_kill_pct": 10,
     "dna_per_win": 5
   },
+  "ai_bases": {
+    "opponents_shown": 3,
+    "tower_weights": { "macrophage": 50, "b_cell": 50 },
+    "tiers": [
+      { "id": "cold", "display_name": "Common Cold", "budget_atp": 500, "wall_pct": 20, "mitochondria": 1, "dendritic": 0, "stored_atp": 150 },
+      { "id": "flu", "display_name": "Flu", "budget_atp": 800, "wall_pct": 20, "mitochondria": 2, "dendritic": 0, "stored_atp": 300 },
+      { "id": "pneumonia", "display_name": "Pneumonia", "budget_atp": 1200, "wall_pct": 25, "mitochondria": 2, "dendritic": 1, "stored_atp": 500 }
+    ]
+  },
   "immune_memory": { "max_level": 3, "seed_pct_per_level": 25, "decay_raids": 2, "slots": 3, "drift_pct": 50 },
   "coevolution": {
     "pool_size": 8,

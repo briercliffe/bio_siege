@@ -36,6 +36,9 @@ var loot_atp_pct: int = 0 # share of a destroyed Mitochondria's stored ATP the r
 var loot_amino_structure_pct: int = 0
 var loot_amino_kill_pct: int = 0
 var loot_dna_per_win: int = 0
+var ai_opponents_shown: int = 0 # AI base generator (#160)
+var ai_tower_weights: Dictionary = {} # structure id -> weight
+var ai_tiers: Array[Dictionary] = [] # {id, display_name, budget_atp, wall_pct, mitochondria, dendritic, stored_atp}
 var memory_seed_pct_per_level: int = 0
 var memory_decay_raids: int = 0
 var memory_slots: int = 0
@@ -258,6 +261,7 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 
 	if not rules_data.is_empty():
 		_validate_coevolution(rules_data, structures_data, pathogens_data, errors)
+		_validate_ai_bases(rules_data, structures_data, errors)
 
 	if not errors.is_empty():
 		result.errors = errors
@@ -319,6 +323,28 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 		config.loot_amino_structure_pct = int(loot.get("amino_per_structure_pct", 0))
 		config.loot_amino_kill_pct = int(loot.get("amino_per_kill_pct", 0))
 		config.loot_dna_per_win = int(loot.get("dna_per_win", 0))
+
+	var ai_raw: Variant = rules_data.get("ai_bases", null)
+	if typeof(ai_raw) == TYPE_DICTIONARY:
+		var ai: Dictionary = ai_raw
+		config.ai_opponents_shown = int(ai.get("opponents_shown", 0))
+		var weights: Variant = ai.get("tower_weights", {})
+		if typeof(weights) == TYPE_DICTIONARY:
+			for wk: Variant in (weights as Dictionary).keys():
+				config.ai_tower_weights[str(wk)] = int((weights as Dictionary)[wk])
+		var tiers: Variant = ai.get("tiers", [])
+		if typeof(tiers) == TYPE_ARRAY:
+			for t_var: Variant in tiers:
+				var td: Dictionary = t_var
+				config.ai_tiers.append({
+					"id": str(td.get("id", "")),
+					"display_name": str(td.get("display_name", "")),
+					"budget_atp": int(td.get("budget_atp", 0)),
+					"wall_pct": int(td.get("wall_pct", 0)),
+					"mitochondria": int(td.get("mitochondria", 0)),
+					"dendritic": int(td.get("dendritic", 0)),
+					"stored_atp": int(td.get("stored_atp", 0)),
+				})
 
 	var coevo_raw: Variant = rules_data.get("coevolution", null)
 	if typeof(coevo_raw) == TYPE_DICTIONARY:
@@ -654,7 +680,7 @@ static func _validate_rules(data: Dictionary, errors: PackedStringArray) -> void
 		"battle_timeout_s", "max_path_recalcs_per_tick", "empty_path_weight",
 		"deploy_hold_interval_s", "default_seed", "feature_flags"
 	]
-	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution", "living_base", "loot"]
+	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution", "living_base", "loot", "ai_bases"]
 	for k_var: Variant in data.keys():
 		var k: String = str(k_var)
 		if not k.begins_with("_") and not allowed_keys.has(k) and not optional_rule_keys.has(k):
@@ -916,6 +942,103 @@ static func _validate_living_base(data: Dictionary, errors: PackedStringArray) -
 			errors.append("game_rules.json: living_base.%s: must be >= %d (got %s)" % [key, int(range_arr[0]), _format_val(v)])
 		elif int(v) > int(range_arr[1]):
 			errors.append("game_rules.json: living_base.%s: must be <= %d (got %s)" % [key, int(range_arr[1]), _format_val(v)])
+
+## ai_bases (#160): required when living_base is on. tower_weights keys must be buildable structures with an attack.
+static func _validate_ai_bases(data: Dictionary, structures_data: Dictionary, errors: PackedStringArray) -> void:
+	var flags_val: Variant = data.get("feature_flags", null)
+	var flag_on: bool = false
+	if typeof(flags_val) == TYPE_DICTIONARY:
+		flag_on = (flags_val as Dictionary).get("living_base", false) == true
+	if not data.has("ai_bases"):
+		if flag_on:
+			errors.append("game_rules.json: ai_bases: required when feature_flags.living_base is true (got null)")
+		return
+	var a_val: Variant = data["ai_bases"]
+	if typeof(a_val) != TYPE_DICTIONARY:
+		errors.append("game_rules.json: ai_bases: must be a JSON object (got %s)" % [_format_val(a_val)])
+		return
+	var a: Dictionary = a_val
+	var allowed: Array[String] = ["opponents_shown", "tower_weights", "tiers"]
+	for ak_var: Variant in a.keys():
+		var ak: String = str(ak_var)
+		if not ak.begins_with("_") and not allowed.has(ak):
+			errors.append("game_rules.json: ai_bases.%s: unknown key (got %s)" % [ak, ak])
+	for req: String in allowed:
+		if not a.has(req):
+			errors.append("game_rules.json: ai_bases.%s: missing required field (got null)" % [req])
+
+	var tier_count: int = 0
+	if a.has("tiers"):
+		var tiers_val: Variant = a["tiers"]
+		if typeof(tiers_val) != TYPE_ARRAY or (tiers_val as Array).is_empty():
+			errors.append("game_rules.json: ai_bases.tiers: must be a non-empty array (got %s)" % [_format_val(tiers_val)])
+		else:
+			tier_count = (tiers_val as Array).size()
+			var seen_ids: Dictionary = {}
+			var tier_spec: Dictionary = {
+				"budget_atp": [1, -1], "wall_pct": [0, 90], "mitochondria": [0, -1],
+				"dendritic": [0, -1], "stored_atp": [0, -1]
+			}
+			for i: int in range(tier_count):
+				var t_val: Variant = (tiers_val as Array)[i]
+				var prefix: String = "ai_bases.tiers[%d]" % i
+				if typeof(t_val) != TYPE_DICTIONARY:
+					errors.append("game_rules.json: %s: must be a JSON object (got %s)" % [prefix, _format_val(t_val)])
+					continue
+				var t: Dictionary = t_val
+				for tk_var: Variant in t.keys():
+					var tk: String = str(tk_var)
+					if not tk.begins_with("_") and tk != "id" and tk != "display_name" and not tier_spec.has(tk):
+						errors.append("game_rules.json: %s.%s: unknown key (got %s)" % [prefix, tk, tk])
+				for sk: String in ["id", "display_name"]:
+					if not t.has(sk):
+						errors.append("game_rules.json: %s.%s: missing required field (got null)" % [prefix, sk])
+					elif typeof(t[sk]) != TYPE_STRING or str(t[sk]).is_empty():
+						errors.append("game_rules.json: %s.%s: must be a non-empty string (got %s)" % [prefix, sk, _format_val(t[sk])])
+				if t.has("id") and typeof(t["id"]) == TYPE_STRING and not str(t["id"]).is_empty():
+					if seen_ids.has(str(t["id"])):
+						errors.append("game_rules.json: %s.id: must be unique (got %s)" % [prefix, str(t["id"])])
+					seen_ids[str(t["id"])] = true
+				for nk_var: Variant in tier_spec.keys():
+					var nk: String = str(nk_var)
+					var rng_arr: Array = tier_spec[nk]
+					if not t.has(nk):
+						errors.append("game_rules.json: %s.%s: missing required field (got null)" % [prefix, nk])
+						continue
+					var nv: Variant = t[nk]
+					if not _is_whole_number(nv):
+						errors.append("game_rules.json: %s.%s: must be an integer (got %s)" % [prefix, nk, _format_val(nv)])
+					elif int(nv) < int(rng_arr[0]):
+						errors.append("game_rules.json: %s.%s: must be >= %d (got %s)" % [prefix, nk, int(rng_arr[0]), _format_val(nv)])
+					elif int(rng_arr[1]) >= 0 and int(nv) > int(rng_arr[1]):
+						errors.append("game_rules.json: %s.%s: must be <= %d (got %s)" % [prefix, nk, int(rng_arr[1]), _format_val(nv)])
+
+	if a.has("opponents_shown"):
+		var o: Variant = a["opponents_shown"]
+		if not _is_whole_number(o):
+			errors.append("game_rules.json: ai_bases.opponents_shown: must be an integer (got %s)" % [_format_val(o)])
+		elif int(o) < 1:
+			errors.append("game_rules.json: ai_bases.opponents_shown: must be >= 1 (got %s)" % [_format_val(o)])
+		elif tier_count > 0 and int(o) > tier_count:
+			errors.append("game_rules.json: ai_bases.opponents_shown: must be <= %d (got %s)" % [tier_count, _format_val(o)])
+
+	if a.has("tower_weights"):
+		var w_val: Variant = a["tower_weights"]
+		if typeof(w_val) != TYPE_DICTIONARY or (w_val as Dictionary).is_empty():
+			errors.append("game_rules.json: ai_bases.tower_weights: must be a non-empty JSON object (got %s)" % [_format_val(w_val)])
+		else:
+			for wk_var: Variant in (w_val as Dictionary).keys():
+				var wk: String = str(wk_var)
+				var sdef_val: Variant = structures_data.get(wk, null)
+				var ok_type: bool = typeof(sdef_val) == TYPE_DICTIONARY and (sdef_val as Dictionary).get("buildable", false) == true \
+						and (sdef_val as Dictionary).get("attack", null) != null
+				if not ok_type:
+					errors.append("game_rules.json: ai_bases.tower_weights.%s: must be a buildable structure with an attack (got %s)" % [wk, wk])
+				var wv: Variant = (w_val as Dictionary)[wk_var]
+				if not _is_whole_number(wv):
+					errors.append("game_rules.json: ai_bases.tower_weights.%s: must be an integer (got %s)" % [wk, _format_val(wv)])
+				elif int(wv) <= 0:
+					errors.append("game_rules.json: ai_bases.tower_weights.%s: must be > 0 (got %s)" % [wk, _format_val(wv)])
 
 static func _validate_coevolution(data: Dictionary, structures_data: Dictionary, pathogens_data: Dictionary, errors: PackedStringArray) -> void:
 	var flags_val: Variant = data.get("feature_flags", null)
