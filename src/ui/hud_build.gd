@@ -36,6 +36,8 @@ const PHASE_TOP: float = 10.0
 const BUTTON_TOP: float = 12.0
 const MENU_RIGHT: float = 196.0
 const FINALIZE_SIZE: Vector2 = Vector2(164.0, 52.0)
+const UNDO_SIZE: Vector2 = Vector2(120.0, 52.0)
+const UNDO_GAP: float = 12.0
 const MENU_SHEET_WIDTH: float = 260.0
 const MENU_ITEM_HEIGHT: float = 48.0
 const TRAY_BOTTOM: float = 16.0
@@ -120,6 +122,7 @@ var atp_label: Label = null
 var phase_pill: PillPanel = null
 var btn_menu: IconButton = null
 var btn_finalize: PillButton = null
+var btn_undo: PillButton = null
 
 var left_card: FloatingCard = null
 var start_box: VBoxContainer = null
@@ -196,6 +199,8 @@ func setup(p_session: Session, p_controller: BuildController) -> void:
 			session.grid.structure_removed.disconnect(_on_structure_removed)
 	if controller != null and controller.tool_changed.is_connected(_on_tool_changed):
 		controller.tool_changed.disconnect(_on_tool_changed)
+	if controller != null and controller.history_changed.is_connected(_update_undo_button):
+		controller.history_changed.disconnect(_update_undo_button)
 
 	session = p_session
 	controller = p_controller
@@ -207,6 +212,7 @@ func setup(p_session: Session, p_controller: BuildController) -> void:
 		session.grid.structure_removed.connect(_on_structure_removed)
 	if controller != null:
 		controller.tool_changed.connect(_on_tool_changed)
+		controller.history_changed.connect(_update_undo_button)
 
 	_populate_tray()
 	_sync_memory_panel()
@@ -257,6 +263,18 @@ func _update_all() -> void:
 	_update_sell_card()
 	_update_left_card()
 	_update_status()
+	_update_undo_button()
+
+
+func _update_undo_button() -> void:
+	if btn_undo != null:
+		btn_undo.disabled = controller == null or not controller.can_undo()
+		btn_undo.queue_redraw()
+
+
+func _on_undo_pressed() -> void:
+	if controller != null:
+		controller.undo_last()
 
 
 # --- tray -----------------------------------------------------------------------------
@@ -771,6 +789,19 @@ func _build_buttons() -> void:
 	btn_menu.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	btn_menu.pressed.connect(_on_btn_menu_pressed)
 	add_child(btn_menu)
+
+	btn_undo = PillButton.new("Undo", PillButton.Variant.SECONDARY)
+	btn_undo.name = "BtnUndo"
+	btn_undo.anchor_left = 1.0
+	btn_undo.anchor_right = 1.0
+	btn_undo.offset_right = -MENU_RIGHT - IconButton.ROUND_SIZE.x - UNDO_GAP
+	btn_undo.offset_left = btn_undo.offset_right - UNDO_SIZE.x
+	btn_undo.offset_top = BUTTON_TOP
+	btn_undo.offset_bottom = BUTTON_TOP + UNDO_SIZE.y
+	btn_undo.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	btn_undo.disabled = true
+	btn_undo.pressed.connect(_on_undo_pressed)
+	add_child(btn_undo)
 
 	btn_finalize = PillButton.new("Finalize Base", PillButton.Variant.PRIMARY)
 	btn_finalize.name = "BtnFinalize"

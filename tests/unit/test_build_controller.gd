@@ -473,3 +473,62 @@ func test_release_off_the_grid_cancels_the_wall_line() -> void:
 	assert_false(grid_view._has_ghost)
 	assert_eq(session.grid.tile_state(Vector2i(2, 2)), GridModel.TileState.EMPTY)
 	assert_eq(session.wallet.get_amount("atp"), atp)
+
+
+func test_undo_removes_a_whole_wall_line_and_refunds() -> void:
+	var parts: Array = _wall_setup()
+	var session: Session = parts[0]
+	var grid_view: GridView = parts[1]
+	var bc: BuildController = parts[2]
+	var atp: int = session.wallet.get_amount("atp")
+	assert_false(bc.can_undo())
+	grid_view.cell_pressed.emit(Vector2i(2, 2))
+	grid_view.cell_dragged.emit(Vector2i(5, 2))
+	grid_view.cell_released.emit(Vector2i(5, 2))
+	assert_true(bc.can_undo())
+	var got: Array = []
+	bc.undone.connect(func(count: int, refund: Dictionary, _c: Vector2i) -> void: got.append([count, refund]))
+	assert_true(bc.undo_last())
+	assert_eq(got, [[4, {"atp": 20}]])
+	assert_eq(session.wallet.get_amount("atp"), atp)
+	for x: int in range(2, 6):
+		assert_eq(session.grid.tile_state(Vector2i(x, 2)), GridModel.TileState.EMPTY)
+	assert_false(bc.can_undo())
+	assert_false(bc.undo_last())
+
+func test_undo_steps_back_one_gesture_at_a_time() -> void:
+	var parts: Array = _wall_setup()
+	var session: Session = parts[0]
+	var grid_view: GridView = parts[1]
+	var bc: BuildController = parts[2]
+	grid_view.cell_pressed.emit(Vector2i(2, 2))
+	grid_view.cell_released.emit(Vector2i(2, 2))
+	bc.select_tool("macrophage")
+	grid_view.cell_pressed.emit(Vector2i(8, 8))
+	grid_view.cell_released.emit(Vector2i(8, 8))
+	assert_eq(session.grid.tile_state(Vector2i(8, 8)), GridModel.TileState.TOWER)
+	bc.undo_last()
+	assert_eq(session.grid.tile_state(Vector2i(8, 8)), GridModel.TileState.EMPTY)
+	assert_eq(session.grid.tile_state(Vector2i(2, 2)), GridModel.TileState.WALL)
+	bc.undo_last()
+	assert_eq(session.grid.tile_state(Vector2i(2, 2)), GridModel.TileState.EMPTY)
+
+func test_undo_skips_structures_already_sold() -> void:
+	var parts: Array = _wall_setup()
+	var session: Session = parts[0]
+	var grid_view: GridView = parts[1]
+	var bc: BuildController = parts[2]
+	grid_view.cell_pressed.emit(Vector2i(2, 2))
+	grid_view.cell_released.emit(Vector2i(2, 2))
+	session.grid.sell(session.grid.structure_id_at(Vector2i(2, 2)), session.wallet)
+	assert_false(bc.can_undo(), "A sold structure leaves nothing to undo")
+
+func test_failed_placement_adds_no_undo_step() -> void:
+	var parts: Array = _wall_setup()
+	var session: Session = parts[0]
+	var grid_view: GridView = parts[1]
+	var bc: BuildController = parts[2]
+	session.wallet.spend({"atp": session.wallet.get_amount("atp")})
+	grid_view.cell_pressed.emit(Vector2i(2, 2))
+	grid_view.cell_released.emit(Vector2i(2, 2))
+	assert_false(bc.can_undo())

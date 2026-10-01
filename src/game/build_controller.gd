@@ -6,6 +6,10 @@ signal place_failed(reason: int)
 signal placed(type_id: String, cell: Vector2i)
 signal sold(type_id: String, refund: Dictionary, cell: Vector2i)
 signal nucleus_moved(from: Vector2i, to: Vector2i)
+## An undo removed `count` structures and refunded `refund`; `cell` is where the removed step began.
+signal undone(count: int, refund: Dictionary, cell: Vector2i)
+## The undo history grew, shrank or was dropped; read can_undo().
+signal history_changed
 
 const TOOL_MOVE_NUCLEUS: String = "move_nucleus"
 
@@ -18,8 +22,12 @@ var _move_id: int = 0
 var _move_grab_offset: Vector2i = Vector2i.ZERO
 var _wall_anchor: Vector2i = Vector2i.ZERO
 var _wall_dragging: bool = false
+## One entry per build gesture (a tower, or a wall line): the ids it placed, oldest step first.
+var _history: Array[Array] = []
 
 func setup(p_session: Session, p_grid_view: GridView) -> void:
+	if session != null and session.grid != null and session.grid.structure_removed.is_connected(_on_structure_removed):
+		session.grid.structure_removed.disconnect(_on_structure_removed)
 	if grid_view != null:
 		if grid_view.cell_pressed.is_connected(_on_cell_pressed):
 			grid_view.cell_pressed.disconnect(_on_cell_pressed)
@@ -34,6 +42,10 @@ func setup(p_session: Session, p_grid_view: GridView) -> void:
 
 	session = p_session
 	grid_view = p_grid_view
+	_history.clear()
+	if session != null and session.grid != null:
+		session.grid.structure_removed.connect(_on_structure_removed)
+	history_changed.emit()
 
 	if grid_view != null:
 		grid_view.cell_pressed.connect(_on_cell_pressed)
@@ -79,14 +91,61 @@ func _is_tower_tool(tool_id: String) -> bool:
 	var sdef: StructureDef = session.config.structures.get(tool_id)
 	return sdef != null and sdef.buildable and not sdef.has_tag("wall")
 
-func _place_current_tool(cell: Vector2i) -> void:
+func _place_current_tool(cell: Vector2i) -> int:
 	var pid: int = session.grid.place(tool, cell, session.wallet)
 	if pid <= 0:
-		return
+		return 0
 	if SessionLogger != null and SessionLogger.has_method("log_event"):
 		var atp_after: int = session.wallet.get_amount("atp") if session.wallet != null else 0
 		SessionLogger.log_event("structure_placed", {"type": tool, "cell": cell, "atp_after": atp_after})
 	placed.emit(tool, cell)
+	return pid
+
+func can_undo() -> bool:
+	return not _history.is_empty()
+
+## Removes the structures of the latest build step and refunds their cost, like selling them.
+## Returns false when there is nothing to undo.
+func undo_last() -> bool:
+	if session == null or session.grid == null or _history.is_empty():
+		return false
+	var ids: Array = _history.pop_back()
+	var count: int = 0
+	var refund: Dictionary = {}
+	var first_cell: Vector2i = Vector2i.ZERO
+	for id: int in ids:
+		var st: GridModel.PlacedStructure = session.grid.get_structure(id)
+		if st == null:
+			continue
+		var sdef: StructureDef = session.config.structures.get(st.type_id) if session.config != null else null
+		var cost: Dictionary = sdef.cost if sdef != null else {}
+		if not session.grid.sell(id, session.wallet):
+			continue
+		if count == 0:
+			first_cell = st.origin
+		count += 1
+		for cur: Variant in cost.keys():
+			refund[cur] = int(refund.get(cur, 0)) + int(cost[cur])
+	if count > 0:
+		if SessionLogger != null and SessionLogger.has_method("log_event"):
+			var atp_after: int = session.wallet.get_amount("atp") if session.wallet != null else 0
+			SessionLogger.log_event("build_undone", {"count": count, "atp_after": atp_after})
+		undone.emit(count, refund, first_cell)
+	history_changed.emit()
+	return count > 0
+
+## A sold or removed structure can no longer be undone; steps left empty are dropped.
+func _on_structure_removed(removed: GridModel.PlacedStructure) -> void:
+	var changed: bool = false
+	for i: int in range(_history.size() - 1, -1, -1):
+		var step: Array = _history[i]
+		if step.has(removed.id):
+			step.erase(removed.id)
+			changed = true
+			if step.is_empty():
+				_history.remove_at(i)
+	if changed:
+		history_changed.emit()
 
 ## The cells of the straight run from `start` to `end`, along whichever axis the finger has moved furthest.
 static func wall_line(start: Vector2i, end: Vector2i) -> Array[Vector2i]:
@@ -129,12 +188,16 @@ func _commit_wall_line(end: Vector2i) -> void:
 		grid_view.clear_ghost()
 	var cells: Array[Vector2i] = wall_line(_wall_anchor, end)
 	var plan: Array[bool] = _plan_wall_line(cells)
-	var any_placed: bool = false
+	var step: Array = []
 	for i: int in range(cells.size()):
 		if plan[i]:
-			_place_current_tool(cells[i])
-			any_placed = true
-	if not any_placed:
+			var pid: int = _place_current_tool(cells[i])
+			if pid > 0:
+				step.append(pid)
+	if not step.is_empty():
+		_history.append(step)
+		history_changed.emit()
+	else:
 		place_failed.emit(int(session.grid.check_place(tool, cells[0], session.wallet)))
 
 func _begin_move(cell: Vector2i) -> void:
@@ -240,7 +303,10 @@ func _on_cell_released(cell: Vector2i) -> void:
 			grid_view.clear_ghost()
 		var err: GridModel.PlaceError = session.grid.check_place(tool, cell, session.wallet)
 		if err == GridModel.PlaceError.OK:
-			_place_current_tool(cell)
+			var pid: int = _place_current_tool(cell)
+			if pid > 0:
+				_history.append([pid])
+				history_changed.emit()
 		else:
 			place_failed.emit(int(err))
 	elif _is_wall_tool(tool):
