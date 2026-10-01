@@ -144,7 +144,7 @@ func test_pathogen_stats() -> void:
 	assert_eq(r.role, "Fast swarm")
 	assert_eq(r.cost.get("atp", 0), 10)
 	assert_eq(r.hp, 30)
-	assert_eq(r.speed_mt_per_tick, 250) # 2.5 * 2 * 1000 / 20
+	assert_eq(r.speed_mt_per_tick, 140) # 1.4 * 2 * 1000 / 20
 	assert_eq(r.attack_damage, 6)
 	assert_eq(r.attack_interval_ticks, 10) # 0.5s * 20
 	assert_eq(r.attack_range_mt, 2000)
@@ -155,7 +155,7 @@ func test_pathogen_stats() -> void:
 	assert_not_null(p)
 	assert_eq(p.hp, 80)
 	assert_eq(p.cost.get("atp", 0), 40)
-	assert_eq(p.speed_mt_per_tick, 150) # 1.5 * 2 * 1000 / 20
+	assert_eq(p.speed_mt_per_tick, 115) # 1.15 * 2 * 1000 / 20
 	assert_eq(p.attack_damage, 20)
 	assert_eq(p.attack_interval_ticks, 20) # 1.0s * 20
 	assert_eq(p.attack_range_mt, 2000)
@@ -200,9 +200,9 @@ func test_fixed_point_scaling() -> void:
 	# footprint should NOT be scaled
 	assert_eq(b.footprint, Vector2i(3, 3))
 
-	# rhinovirus speed: 2.5 * 2 * 1000 / 10 = 500 mt/tick
+	# rhinovirus speed: 1.4 * 2 * 1000 / 10 = 280 mt/tick
 	var r: PathogenDef = cfg.pathogens.get("rhinovirus")
-	assert_eq(r.speed_mt_per_tick, 500)
+	assert_eq(r.speed_mt_per_tick, 280)
 
 func test_attack_interval_minimum_one_tick() -> void:
 	var structs_dict: Dictionary = JSON.parse_string(default_structures_str)

@@ -2,7 +2,7 @@
 
 Status: **PROPOSAL ONLY. NOTHING IN `data/*.json` HAS BEEN CHANGED.** The owner has not yet approved any numbers.
 Every "after tuning" figure below was produced with the simulator's `--set` overrides, which do not edit files.
-Every proposed value is labelled PROPOSED, NOT APPLIED.
+Every proposed value is labelled APPROVED and APPLIED (owner approved 2026-10-01).
 
 ## Method
 
@@ -56,7 +56,7 @@ Band = win rate within 10 pp of baseline and battle time within +-20% of baselin
 
 Out of band: `phage_priority` (too fast, 3 phages survive every run, the unimodal fast mode) and `stress` (the Nucleus falls in 12 s, with 35 of 100 Rhinoviruses alive). In `stress` the Rhinovirus attack range scales with `grid_scale`, so more units can reach the 56-wall ring at once. Contact time is unchanged, but walls and the Nucleus go down much faster.
 
-## PROPOSED, NOT APPLIED: changes
+## APPROVED and APPLIED (owner approved 2026-10-01): changes
 
 Only the first knob in the issue's preference order (pathogen `speed_tiles_s`) is needed. No `hp`, range, cost or timeout changes.
 
