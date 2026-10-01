@@ -18,7 +18,7 @@ const SHOT_GLOW: Color = Color("#48dbfb")
 const SHOT_DIAMETER_T: float = 0.6
 const SHOT_LIFT_T: float = 1.5
 const SHOT_GLOW_SCALES: Array[float] = [2.4, 1.6]
-const SHOT_GLOW_ALPHAS: Array[float] = [0.15, 0.35]
+const SHOT_GLOW_COLORS: Array[Color] = [Color(SHOT_GLOW, 0.15), Color(SHOT_GLOW, 0.35)]
 const TRAIL_POINTS: int = 4
 ## Spacing of the trail positions, in ticks of flight.
 const TRAIL_STEP_TICKS: float = 0.5
@@ -541,7 +541,7 @@ func _add_shot(s: int, now: float, alpha: float, t: float) -> void:
 	var head: Vector2 = projection.ground_to_screen(snapshots.projectile_ground(id, alpha)) + lift
 	for g: int in range(SHOT_GLOW_SCALES.size()):
 		var gr: float = r * SHOT_GLOW_SCALES[g]
-		_fx.disc(head, gr, gr, Color(SHOT_GLOW, SHOT_GLOW_ALPHAS[g]), _disc)
+		_fx.disc(head, gr, gr, SHOT_GLOW_COLORS[g], _disc)
 	_fx.disc(head, r, r, SHOT_CORE, _disc)
 
 

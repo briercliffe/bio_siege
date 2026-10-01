@@ -100,6 +100,7 @@ class UnitMarker extends RefCounted:
 	var shape: String = "circle"
 	var color: Color = Color.WHITE
 	var count: int = 1
+	var label: String = ""
 
 var grid: GridModel = null
 var config: GameConfig = null
@@ -687,6 +688,7 @@ func _rebuild_markers() -> void:
 		m.shape = pdef.placeholder_shape if pdef != null else "circle"
 		m.color = pdef.placeholder_color if pdef != null else Color.WHITE
 		m.count = deployed.size()
+		m.label = str(m.count)
 		_markers.append(m)
 
 func _rebuild_ghost() -> void:
@@ -969,9 +971,8 @@ func _draw_markers() -> void:
 			draw_arc(badge_c, badge_r, 0.0, TAU, 16, MARKER_BADGE_RIM, 1.0, true)
 			if font != null:
 				var font_size: int = maxi(int(badge_r * 1.5), 9)
-				var text: String = str(m.count)
-				var str_size: Vector2 = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
-				draw_string(font, Vector2(badge_c.x - str_size.x * 0.5, badge_c.y + str_size.y * 0.35), text,
+				var str_size: Vector2 = font.get_string_size(m.label, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+				draw_string(font, Vector2(badge_c.x - str_size.x * 0.5, badge_c.y + str_size.y * 0.35), m.label,
 						HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
 
 func _draw_prediction() -> void:
