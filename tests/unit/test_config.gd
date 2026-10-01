@@ -744,3 +744,50 @@ func test_outbreak_flag_removed_but_tolerated() -> void:
 	var res: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["feature_flags"]["outbreak_mode"] = true)
 	assert_true(res.is_ok())
 	assert_true(res.config.flag("outbreak_mode"))
+
+
+# -----------------------------------------------------------------------------
+# coevolution block (#142)
+# -----------------------------------------------------------------------------
+
+func test_coevolution_defaults_load() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	assert_eq(cfg.coevo_pool_size, 8)
+	assert_eq(cfg.coevo_hit_bonus_pct, 25)
+	assert_eq(cfg.coevo_antigen_name.size(), 8)
+	assert_eq(cfg.coevo_receptor_binds["binder_a"], "capsule_a")
+	assert_true(cfg.is_breeding_type("b_cell"))
+	assert_false(cfg.is_breeding_type("nucleus"))
+	assert_false(cfg.coevolution_enabled())
+	cfg.feature_flags["coevolution"] = true
+	assert_true(cfg.coevolution_enabled())
+
+func test_coevolution_validation_errors() -> void:
+	var r1: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["coevolution"]["pool_size"] = 1)
+	assert_true(_contains_error(r1.errors, "coevolution.pool_size: must be >= 2 (got 1)"))
+	var r2: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["coevolution"]["mutation_pct"] = 101)
+	assert_true(_contains_error(r2.errors, "coevolution.mutation_pct: must be <= 100 (got 101)"))
+	var r3: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["coevolution"]["receptors"][0]["binds"] = "nope")
+	assert_true(_contains_error(r3.errors, "coevolution.receptors[0].binds: must be an antigen id"))
+	var r4: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["coevolution"]["antigens"][1]["id"] = "capsule_a")
+	assert_true(_contains_error(r4.errors, "coevolution.antigens[1].id: duplicate id"))
+	var r5: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["coevolution"]["types"].append("ghost"))
+	assert_true(_contains_error(r5.errors, "must be a known pathogen or structure id"))
+	var r6: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["coevolution"]["bogus"] = 1)
+	assert_true(_contains_error(r6.errors, "coevolution.bogus: unknown key"))
+	var r7: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void:
+		r.erase("coevolution")
+		r["feature_flags"]["coevolution"] = true)
+	assert_true(_contains_error(r7.errors, "game_rules.json: coevolution: required when feature_flags.coevolution is true (got null)"))
+	var r8: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["coevolution"]["antigen_slots"] = "x")
+	assert_true(_contains_error(r8.errors, "coevolution.antigen_slots: must be an integer"))
+	var r9: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void: r["coevolution"].erase("survival_bonus"))
+	assert_true(_contains_error(r9.errors, "coevolution.survival_bonus: missing required field"))
+
+func test_config_without_coevolution_block_loads() -> void:
+	var res: ConfigLoadResult = _memory_rules(func(r: Dictionary) -> void:
+		r.erase("coevolution")
+		r["feature_flags"].erase("coevolution"))
+	assert_true(res.is_ok())
+	assert_eq(res.config.coevo_pool_size, 0)
+	assert_false(res.config.coevolution_enabled())
