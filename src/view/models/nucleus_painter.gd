@@ -131,6 +131,10 @@ func height_tiles() -> float:
 	return HEIGHT_T
 
 
+func has_custom_death() -> bool:
+	return true
+
+
 ## Nucleolus pulse rate in Hz: 0.5 at full health rising to 2.0 at 0 HP, so the pulse quickens as it is hurt.
 ## AnimDriver integrates it into pose.pulse_phase, so a change of rate never jumps the pulse.
 static func pulse_rate(hp_frac: float) -> float:

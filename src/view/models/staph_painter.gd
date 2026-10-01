@@ -137,6 +137,10 @@ func height_tiles() -> float:
 	return HEIGHT_T
 
 
+func has_custom_death() -> bool:
+	return true
+
+
 ## Number of trail positions currently held for the unit with this seed (0 when it has none).
 func trail_count(seed_id: int) -> int:
 	var tr: Trail = _trails.get(seed_id)

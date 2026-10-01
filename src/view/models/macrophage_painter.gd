@@ -127,6 +127,10 @@ func height_tiles() -> float:
 	return HEIGHT_T
 
 
+func has_custom_death() -> bool:
+	return true
+
+
 ## Points of the lumpy body outline in tiles, relative to the body centre (for tests and bounds).
 func body_outline_tiles() -> PackedVector2Array:
 	var out := PackedVector2Array()

@@ -40,6 +40,11 @@ func has_projectile(id: int) -> bool:
 	return curr.has(-id)
 
 
+## True when the projectile was also captured on the tick before, so its motion can be extrapolated.
+func has_previous_projectile(id: int) -> bool:
+	return prev.has(-id)
+
+
 ## Ground position in tiles. `alpha` is the fraction between the previous and current tick; a value
 ## outside 0..1 extrapolates. A unit with no previous capture returns its current position.
 func unit_ground(id: int, alpha: float) -> Vector2:
