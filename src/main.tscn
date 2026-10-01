@@ -1,13 +1,11 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://src/game/game_state_machine.gd" id="2_fsm"]
 [ext_resource type="PackedScene" path="res://src/ui/debug_overlay.tscn" id="3_dbg"]
 [ext_resource type="PackedScene" path="res://src/ui/dev_banner.tscn" id="4_banner"]
 [ext_resource type="Script" path="res://src/game/screen_stack.gd" id="6_screens"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_err"]
-bg_color = Color(0.25, 0.05, 0.05, 1)
+[ext_resource type="PackedScene" path="res://src/ui/screens/data_error_screen.tscn" id="7_dataerr"]
 
 [node name="Main" type="Node"]
 script = ExtResource("1_main")
@@ -44,42 +42,6 @@ script = ExtResource("6_screens")
 
 [node name="DebugOverlay" parent="." instance=ExtResource("3_dbg")]
 
-[node name="ErrorPanel" type="Panel" parent="."]
-visible = false
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_err")
-
-[node name="MarginContainer" type="MarginContainer" parent="ErrorPanel"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_constants/margin_left = 32
-theme_override_constants/margin_top = 32
-theme_override_constants/margin_right = 32
-theme_override_constants/margin_bottom = 32
-
-[node name="VBoxContainer" type="VBoxContainer" parent="ErrorPanel/MarginContainer"]
-layout_mode = 2
-theme_override_constants/separation = 16
-
-[node name="TitleLabel" type="Label" parent="ErrorPanel/MarginContainer/VBoxContainer"]
-layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.3, 0.3, 1)
-theme_override_font_sizes/font_size = 28
-text = "Config error"
-
-[node name="ErrorLabel" type="RichTextLabel" parent="ErrorPanel/MarginContainer/VBoxContainer"]
-layout_mode = 2
-size_flags_vertical = 3
-theme_override_font_sizes/normal_font_size = 14
-bbcode_enabled = true
-scroll_following = true
+[node name="DataErrorScreen" parent="." instance=ExtResource("7_dataerr")]
 
 [node name="DevBanner" parent="." instance=ExtResource("4_banner")]

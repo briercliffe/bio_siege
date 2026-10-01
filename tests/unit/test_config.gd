@@ -406,8 +406,7 @@ func test_main_ui_normal_and_error() -> void:
 	add_child_autofree(main_node)
 
 	var normal_ui: Control = main_node.get_node("NormalUI")
-	var error_panel: Panel = main_node.get_node("ErrorPanel")
-	var error_label: RichTextLabel = main_node.get_node("ErrorPanel/MarginContainer/VBoxContainer/ErrorLabel")
+	var error_panel: DataErrorScreen = main_node.get_node("DataErrorScreen")
 
 	# Initial state with valid GameData
 	assert_true(normal_ui.visible, "Normal UI should be visible when config is valid")
@@ -419,7 +418,8 @@ func test_main_ui_normal_and_error() -> void:
 
 	assert_false(normal_ui.visible, "Normal UI should be hidden on config error")
 	assert_true(error_panel.visible, "Error panel should be visible on config error")
-	assert_string_contains(error_label.text, "structures.json: test.hp: must be > 0 (got -1)")
+	assert_eq(error_panel.chips.size(), 1)
+	assert_eq(error_panel.chips[0].text, "structures.json · test")
 
 	# Restore GameData
 	GameData.load_errors = PackedStringArray()
