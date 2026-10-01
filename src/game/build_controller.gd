@@ -25,6 +25,8 @@ func setup(p_session: Session, p_grid_view: GridView) -> void:
 			grid_view.cell_dragged.disconnect(_on_cell_dragged)
 		if grid_view.cell_released.is_connected(_on_cell_released):
 			grid_view.cell_released.disconnect(_on_cell_released)
+		if grid_view.press_cancelled.is_connected(_on_press_cancelled):
+			grid_view.press_cancelled.disconnect(_on_press_cancelled)
 
 	session = p_session
 	grid_view = p_grid_view
@@ -33,6 +35,14 @@ func setup(p_session: Session, p_grid_view: GridView) -> void:
 		grid_view.cell_pressed.connect(_on_cell_pressed)
 		grid_view.cell_dragged.connect(_on_cell_dragged)
 		grid_view.cell_released.connect(_on_cell_released)
+		grid_view.press_cancelled.connect(_on_press_cancelled)
+
+## A pinch took over the touch: drop any pending placement, sale or nucleus move.
+func _on_press_cancelled() -> void:
+	_sell_press_id = 0
+	_move_id = 0
+	if grid_view != null:
+		grid_view.clear_ghost()
 
 func select_tool(t: String) -> void:
 	if t == TOOL_MOVE_NUCLEUS and tool != t and not _move_tool_allowed():

@@ -156,3 +156,59 @@ func test_night_switch_and_structure_cache_is_depth_sorted() -> void:
 	for item: GridView.StructureItem in gv._items:
 		assert_true(item.depth >= last)
 		last = item.depth
+
+# --- pinch zoom ------------------------------------------------------------
+
+func _finger(gv: GridView, idx: int, local: Vector2, pressed: bool) -> InputEventScreenTouch:
+	var ev := InputEventScreenTouch.new()
+	ev.index = idx
+	ev.pressed = pressed
+	ev.position = gv.to_global(local)
+	return ev
+
+func _fdrag(gv: GridView, idx: int, local: Vector2) -> InputEventScreenDrag:
+	var ev := InputEventScreenDrag.new()
+	ev.index = idx
+	ev.position = gv.to_global(local)
+	return ev
+
+func test_pinch_out_zooms_in_and_keeps_midpoint_fixed() -> void:
+	var gv: GridView = _make_view()
+	var fit: float = gv.projection.tile_px
+	var mid := Vector2(320.0, 260.0)
+	var ground: Vector2 = gv.projection.screen_to_ground(mid)
+	gv._unhandled_input(_finger(gv, 0, mid + Vector2(-50, 0), true))
+	gv._unhandled_input(_finger(gv, 1, mid + Vector2(50, 0), true))
+	gv._unhandled_input(_fdrag(gv, 1, mid + Vector2(100, 0)))
+	assert_gt(gv.projection.tile_px, fit)
+	assert_almost_eq(gv.projection.ground_to_screen(ground).x, mid.x + 25.0, 0.5)
+
+func test_pinch_zoom_is_clamped() -> void:
+	var gv: GridView = _make_view()
+	var fit: float = gv.projection.tile_px
+	gv._unhandled_input(_finger(gv, 0, Vector2(300, 260), true))
+	gv._unhandled_input(_finger(gv, 1, Vector2(340, 260), true))
+	gv._unhandled_input(_fdrag(gv, 1, Vector2(2000, 260)))
+	assert_almost_eq(gv.projection.tile_px, fit * GridView.MAX_ZOOM, 0.001)
+	gv._unhandled_input(_fdrag(gv, 1, Vector2(301, 260)))
+	assert_almost_eq(gv.projection.tile_px, fit, 0.001)
+
+func test_second_finger_cancels_press_without_release() -> void:
+	var gv: GridView = _make_view()
+	var released: Array[Vector2i] = []
+	var cancelled: Array[bool] = []
+	gv.cell_released.connect(func(c: Vector2i) -> void: released.append(c))
+	gv.press_cancelled.connect(func() -> void: cancelled.append(true))
+	var p: Vector2 = gv.cell_to_local_center(Vector2i(5, 5))
+	gv._unhandled_input(_finger(gv, 0, p, true))
+	gv._unhandled_input(_finger(gv, 1, p + Vector2(60, 0), true))
+	gv._unhandled_input(_finger(gv, 1, p + Vector2(60, 0), false))
+	gv._unhandled_input(_finger(gv, 0, p, false))
+	assert_eq(cancelled.size(), 1)
+	assert_eq(released.size(), 0)
+
+func test_hit_testing_follows_zoom() -> void:
+	var gv: GridView = _make_view()
+	gv.apply_zoom(gv.projection.tile_px * 2.0, Vector2(320, 260), Vector2(320, 260))
+	for c: Vector2i in [Vector2i(5, 5), Vector2i(20, 20)]:
+		assert_eq(gv.local_to_cell(gv.cell_to_local_center(c)), c)
