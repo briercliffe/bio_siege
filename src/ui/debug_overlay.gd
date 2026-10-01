@@ -55,6 +55,7 @@ func _ready() -> void:
 		return
 	_ensure_nodes()
 	_build_flags_ui()
+	_build_touch_readout()
 	if dbg_button != null and not dbg_button.pressed.is_connected(toggle):
 		dbg_button.pressed.connect(toggle)
 	if btn_title != null and not btn_title.pressed.is_connected(_on_btn_title_pressed):
@@ -128,6 +129,56 @@ func _source_config() -> GameConfig:
 	if src == null or not "config" in src:
 		return null
 	return src.config as GameConfig
+
+
+# --- touch readout (#226) -------------------------------------------------------
+# Shows what Godot receives for touches, to diagnose multi-touch on the Android emulator.
+
+var touch_label: Label = null
+## touch index -> device id, for the fingers currently down
+var touch_down: Dictionary = {}
+var touch_events: int = 0
+var touch_last: String = "none"
+
+
+func _build_touch_readout() -> void:
+	if touch_label != null:
+		return
+	touch_label = Label.new()
+	touch_label.name = "TouchReadout"
+	touch_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	touch_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	touch_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	touch_label.offset_top = -120.0
+	touch_label.offset_bottom = -80.0
+	touch_label.add_theme_color_override("font_color", Color.BLACK)
+	touch_label.add_theme_color_override("font_outline_color", Color.WHITE)
+	touch_label.add_theme_constant_override("outline_size", 6)
+	add_child(touch_label)
+	_refresh_touch_readout()
+
+
+func _input(event: InputEvent) -> void:
+	if touch_label == null:
+		return
+	if event is InputEventScreenTouch:
+		var t: InputEventScreenTouch = event
+		if t.pressed:
+			touch_down[t.index] = t.device
+		else:
+			touch_down.erase(t.index)
+		touch_last = "touch %s idx=%d dev=%d" % ["down" if t.pressed else "up", t.index, t.device]
+	elif event is InputEventScreenDrag:
+		var d: InputEventScreenDrag = event
+		touch_last = "drag idx=%d dev=%d" % [d.index, d.device]
+	else:
+		return
+	touch_events += 1
+	_refresh_touch_readout()
+
+
+func _refresh_touch_readout() -> void:
+	touch_label.text = "fingers down: %d %s | events: %d | last: %s" % [touch_down.size(), str(touch_down), touch_events, touch_last]
 
 
 func _build_flags_ui() -> void:

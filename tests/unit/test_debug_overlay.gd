@@ -94,3 +94,21 @@ func test_battle_log_rotation_keeps_max_50() -> void:
 		dir.list_dir_end()
 
 	assert_eq(remaining.size(), 50, "Battle log rotation must keep at most 50 files")
+
+func test_touch_readout_counts_fingers_by_index() -> void:
+	var o: DebugOverlay = (load("res://src/ui/debug_overlay.tscn") as PackedScene).instantiate() as DebugOverlay
+	add_child_autofree(o)
+	o._build_touch_readout()
+	var a := InputEventScreenTouch.new()
+	a.index = 0
+	a.pressed = true
+	o._input(a)
+	var b := InputEventScreenTouch.new()
+	b.index = 1
+	b.pressed = true
+	o._input(b)
+	assert_eq(o.touch_down.size(), 2)
+	assert_true(o.touch_label.text.begins_with("fingers down: 2"))
+	b.pressed = false
+	o._input(b)
+	assert_eq(o.touch_down.size(), 1)
