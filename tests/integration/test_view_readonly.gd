@@ -26,13 +26,24 @@ func test_state_hash_identical_with_and_without_view() -> void:
 	phase.setup(session, null)
 	phase.runner.is_running = false  # stepped manually below
 	var sim: BattleSim = phase.runner.sim
+	assert_not_null(phase.effect_layer, "the effect layer is attached")
+	assert_eq(phase.unit_layer.effects, phase.effect_layer)
 	var steps: int = 0
+	var peak_effects: int = 0
+	var shots_drawn: bool = false
+	var bars_drawn: bool = false
 	while not sim.finished and steps < config.battle_timeout_ticks + 10:
 		sim.step()
 		phase._on_runner_ticked()
 		phase._dispatch_events()
 		phase.runner.alpha = 0.5
 		phase.unit_layer.build_draw_order()
+		phase.effect_layer._process(0.05)
+		phase.effect_layer.build_frame()
+		phase.effect_layer.build_ground()
+		peak_effects = maxi(peak_effects, phase.effect_model.active_count())
+		shots_drawn = shots_drawn or phase.effect_layer.fx_triangles() > 0
+		bars_drawn = bars_drawn or phase.effect_layer.last_bar_count > 0
 		if steps % 50 == 0:
 			await wait_process_frames(1)
 		steps += 1
@@ -40,6 +51,9 @@ func test_state_hash_identical_with_and_without_view() -> void:
 	assert_true(sim.finished)
 	assert_eq(sim.state_hash(), expected, "view must not change the simulation")
 	assert_gt(phase.unit_layer.last_item_count, 0)
+	assert_gt(peak_effects, 0, "the battle produced effects")
+	assert_true(shots_drawn, "effects were built")
+	assert_true(bars_drawn, "health bars were built")
 
 
 ## Pausing is not stepping: a battle paused and resumed through the Pause menu, with frames rendered

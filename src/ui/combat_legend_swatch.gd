@@ -49,9 +49,9 @@ func _draw() -> void:
 		Kind.HEALTH_BAR:
 			var r := Rect2(left, c.y - BAR_H * 0.5, w, BAR_H)
 			KitDraw.draw_box(self, r, BAR_TRACK, -1.0)
-			KitDraw.draw_box(self, Rect2(r.position, Vector2(w * 0.5, BAR_H)), BattleOverlay.BAR_AMBER, -1.0)
+			KitDraw.draw_box(self, Rect2(r.position, Vector2(w * 0.5, BAR_H)), EffectLayer.BAR_AMBER, -1.0)
 		Kind.ANTIBODY:
 			for i: int in range(GLOW_RINGS, 0, -1):
 				var t: float = float(i) / float(GLOW_RINGS)
-				draw_circle(c, DOT_RADIUS + GLOW_SPREAD * t, Color(BattleOverlay.ANALYSIS_COLOR, 0.22 * (1.0 - t) + 0.04))
+				draw_circle(c, DOT_RADIUS + GLOW_SPREAD * t, Color(EffectLayer.SHOT_GLOW, 0.22 * (1.0 - t) + 0.04))
 			draw_circle(c, DOT_RADIUS, DOT_FILL)

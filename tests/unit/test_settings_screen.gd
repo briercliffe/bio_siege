@@ -328,10 +328,17 @@ func test_infection_phase_refreshes_reduce_flashes_on_change() -> void:
 	phase.settings_path = TEST_PATH
 	phase.unit_layer = UnitLayer.new()
 	phase.add_child(phase.unit_layer)
+	phase.effect_layer = EffectLayer.new()
+	phase.effect_layer.model = phase.effect_model
+	phase.add_child(phase.effect_layer)
 	add_child_autofree(phase)
 	assert_true(phase.is_in_group(SettingsApply.GROUP))
 	var screen := _make_screen()
 	screen.flashes_switch.button_pressed = true
 	assert_true(phase.unit_layer.driver.reduce_flashes)
+	assert_true(phase.effect_layer.reduce_flashes)
+	assert_true(phase.effect_model.reduce_flashes, "no hit sparks from now on")
 	screen.flashes_switch.button_pressed = false
 	assert_false(phase.unit_layer.driver.reduce_flashes)
+	assert_false(phase.effect_layer.reduce_flashes)
+	assert_false(phase.effect_model.reduce_flashes)

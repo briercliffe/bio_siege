@@ -87,8 +87,11 @@ func test_destroyed_tower_leaves_scorch_but_wall_does_not() -> void:
 		[{"type": "macrophage", "origin": Vector2i(10, 10)}, {"type": "mucous_wall", "origin": Vector2i(5, 5)}],
 		[], 1, config)
 	var layer: UnitLayer = _layer(sim)
+	var effects := EffectModel.new()
 	for s: StructureState in sim.structures:
 		if s.type_id == "macrophage" or s.type_id == "mucous_wall":
 			s.alive = false
-			layer.on_event({"type": SimEvents.STRUCTURE_DESTROYED, "structure_id": s.id})
-	assert_eq(layer._scorch.size(), 1)
+			var ev: Dictionary = {"type": SimEvents.STRUCTURE_DESTROYED, "structure_id": s.id}
+			layer.on_event(ev)
+			effects.on_event(ev, sim)
+	assert_eq(effects.scorch_count(), 1)

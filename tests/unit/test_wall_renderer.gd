@@ -357,14 +357,16 @@ func test_destroyed_wall_leaves_a_gap_goo_and_a_short_break() -> void:
 	assert_false(layer.walls.has_post(Vector2i(6, 5)))
 	var mid: StructureState = _wall_at(sim, Vector2i(6, 5))
 	mid.alive = false
+	var effects := EffectModel.new()
 	layer.on_event({"type": SimEvents.STRUCTURE_DESTROYED, "structure_id": mid.id})
+	effects.on_event({"type": SimEvents.STRUCTURE_DESTROYED, "structure_id": mid.id}, sim)
 	layer._collect()
 	assert_eq(layer.walls.cell_count(), 2)
 	assert_false(layer.walls.has_cell(Vector2i(6, 5)))
 	assert_eq(WallRenderer.segment_rects(Vector2i(7, 5), layer._wall_cells).size(), 1, "the bridge into the gap is gone")
 	assert_true(layer.walls.has_post(Vector2i(7, 5)), "the new end gets a post")
 	assert_eq(layer._goo, [mid.id] as Array[int])
-	assert_eq(layer._scorch.size(), 0)
+	assert_eq(effects.scorch_count(), 0)
 	assert_true(layer.build_draw_order().has(Vector2i(UnitLayer.KIND_STRUCTURE, mid.id)), "chunks play")
 	sim.tick += AnimDriver.DEATH_TICKS["mucous_wall"]
 	assert_false(layer.build_draw_order().has(Vector2i(UnitLayer.KIND_STRUCTURE, mid.id)), "break effect over")
