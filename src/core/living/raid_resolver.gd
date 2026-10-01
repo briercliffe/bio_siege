@@ -7,6 +7,9 @@ extends RefCounted
 ## Pure: no Node, Time, OS or file access.
 
 
+const BCELL_ID: String = "b_cell"
+
+
 ## Turns a finished battle into rewards, losses, memory and breeding.
 ##   setup: the BattleSetup that was simulated
 ##   sim: the finished BattleSim
@@ -57,13 +60,34 @@ static func breed_after_battle(cfg: GameConfig, setup: BattleSetup, sim: BattleS
 		if base_generation < 0 or pool.generation < base_generation:
 			base_generation = pool.generation
 	var rng := Rng.new(setup.seed + maxi(0, base_generation) * 100003)
+	var presented: Array[String] = []
+	if cfg.flag("dendritic_cell"):
+		presented = sim.presented_antigen_ids()
+	var bias: Array[String] = _receptor_bias(cfg, presented)
 	var evolution: Array[Dictionary] = []
 	for type_id: String in type_ids:
 		var pool: BreedPool = pools[type_id]
-		var res: Dictionary = pool.breed(rng, cfg)
+		var is_bcell: bool = type_id == BCELL_ID
+		var pool_bias: Array[String] = []
+		if is_bcell:
+			pool_bias = bias
+		var res: Dictionary = pool.breed(rng, cfg, pool_bias)
 		res["type_id"] = type_id
+		if is_bcell and not bias.is_empty():
+			res["presented"] = presented
 		evolution.append(res)
 	return evolution
+
+
+## Every receptor that binds one of the presented antigens, in catalog order.
+static func _receptor_bias(cfg: GameConfig, presented: Array[String]) -> Array[String]:
+	var bias: Array[String] = []
+	if presented.is_empty():
+		return bias
+	for receptor_id: Variant in cfg.coevo_receptor_name.keys():
+		if presented.has(str(cfg.coevo_receptor_binds.get(receptor_id, ""))):
+			bias.append(str(receptor_id))
+	return bias
 
 
 ## ATP the raider takes: for each destroyed generator, its share of the stored ATP times loot_atp_pct.

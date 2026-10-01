@@ -37,6 +37,9 @@ var _turncoat_hit_tick: Dictionary = {}  # structure id -> last tick it took tur
 var turncoat_damage_dealt: int = 0
 var _coevo_on: bool = false
 var _presenter_on: bool = false
+var _antigen_present_on: bool = false
+## Dendritic Cells record the antigens of pathogens near them (antigen id -> true). Never touches `analyzed`.
+var presented_antigens: Dictionary = {}
 ## Analyses a Dendritic Cell handed to another B-Cell (telemetry).
 var analyses_shared: int = 0
 var _trap_on: bool = false
@@ -66,6 +69,7 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 	_slow_on = p_config != null and p_config.flag("mucous_slow")
 	_trap_on = p_config != null and p_config.flag("mucous_trap")
 	_presenter_on = p_config != null and p_config.flag("dendritic_cell") and _analysis_on
+	_antigen_present_on = p_config != null and p_config.flag("dendritic_cell") and _coevo_on
 	if _biofilm_on:
 		for pd: PathogenDef in p_config.pathogens.values():
 			if pd.has_biofilm and (_biofilm_regroup_ticks == 0 or pd.biofilm_regroup_ticks < _biofilm_regroup_ticks):
@@ -289,6 +293,9 @@ func step() -> void:
 		if p.alive:
 			_update_pathogen(p)
 
+	if _antigen_present_on and tick % config.presenter_record_interval_ticks == 0:
+		_record_presented_antigens()
+
 	_update_towers()
 	_update_projectiles()
 
@@ -372,6 +379,8 @@ func state_hash() -> String:
 	for p: PathogenState in pathogens:
 		if p.channel_target_id != 0:
 			lines.append("H:%d:%d:%d" % [p.id, p.channel_target_id, p.channel_ticks_left])
+	if _antigen_present_on and not presented_antigens.is_empty():
+		lines.append("PA:%s" % ",".join(presented_antigen_ids()))
 	if _trap_on:
 		for p: PathogenState in pathogens:
 			if _trapped_by.has(p.id):
@@ -640,6 +649,32 @@ func _accrue_analysis(s: StructureState) -> void:
 		_emit_event(SimEvents.ANALYSIS_COMPLETE, {"structure_id": s.id, "strain_key": key, "unit_type": tgt.type_id})
 		if _presenter_on:
 			_present(s, key)
+
+
+## Antigen presentation (coevolution): every alive Dendritic Cell notes the non-empty antigens of every alive
+## pathogen with a genome inside its radius. Breeding later biases B-Cell receptor mutation toward them.
+func _record_presented_antigens() -> void:
+	for d: StructureState in structures:
+		if not d.alive or d.def == null or not d.def.has_presenter:
+			continue
+		for p: PathogenState in pathogens:
+			if not p.alive or p.genome_index < 0 or not FixedMath.within(d.center, p.pos, d.def.presenter_radius_mt):
+				continue
+			var pool: BreedPool = _pools.get(p.type_id, null)
+			if pool == null or p.genome_index >= pool.genomes.size():
+				continue
+			for antigen: String in pool.genomes[p.genome_index].antigens:
+				if not antigen.is_empty():
+					presented_antigens[antigen] = true
+
+
+## The antigen ids Dendritic Cells have recorded, sorted.
+func presented_antigen_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for k: Variant in presented_antigens.keys():
+		ids.append(str(k))
+	ids.sort()
+	return ids
 
 
 ## Dendritic Cells share a freshly completed analysis: every other alive analysis tower inside the radius of a
