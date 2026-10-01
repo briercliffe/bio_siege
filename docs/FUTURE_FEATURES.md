@@ -14,3 +14,14 @@ Removed from Phase 2 (decision recorded in plan section 15, item 4).
 - **Interactions to remember.**
   - Fever is global damage with no attacker genome, so it should not be scaled by the coevolution receptor match (epic #141).
   - The "Antibiotic Resistance" gene-transfer trait was meant to reduce Fever damage. That trait stays on the donation list but needs a different effect if Fever stays out.
+
+## Parasite (burrowing dropship)
+
+Parked on 2026-10-01 (decision D2 in epic #147, plan section 15 row 13).
+
+- **What it was.** Plan section 11's large, slow unit. It burrows: underground it can't be targeted, it ignores walls, and it surfaces next to its target after a travel time. On death it bursts into 4 fast, low-HP spores tagged `small`.
+- **Why it was parked.** Identity proposal 4.6: it copies Clash directly (Miner plus Golem).
+- **If it returns.**
+  - Burrowing should also avoid *analysis exposure*, since it can't be targeted underground, not only walls.
+  - Spores inherit the parent's genome index, and their damage is credited to it so the burst doesn't double-count fitness.
+  - The Mucous trap (`small` tag) would catch its spores.

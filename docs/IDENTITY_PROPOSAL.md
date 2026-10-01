@@ -136,7 +136,7 @@ These two mechanics give pathogens behavior that no Clash troop has. Both are sp
 | Dendritic Cell | Hidden trap that reveals itself and buffs attack speed (Hidden Tesla) | **Antigen presenter:** always visible. It shares any analysis completed within 4 tiles with every B-Cell in that radius. Hiding it goes against pillar 3. |
 | Fever | Configured global damage with self-harm | **Removed from the plan** and parked in [FUTURE_FEATURES.md](FUTURE_FEATURES.md). |
 | Mucous Membrane trap | Roots `small` units | Kept, and it counts as innate. |
-| Parasite burrow and spores | Miner plus Golem | **Deprioritized.** It copies Clash directly. If it is built, burrowing should avoid *analysis* (untargetable, so it builds no exposure), not only walls. |
+| Parasite burrow and spores | Miner plus Golem | **Parked (D2).** It copies Clash directly. Moved to [FUTURE_FEATURES.md](FUTURE_FEATURES.md). |
 
 ---
 
@@ -151,18 +151,9 @@ When the attack wins, the **score is the ATP value of the base at the start of t
 - The puzzle is to find the **strongest base you can still break**. That turns the shared budget from a free choice into a real optimization, and it removes the dominant strategy.
 - This is computed in core from `BattleSim` state and the base snapshot, and needs unit tests (CLAUDE.md rule 6). The Results screen shows the score next to the ATP split bar.
 
-### 5.2 Outbreak run (the main single-player mode)
+### 5.2 Outbreak run (removed 2026-10-01)
 
-A run is a series of **generations** against one base that keeps learning:
-
-1. Start with a new base and 1000 ATP. Build, then raid (the current loop).
-2. If the raid succeeds, the generation scores (section 5.1) and the base **updates its memory** (section 4.3).
-3. The next generation starts with the same base and a fresh 1000 ATP. The player can edit the base (sales keep the 100% refund) and pick a new army and new strains.
-4. The run ends on the first raid where the defense holds. **Run score = the sum of generation scores.**
-
-Repeating an army makes each generation harder. To keep a run going, the player has to rotate strains, mutate, bring phages to hijack adapted towers, or lower defense spend and accept a smaller score. That tension is the identity loop, and it works in single-player without any server.
-
-The existing single-battle sandbox stays as **Lab** mode: no scoring, memory can be edited, and it is the place to experiment.
+Outbreak run mode was built in #90 and removed in #149 (decision D4 in epic #147). The "base that keeps learning" loop moves to Living Base, where AI bases and the player's own base both learn between raids (#161, #163). The single-battle sandbox stays as **Lab** mode, mainly for testing base builds.
 
 ---
 
@@ -176,10 +167,10 @@ The existing single-battle sandbox stays as **Lab** mode: no scoring, memory can
 | DNA/Plasmids and the Mutation Lab | **Reframe** | They unlock strain variants (section 4.4), not stat upgrades |
 | Async raids (Phase 3) | Keep, and memory makes them deeper | Every defended raid updates the defender's memory. **Popular strains become less effective on their own**, because more bases remember them. The meta rebalances itself with no global rule (see below) |
 | Coevolution (epic #141) | **Add** | Antigens, receptors and fitness-weighted mating for the five fighting types. It is the *genetic* layer under memory: memory tracks the strain the player picked, and breeding tracks what the population evolves. Defenders breed too, so both sides adapt. The `populations` snapshot block is the multiplayer hook. |
-| Lymph Node (clan castle) | **Reframe as vaccination, and it replaces the Nucleus as HQ (Phase 4)** | Clanmates donate memory of strains they've seen to your base, up to 1 level per strain. It is the clan version of immunization, not a box of donated troops |
-| Gene transfer (donations) | Keep, and it now fits | Donating a *variant* for the requester's next raid is how plasmids really work |
+| Lymph Node (clan castle) | **Reframe as vaccination, and it replaces the Nucleus as HQ (Phase 4)** | Clanmates donate memory of strains they've seen to your base, up to 1 level per strain. It is the clan version of immunization. **Decided (D5):** it also houses donated memory cells, mobile defenders with no breeding pool that expire after a fixed lifetime (#196) |
+| Gene transfer (donations) | Keep, and it now fits | Donating a trait or one receptor allele for the requester's next raid is how plasmids really work. **Decided (D7):** no variant or antigen donation |
 | Patient Zero (Phase 5a) | **Reframe** | The boss base's memory builds up across every clan member's attack in the 48 h window. The clan has to coordinate strain rotation, which is a coordination problem no Clash mode poses |
-| Herd Immunity (Phase 5b) | Keep the name and make it literal | Memory spreads between neighbouring bases in the clan network |
+| Herd Immunity (Phase 5b) | Keep the name and make it literal | Memory spreads between neighbouring bases in the clan network. **Decided (D8):** the fittest tower genome spreads too |
 
 **Self-balancing meta (Phase 3).** Matchmaking hands each attacker a real defended base. Bases get raided most often by the most popular strains, so the popular strains are what bases remember. A dominant army should counter itself over time. The balance team still tunes, but the game already pushes back against a single dominant strategy. Server telemetry should track strain usage share against win rate to confirm this happens.
 
@@ -195,7 +186,7 @@ Each item is a GitHub issue under epic #85 (item 1 is #86, through item 8 as #93
 | 2 | B-Cell analysis: an exposure map for each tower and strain, a multiplier, an `analysis_complete` sim event, the progress ring and badge | `structure_state.gd`, `battle_sim.gd`, `sim_events.gd`, view, `structures.json` (`analysis` block) | `bcell_analysis` |
 | 3 | Strains: a strain id on each army entry and pathogen state, variant traits applied to unit stats at spawn, a variant picker in Incubation | `army.gd`, `pathogen_state.gd`, `battle_setup.gd`, `hud_spawn`, `pathogens.json` (`strains`) | `strains` |
 | 4 | Immune memory: a memory table as an optional block in the base snapshot, a memory update after each raid, pre-seeded exposure through `BattleSetup`, the Memory panel | `snapshot_io.gd`, `session.gd`, `battle_setup.gd`, UI | `immune_memory` |
-| 5 | Outbreak run mode: tracking generations, the run score, and end-of-run results | `game_state_machine.gd`, `session.gd`, UI | `outbreak_mode` |
+| 5 | Outbreak run mode: tracking generations, the run score, and end-of-run results (removed in #149) | `game_state_machine.gd`, `session.gd`, UI | `outbreak_mode` |
 | 6 | Biofilm (plan section 9) | `battle_sim.gd`, union-find helper in core | `biofilm` |
 | 7 | Bacteriophage hijack (plan section 9) | `battle_sim.gd`, `StatusEffects.DISABLED` | `phage_hijack` |
 | 8 | Balance sim: flags, strains and memory as inputs, multi-generation runs. Telemetry report: the section 8 metrics split by flag set | `tools/balance_sim.gd`, `tools/telemetry_report.py` | — |
@@ -216,10 +207,10 @@ These add to the playtest metrics in plan section 5. Each is compared with the f
 | --- | --- | --- |
 | Does learning change what players field? | Army diversity: the share of the army's ATP in its largest single strain | Median share falls by at least 15 points with `bcell_analysis` on |
 | Does the loop have a goal? | Share of sessions where defense spend is above 20% of the budget | At least 70% with `raid_score` on (today's dominant strategy is 0%) |
-| Does memory create an arms race? | Outbreak run length; how often the army changes between generations | Median run of at least 3 generations; strain mix changes in at least 60% of generations |
+| Does memory create an arms race? | Lab: how often the strain mix changes between consecutive Re-raids with `immune_memory` on. Living Base (Phase 2): how often the army changes between raids on the same AI base. | Strain mix changes in at least 60% of consecutive raids |
 | Is it still readable? | Prediction accuracy (plan section 5, question 2); survey question "I understood why my B-Cells got stronger" | Prediction accuracy stays at 60% or above; median survey answer 4 or above |
 | Does breeding add a second arms race without hiding the first? | Receptor hit rate by generation; a prediction-accuracy check and the survey question "I understood why my towers got stronger" with `coevolution` on and off | Hit rate rises across generations 0 to 5 for both sides. Prediction accuracy stays at 60% or above. Median survey answer 4 or above |
-| Is it fun? | Pivot rating and a new "one more generation" rating | Both medians at 3.5 or above |
+| Is it fun? | Pivot rating and a new "one more raid" rating | Both medians at 3.5 or above |
 
 If `bcell_analysis` and `immune_memory` don't beat the flag-off baseline, the identity doesn't work as designed. Don't start Phase 2 until that is solved.
 
@@ -229,7 +220,8 @@ If `bcell_analysis` and `immune_memory` don't beat the flag-off baseline, the id
 
 | Plan section | Change |
 | --- | --- |
-| 1.8 Post-battle loop | Add the score to Results. Add the Outbreak "next generation" action next to Re-raid, Edit base and New base. |
+| 1.8 Post-battle loop | Add the score to Results. (The Outbreak "next generation" action was removed with Outbreak in #149.) |
+| 5.2 Outbreak | Removed (D4). Living Base (plan section 11) carries the learning-base loop. |
 | 8 Full vision fit | Rows for B-Cell analysis, hijack and Biofilm move from "stretch goal" to "core, Phase 1.5". |
 | 9 Stretch mechanics | Becomes Phase 1.5: Identity (section 7 above). |
 | 10 Dual economy | Amino Acid upgrades are cut or become breadth-only. The Mutation Lab unlocks strain variants. |
@@ -261,8 +253,8 @@ If `bcell_analysis` and `immune_memory` don't beat the flag-off baseline, the id
 ## 11. Open questions for design
 
 1. Is the per-tower analysis (section 4.2) correct, or should analysis belong to the whole base? The plan's open question 7 also asks this. **Decided:** per tower, with Dendritic Cells sharing analysis and antigens only (not genomes).
-2. Should Macrophages gain a small innate bonus against strains in memory (trained immunity), or stay fixed?
-3. Should memory be visible to the attacker in async raids (current proposal: yes, pillar 3), or should it be scouted?
-4. Outbreak scoring: ATP value of the whole base (proposed), or only the value of structures destroyed?
-5. Can the player spend ATP to "vaccinate" their own base in single-player, or does memory only come from raids?
-6. How many variants per type at launch: 2 (simpler) or 3 (more rotation room)?
+2. Should Macrophages gain a small innate bonus against strains in memory (trained immunity), or stay fixed? Default chosen in #152.
+3. Should memory be visible to the attacker in async raids (current proposal: yes, pillar 3), or should it be scouted? Default chosen in #152.
+4. Outbreak scoring: ATP value of the whole base (proposed), or only the value of structures destroyed? **Obsolete:** Outbreak was removed. Lab keeps `raid_score` as the ATP value of the whole base.
+5. Can the player spend ATP to "vaccinate" their own base in single-player, or does memory only come from raids? Default chosen in #152.
+6. How many variants per type at launch: 2 (simpler) or 3 (more rotation room)? Default chosen in #152.
