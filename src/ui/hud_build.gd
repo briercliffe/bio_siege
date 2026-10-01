@@ -18,6 +18,8 @@ signal raid_requested
 signal defense_log_requested
 signal upgrades_requested
 signal test_in_lab_requested
+## Living Base: play an AI raid on the player's base now (LB-10).
+signal incoming_infection_requested
 
 const ATP_OVER_BUDGET_COLOR: Color = Color("#e74c3c")
 const IMPORT_DIALOG_SCENE: PackedScene = preload("res://src/ui/import_dialog.tscn")
@@ -171,6 +173,7 @@ var mito_label: Label = null
 var btn_collect: PillButton = null
 var btn_raid: PillButton = null
 var lb_buttons: VBoxContainer = null
+var btn_incoming: PillButton = null
 var btn_defense_log: PillButton = null
 var btn_upgrades: PillButton = null
 var spent_block: VBoxContainer = null
@@ -538,6 +541,7 @@ func _update_living_base() -> void:
 	var lb: bool = is_living_base()
 	btn_finalize.visible = not lb
 	btn_raid.visible = lb
+	btn_incoming.visible = lb
 	spent_block.visible = not lb
 	aa_pill.visible = lb
 	var amino: int = session.wallet.get_amount("amino_acids") if (lb and session.wallet != null) else 0
@@ -1169,6 +1173,13 @@ func _build_right_card() -> void:
 		row.add_child(_wrapping(_label(entry[1] as String, 14, 400, _muted)))
 		placing_legend.add_child(row)
 	status_box.add_child(placing_legend)
+
+	btn_incoming = PillButton.new("Incoming infection", PillButton.Variant.SECONDARY)
+	btn_incoming.name = "BtnIncomingInfection"
+	btn_incoming.visible = false
+	btn_incoming.custom_minimum_size = Vector2(PillButton.MIN_WIDTH, LB_BUTTON_HEIGHT)
+	btn_incoming.pressed.connect(func() -> void: incoming_infection_requested.emit())
+	status_box.add_child(btn_incoming)
 
 	lb_buttons = _vbox(8)
 	lb_buttons.name = "LivingBaseButtons"

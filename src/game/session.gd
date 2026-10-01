@@ -21,6 +21,8 @@ enum Mode { LAB, LIVING_BASE }
 var mode: Mode = Mode.LAB
 var profile: LivingBaseProfile = null     # set in LIVING_BASE
 var living_flow: LivingBaseFlow = null    # set in LIVING_BASE: loads, saves and collects the profile
+## True while an AI raid on the player's base is played live ("Incoming infection"); the player defends.
+var live_defense: bool = false
 
 # The base being attacked this raid. Empty = the session's own base (Lab self-raid).
 # Assign a whole new array to change it: in-place edits do not reset the cached grid.

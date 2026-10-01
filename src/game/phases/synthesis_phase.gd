@@ -11,6 +11,13 @@ var build_controller: BuildController = null
 var toast: Toast = null
 var hud_build: HudBuild = null
 var background: AmbientBackground = null
+## Living Base: the "Resolving raids..." card and then the "While you were away" summary.
+var away_overlay: DimOverlay = null
+var away_card: FloatingCard = null
+var away_label: Label = null
+var away_buttons: HBoxContainer = null
+var btn_away_ok: PillButton = null
+var btn_away_log: PillButton = null
 
 ## Island area between the HUD cards at 1280x720 (mockups 05 to 07): x 320..960, y 96..616.
 const ISLAND_INSET_X: float = 320.0
@@ -67,6 +74,7 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 		hud_build.saves_root = saves_root
 
 	_show_living_base_notices()
+	_begin_away_raids()
 
 	if hud_build != null and session != null and build_controller != null:
 		hud_build.setup(session, build_controller)
@@ -84,6 +92,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 			hud_build.test_in_lab_requested.connect(_on_test_in_lab_requested)
 		if not hud_build.raid_requested.is_connected(_on_raid_requested):
 			hud_build.raid_requested.connect(_on_raid_requested)
+		if not hud_build.incoming_infection_requested.is_connected(_on_incoming_infection_requested):
+			hud_build.incoming_infection_requested.connect(_on_incoming_infection_requested)
 
 	_update_grid_layout()
 
@@ -191,6 +201,96 @@ func _on_help_requested() -> void:
 func _on_settings_requested() -> void:
 	if fsm != null and fsm.screen_stack != null:
 		fsm.screen_stack.push("settings")
+
+## Living Base: "Incoming infection" plays an AI raid on the base now, straight into Infection.
+func _on_incoming_infection_requested() -> void:
+	if session == null or session.living_flow == null or not session.living_flow.begin_live_defense():
+		return
+	if fsm != null:
+		fsm.force_transition(GameStateMachine.Phase.INFECTION)
+
+
+## AI raids that came due while the player was away resolve one per frame behind a card, so the app does not
+## freeze (one raid takes about 100 ms).
+func _begin_away_raids() -> void:
+	if session == null or session.living_flow == null or not session.living_flow.has_pending_raids():
+		return
+	away_overlay = DimOverlay.new()
+	away_overlay.name = "AwayOverlay"
+	add_child(away_overlay)
+	var center := CenterContainer.new()
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	away_overlay.add_child(center)
+	away_card = FloatingCard.new()
+	away_card.name = "AwayCard"
+	center.add_child(away_card)
+	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_theme_constant_override("separation", 12)
+	away_card.add_child(box)
+	away_label = Label.new()
+	away_label.name = "AwayLabel"
+	away_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	away_label.custom_minimum_size = Vector2(360.0, 0.0)
+	UiFonts.style_label(away_label, 18, 700, UiPalette.color(false, "ink"))
+	box.add_child(away_label)
+	away_buttons = HBoxContainer.new()
+	away_buttons.name = "AwayButtons"
+	away_buttons.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	away_buttons.add_theme_constant_override("separation", 12)
+	away_buttons.visible = false
+	box.add_child(away_buttons)
+	btn_away_ok = PillButton.new("OK", PillButton.Variant.PRIMARY)
+	btn_away_ok.name = "BtnAwayOk"
+	btn_away_ok.pressed.connect(_close_away_card)
+	away_buttons.add_child(btn_away_ok)
+	btn_away_log = PillButton.new("View log", PillButton.Variant.SECONDARY)
+	btn_away_log.name = "BtnAwayLog"
+	btn_away_log.visible = false
+	btn_away_log.pressed.connect(_on_away_log_pressed)
+	away_buttons.add_child(btn_away_log)
+	_update_away_label()
+	set_process(true)
+
+
+func _process(_delta: float) -> void:
+	if away_card == null or session == null or session.living_flow == null:
+		set_process(false)
+		return
+	if session.living_flow.has_pending_raids():
+		session.living_flow.resolve_next_raid()
+		_update_away_label()
+		return
+	_show_away_summary()
+	set_process(false)
+
+
+func _update_away_label() -> void:
+	var flow: LivingBaseFlow = session.living_flow
+	var done: int = int(flow.away_summary.get("raids", 0))
+	away_label.text = "Resolving raids... %d of %d" % [done, done + flow.pending_raids]
+
+
+func _show_away_summary() -> void:
+	away_label.text = session.living_flow.away_summary_text()
+	away_buttons.visible = true
+	# "View log" appears once the Defense log screen exists (LB-17).
+	btn_away_log.visible = fsm != null and fsm.screen_stack != null and fsm.screen_stack.scene_paths.has("defense_log")
+
+
+func _on_away_log_pressed() -> void:
+	_close_away_card()
+	if fsm != null and fsm.screen_stack != null:
+		fsm.screen_stack.push("defense_log")
+
+
+func _close_away_card() -> void:
+	if away_overlay != null:
+		away_overlay.queue_free()
+		away_overlay = null
+		away_card = null
+
 
 ## Living Base: the Raid button opens the opponent picker over Synthesis.
 func _on_raid_requested() -> void:

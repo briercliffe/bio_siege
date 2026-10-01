@@ -34,6 +34,7 @@ const ISLAND_SIZE: Vector2 = Vector2(230.0, 150.0)
 
 const TITLE_ATTACKER: String = "Nucleus destroyed"
 const TITLE_DEFENDER: String = "Defense held"
+const TITLE_BASE_INFECTED: String = "Base infected"
 
 
 ## Holds the final-state island thumbnail and clips it to its frame.
@@ -88,6 +89,7 @@ var tile_structures_lost: StatTile = null
 var stats: Dictionary = {}
 
 # ATP split card
+var atp_card: FloatingCard = null
 var atp_title_label: Label = null
 var atp_track: ProgressTrack = null
 ## "base", "army" and "unspent" -> the bold amount label in the legend.
@@ -211,7 +213,8 @@ func _build_left_column() -> void:
 	tile_pathogens_alive = _make_tile(tiles, "Pathogens alive", "TilePathogensAlive")
 	tile_structures_lost = _make_tile(tiles, "Structures lost", "TileStructuresLost")
 
-	col.add_child(_build_atp_card())
+	atp_card = _build_atp_card()
+	col.add_child(atp_card)
 
 	var buttons := HudParts.hbox(12)
 	buttons.name = "ChoiceButtons"
@@ -371,7 +374,11 @@ func _populate() -> void:
 	kicker_label.add_theme_color_override("font_color", KICKER_ATTACKER if is_attacker_win else KICKER_DEFENDER)
 	badge.visible = is_timeout
 	title_label.text = TITLE_ATTACKER if is_attacker_win else TITLE_DEFENDER
-	if end_reason == "nucleus_destroyed" or (is_attacker_win and end_reason.is_empty()):
+	if is_live_defense() and is_attacker_win:
+		title_label.text = TITLE_BASE_INFECTED
+	if is_live_defense() and is_attacker_win:
+		reason_label.text = "The AI army destroyed your Nucleus in %s." % format_time(battle_s)
+	elif end_reason == "nucleus_destroyed" or (is_attacker_win and end_reason.is_empty()):
 		reason_label.text = ("Your army broke through the enemy base in %s." if is_living_base() else "Your army broke through your own defense in %s.") % format_time(battle_s)
 	elif is_timeout:
 		reason_label.text = "The %s timer ran out with the Nucleus at %d HP." % [format_time(_timeout_s(res, battle_s)), nucleus_hp]
@@ -413,7 +420,9 @@ func _populate() -> void:
 	_populate_memory(res)
 	_populate_evolution(res)
 	_populate_atp_split()
-	if is_living_base():
+	if is_live_defense():
+		_configure_live_defense_buttons()
+	elif is_living_base():
 		_configure_living_base_buttons()
 	else:
 		_update_new_base_label()
@@ -528,7 +537,7 @@ static func build_final_grid(cfg: GameConfig, layout: Array, alive_ids: Array, f
 func _populate_memory(res: Dictionary) -> void:
 	var text: String = ""
 	if session != null and session.config != null and session.config.memory_enabled() and res.has("memory_changes"):
-		if is_living_base():
+		if is_living_base() and not is_live_defense():
 			text = base_learned_text(res.get("memory_changes", []), session.config)
 		else:
 			text = memory_changes_text(res.get("memory_changes", []), session.config)
@@ -542,7 +551,7 @@ func _populate_memory(res: Dictionary) -> void:
 func _populate_evolution(res: Dictionary) -> void:
 	var text: String = ""
 	if session != null and session.config != null and session.config.coevolution_enabled() and res.has("evolution"):
-		if is_living_base():
+		if is_living_base() and not is_live_defense():
 			text = base_evolved_text(res.get("evolution", []), session.config)
 		else:
 			text = evolution_line(res.get("evolution", []), session.config)
@@ -572,6 +581,21 @@ func is_living_base() -> bool:
 	return session != null and session.mode == Session.Mode.LIVING_BASE and session.living_flow != null
 
 
+## True during a live AI raid on the player's base ("Incoming infection").
+func is_live_defense() -> bool:
+	return is_living_base() and session.live_defense
+
+
+## "Lost 80 ATP · +12 Amino Acids" for a defense. Empty when nothing changed.
+static func defense_text(res: Dictionary) -> String:
+	var parts: Array[String] = []
+	if int(res.get("atp_lost", 0)) > 0:
+		parts.append("Lost %d ATP" % int(res.get("atp_lost", 0)))
+	if int(res.get("amino_gained", 0)) > 0:
+		parts.append("+%d Amino Acids" % int(res.get("amino_gained", 0)))
+	return " · ".join(parts)
+
+
 ## "+120 ATP · +30 Amino Acids" (and "· +5 DNA" when any). Empty when nothing was won.
 static func loot_text(res: Dictionary) -> String:
 	var parts: Array[String] = []
@@ -586,12 +610,22 @@ static func loot_text(res: Dictionary) -> String:
 
 func _populate_loot(res: Dictionary) -> void:
 	var text: String = ""
-	if is_living_base() and res.has("living_base"):
+	if is_live_defense() and res.has("living_base"):
+		text = defense_text(res["living_base"] as Dictionary)
+	elif is_living_base() and res.has("living_base"):
 		text = loot_text(res["living_base"] as Dictionary)
 	loot_label.text = text
 	loot_label.visible = not text.is_empty()
 	if not text.is_empty():
 		stats["loot"] = text
+
+
+## A live defense has one way out: Back to base. The ATP split card is about an army, so it is hidden.
+func _configure_live_defense_buttons() -> void:
+	_set_button(btn_edit_base, "Back to base", "Home", EDIT_WIDTH)
+	btn_re_raid.visible = false
+	btn_new_base.visible = false
+	atp_card.visible = false
 
 
 ## Raid again (same opponent while it still stands) and Back to base replace the Lab choices.
@@ -789,7 +823,10 @@ static func apply_choice(choice: String, session: Session, fsm: GameStateMachine
 				fsm.request_transition(GameStateMachine.Phase.INCUBATION if aimed else GameStateMachine.Phase.SYNTHESIS)
 		"back_to_base":
 			if session.living_flow != null:
-				session.living_flow.end_raid()
+				if session.live_defense:
+					session.living_flow.end_live_defense()
+				else:
+					session.living_flow.end_raid()
 			if fsm != null:
 				fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
 		"re_raid":

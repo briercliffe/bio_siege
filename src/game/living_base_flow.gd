@@ -9,14 +9,25 @@ var store: LivingBaseStore = null
 var session: Session = null
 ## Messages from loading the profile (reset or trimmed saves). The Synthesis phase shows them once.
 var notices: Array[String] = []
+## AI raids that came due while the player was away and are not resolved yet.
+var pending_raids: int = 0
+## What the resolved away-raids did: {"raids", "held", "atp_lost", "amino_gained"}. Empty when none were due.
+var away_summary: Dictionary = {}
+
+var _raids_total: int = 0
+var _raids_done: int = 0
+var _raids_origin_unix: int = 0
+var _raids_now_unix: int = 0
 
 
 func _init(p_store: LivingBaseStore = null) -> void:
 	store = p_store if p_store != null else LivingBaseStore.new()
 
 
-## Loads (or creates) the profile, banks the offline ATP, and loads it into the session.
-func enter(p_session: Session) -> void:
+## Loads (or creates) the profile, banks the offline ATP, and loads it into the session. AI raids that came
+## due while the player was away are resolved at once, or left pending with `defer_raids` so the UI can
+## resolve them one per frame (resolve_next_raid).
+func enter(p_session: Session, defer_raids: bool = false) -> void:
 	session = p_session
 	if session == null or session.config == null:
 		return
@@ -26,14 +37,144 @@ func enter(p_session: Session) -> void:
 	for n: Variant in res.get("notices", []):
 		notices.append(str(n))
 	var profile: LivingBaseProfile = res["profile"]
-	profile.advance_clock(cfg, LivingBaseStore.now_unix())
+	var now: int = LivingBaseStore.now_unix()
+	profile.advance_clock(cfg, now)
 	profile.ensure_opponents(cfg)
 	session.mode = Session.Mode.LIVING_BASE
 	session.profile = profile
 	session.living_flow = self
+	session.live_defense = false
 	session.clear_attack_target()
 	_apply_profile_to_session()
+	_plan_away_raids(now)
+	if not defer_raids:
+		resolve_all_pending()
 	store.save_profile(profile)
+
+
+## True while away-raids are waiting to be resolved.
+func has_pending_raids() -> bool:
+	return pending_raids > 0
+
+
+## Resolves the next due AI raid headless (one run_to_end, about 100 ms) and logs it. Raids resolve one after
+## another, so each sees what the earlier ones taught the base. Returns false when nothing was pending.
+func resolve_next_raid() -> bool:
+	if not is_active() or pending_raids <= 0:
+		return false
+	var cfg: GameConfig = session.config
+	var profile: LivingBaseProfile = session.profile
+	profile.wallet = session.wallet.to_dict()
+	var entry: Dictionary = DefenseRunner.resolve_offline(cfg, profile, profile.ai_raid_counter)
+	profile.push_defense_log(entry, cfg)
+	_load_defender_state_into_session()
+	pending_raids -= 1
+	_raids_done += 1
+	away_summary["raids"] = _raids_done
+	away_summary["held"] = int(away_summary.get("held", 0)) + (1 if str(entry["outcome"]) == "defender" else 0)
+	away_summary["atp_lost"] = int(away_summary.get("atp_lost", 0)) + int(entry["atp_lost"])
+	away_summary["amino_gained"] = int(away_summary.get("amino_gained", 0)) + int(entry["amino_gained"])
+	# Saved after every raid, so an interrupted resolve never repeats a raid.
+	if pending_raids == 0:
+		profile.last_ai_raid_unix = RaidSchedule.advance(cfg, _raids_origin_unix, _raids_now_unix, _raids_total)
+	else:
+		profile.last_ai_raid_unix = _raids_origin_unix + _raids_done * cfg.ai_raid_interval_s
+	store.save_profile(profile)
+	return true
+
+
+func resolve_all_pending() -> void:
+	while resolve_next_raid():
+		pass
+
+
+## "While you were away: 2 raids · 1 held · -80 ATP · +12 Amino Acids". Empty when no raid came due.
+func away_summary_text() -> String:
+	var raids: int = int(away_summary.get("raids", 0))
+	if raids <= 0:
+		return ""
+	var parts: Array[String] = ["%d raid%s" % [raids, "" if raids == 1 else "s"], "%d held" % int(away_summary.get("held", 0))]
+	if int(away_summary.get("atp_lost", 0)) > 0:
+		parts.append("-%d ATP" % int(away_summary["atp_lost"]))
+	if int(away_summary.get("amino_gained", 0)) > 0:
+		parts.append("+%d Amino Acids" % int(away_summary["amino_gained"]))
+	return "While you were away: " + " · ".join(parts)
+
+
+## Plays an AI raid on the player's base live ("Incoming infection"). Sets the battle up and aims the session
+## at the player's own base. It does not use up a scheduled raid. Returns false when not in Living Base.
+func begin_live_defense() -> bool:
+	if not is_active():
+		return false
+	sync_profile_from_session()
+	var cfg: GameConfig = session.config
+	var profile: LivingBaseProfile = session.profile
+	session.battle_setup = DefenseRunner.build_setup(cfg, profile, profile.ai_raid_counter)
+	var layout: Array[Dictionary] = []
+	for entry: Dictionary in profile.layout:
+		layout.append(entry.duplicate(true))
+	session.attack_layout = layout
+	session.attack_memory = session.memory
+	session.attack_populations = {}
+	for type_id: Variant in session.populations.keys():
+		if cfg.structures.has(str(type_id)):
+			session.attack_populations[type_id] = session.populations[type_id]
+	session.attack_opponent_id = ""
+	session.army = Army.new(cfg)
+	session.prediction_structure_id = 0
+	session.last_result = {}
+	session.last_launch = {}
+	session.live_defense = true
+	return true
+
+
+## Applies a finished live AI raid like an offline one and logs it with `live: true`. Returns the log entry
+## (with its replay) so the caller can keep it; the battle log is also in the defense log.
+func finish_live_defense(sim: BattleSim) -> Dictionary:
+	if not is_active() or not session.live_defense or session.battle_setup == null:
+		return {}
+	var cfg: GameConfig = session.config
+	var profile: LivingBaseProfile = session.profile
+	profile.wallet = session.wallet.to_dict()
+	var entry: Dictionary = DefenseRunner.apply_result(cfg, profile, session.battle_setup, sim, profile.ai_raid_counter)
+	entry["live"] = true
+	profile.push_defense_log(entry, cfg)
+	_load_defender_state_into_session()
+	sync_profile_from_session()
+	return entry
+
+
+## Leaves a live defense: the target and the live flag are cleared and the profile saved.
+func end_live_defense() -> void:
+	if session == null:
+		return
+	session.live_defense = false
+	session.clear_attack_target()
+	session.battle_setup = null
+	sync_profile_from_session()
+
+
+func _plan_away_raids(now: int) -> void:
+	var cfg: GameConfig = session.config
+	var profile: LivingBaseProfile = session.profile
+	_raids_origin_unix = profile.last_ai_raid_unix
+	_raids_now_unix = now
+	_raids_total = RaidSchedule.due_count(cfg, profile.last_ai_raid_unix, now)
+	_raids_done = 0
+	pending_raids = _raids_total
+	away_summary = {}
+
+
+## After a defense result changed the profile, brings the live session copies up to date.
+func _load_defender_state_into_session() -> void:
+	var cfg: GameConfig = session.config
+	var profile: LivingBaseProfile = session.profile
+	session.memory = ImmuneMemory.from_dict(profile.memory, cfg)
+	for type_id: Variant in profile.populations.keys():
+		var tid: String = str(type_id)
+		if cfg.is_breeding_type(tid) and cfg.structures.has(tid) and profile.populations[type_id] is Dictionary:
+			session.populations[tid] = BreedPool.from_dict(profile.populations[type_id], tid, cfg)
+	session.wallet.set_amount("amino_acids", int(profile.wallet.get("amino_acids", 0)))
 
 
 ## True while the session is in Living Base mode with a loaded profile.
@@ -194,6 +335,7 @@ func start_test_in_lab() -> void:
 	session.mode = Session.Mode.LAB
 	session.profile = null
 	session.living_flow = null
+	session.live_defense = false
 	session.clear_attack_target()
 	session.army = Army.new(cfg)
 	session.wallet.reset(cfg.start_wallet)
@@ -212,6 +354,7 @@ static func reset_to_lab(p_session: Session) -> void:
 	p_session.mode = Session.Mode.LAB
 	p_session.profile = null
 	p_session.living_flow = null
+	p_session.live_defense = false
 	p_session.clear_attack_target()
 	p_session.grid.reset_with_nucleus()
 	p_session.army = Army.new(cfg)
