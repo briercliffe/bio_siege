@@ -76,6 +76,7 @@ var title_label: Label = null
 var reason_label: Label = null
 var score_label: Label = null
 var memory_label: Label = null
+var evolution_label: Label = null
 
 # Stat tiles
 var tile_battle_time: StatTile = null
@@ -192,6 +193,10 @@ func _build_left_column() -> void:
 	memory_label.name = "MemoryLabel"
 	memory_label.visible = false
 	extras.add_child(memory_label)
+	evolution_label = HudParts.wrapping(HudParts.label("", 14, 400, _muted))
+	evolution_label.name = "EvolutionLabel"
+	evolution_label.visible = false
+	extras.add_child(evolution_label)
 
 	var tiles := HudParts.hbox(12)
 	tiles.name = "StatTiles"
@@ -400,6 +405,7 @@ func _populate() -> void:
 	_populate_final_state(res, first_id, first_type)
 	_populate_score(res, is_attacker_win)
 	_populate_memory(res)
+	_populate_evolution(res)
 	_populate_atp_split()
 	_update_new_base_label()
 	_populate_survey()
@@ -518,6 +524,32 @@ func _populate_memory(res: Dictionary) -> void:
 	memory_label.visible = not text.is_empty()
 	if not text.is_empty():
 		stats["memory"] = text
+
+
+## Coevolution line (coevolution flag). Hidden and absent from stats when nothing bred.
+func _populate_evolution(res: Dictionary) -> void:
+	var text: String = ""
+	if session != null and session.config != null and session.config.coevolution_enabled() and res.has("evolution"):
+		text = evolution_line(res.get("evolution", []), session.config)
+	evolution_label.text = text
+	evolution_label.visible = not text.is_empty()
+	if not text.is_empty():
+		stats["evolution"] = text
+
+
+## "Populations: Rhinovirus parent 6/8 · B-Cell parent 5/8". Empty when no type bred.
+static func evolution_line(entries: Array, config: GameConfig) -> String:
+	var parts: Array[String] = []
+	for e_val: Variant in entries:
+		if not (e_val is Dictionary):
+			continue
+		var e: Dictionary = e_val
+		if not bool(e.get("bred", false)):
+			continue
+		parts.append("%s parent %d/%d" % [CoevolutionPanel.type_name(str(e.get("type_id", "")), config), int(e.get("top_count", 0)), int(e.get("pool_size", 0))])
+	if parts.is_empty():
+		return ""
+	return "Populations: " + " · ".join(parts)
 
 
 ## "Immune memory: Rhinovirus (wild) 1→2 · Staphylococcus (wild) forgotten"
