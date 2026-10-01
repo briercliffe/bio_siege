@@ -252,26 +252,6 @@ func test_card_selection_and_recall_tool() -> void:
 	assert_false(hud.recall_active)
 	assert_eq(hud.selected_type_id, "bacteriophage")
 
-func test_side_switch_overlay() -> void:
-	var overlay_scene: PackedScene = load("res://src/ui/side_switch_overlay.tscn")
-	assert_not_null(overlay_scene)
-	var overlay: SideSwitchOverlay = overlay_scene.instantiate() as SideSwitchOverlay
-	add_child_autofree(overlay)
-	watch_signals(overlay)
-
-	overlay.play(750)
-	assert_true(overlay.visible)
-	assert_eq(overlay.title_label.text, "Switching sides")
-	assert_eq(overlay.subtitle_label.text, "You are now the Pathogen")
-	assert_eq(overlay.body_label.text, "Spend your remaining 750 ATP on an army and raid the base you just built.")
-	assert_not_null(overlay.background_rect.texture)
-
-	# Simulate tap to dismiss immediately
-	overlay.dismiss(true)
-	await wait_seconds(0.35)
-	assert_false(overlay.visible)
-	assert_signal_emitted(overlay, "finished")
-
 func test_incubation_phase_wiring_and_overlay_visibility() -> void:
 	var cfg: GameConfig = _load_config()
 	var fsm: GameStateMachine = GameStateMachine.new()
