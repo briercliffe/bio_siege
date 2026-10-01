@@ -143,6 +143,7 @@ var deployed_value: Label = null
 var deployed_total_label: Label = null
 var deployed_track: ProgressTrack = null
 var memory_panel: MemoryPanel = null
+var coevolution_panel: CoevolutionPanel = null
 
 var tray: HBoxContainer = null
 var cards_container: HBoxContainer = null
@@ -197,6 +198,7 @@ func setup(p_session: Session) -> void:
 
 	_populate_tray()
 	_sync_memory_panel()
+	_sync_coevolution_panel()
 	_update_all()
 
 
@@ -224,6 +226,25 @@ func _sync_memory_panel() -> void:
 		memory_panel.visible = enabled
 		if enabled:
 			memory_panel.setup(session)
+
+
+## Shows the read-only CoevolutionPanel under the MemoryPanel, only when coevolution is enabled.
+func _sync_coevolution_panel() -> void:
+	var enabled: bool = session != null and session.config != null and session.config.coevolution_enabled()
+	if coevolution_panel == null and enabled:
+		coevolution_panel = CoevolutionPanel.new()
+		coevolution_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		coevolution_panel.offset_left = 0.0
+		coevolution_panel.offset_right = 0.0
+		coevolution_panel.offset_top = 0.0
+		coevolution_panel.offset_bottom = 0.0
+		army_box.add_child(coevolution_panel)
+	if coevolution_panel != null:
+		if memory_panel != null and memory_panel.get_parent() == coevolution_panel.get_parent():
+			coevolution_panel.get_parent().move_child(coevolution_panel, memory_panel.get_index() + 1)
+		coevolution_panel.visible = enabled
+		if enabled:
+			coevolution_panel.setup(session)
 
 
 func _update_all() -> void:
@@ -295,6 +316,7 @@ func refresh_config() -> void:
 			deploy_type_selected.emit("")
 			_apply_selection()
 	_sync_memory_panel()
+	_sync_coevolution_panel()
 	_update_all()
 
 

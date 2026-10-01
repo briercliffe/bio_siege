@@ -138,6 +138,17 @@ These two mechanics give pathogens behavior that no Clash troop has. Both are sp
 | Mucous Membrane trap | Roots `small` units | Kept, and it counts as innate. |
 | Parasite burrow and spores | Miner plus Golem | **Parked (D2).** It copies Clash directly. Moved to [FUTURE_FEATURES.md](FUTURE_FEATURES.md). |
 
+### 4.7 Coevolution
+
+Every fighting character type breeds, behind the `coevolution` flag (epic #141).
+
+- **Breeding is within one character type.** The five breeding types are the three pathogens plus Macrophage and B-Cell. Walls and the Nucleus do not breed.
+- **A genome** has antigen slots and receptor slots, with counts and catalogs from `data/game_rules.json`. Combat scores the attacker's receptors against the target's antigens: a match hits harder, a miss hits softer. A wild genome deals 100% damage.
+- **Fitness** is damage dealt plus a survival bonus. Fitter genomes parent more of the next pool, by crossover plus at most one mutation. The breed is seeded from the battle seed, so a replay's inputs are the seed plus the fitness the battle produced.
+- **Three different mechanisms.** This does not change immune memory's strain key and does not change B-Cell analysis. Strains are the hand-authored stat tradeoff, immune memory is what B-Cells remember, and breeding is what the population evolves. They never stack.
+- **Multiplayer hook.** The `populations` block on the base snapshot is what a later async raid exchanges. More players change the meta by fielding different pools. This document does not add a global gene pool.
+- **Flag.** `coevolution`, default off, until the Phase 1.5 playtest gate (#151) passes.
+
 ---
 
 ## 5. Giving the self-raid loop a goal
