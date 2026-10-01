@@ -38,6 +38,11 @@ func _variant(mutator: Callable) -> GameConfig:
 			if structures.has(t) or pathogens.has(t):
 				kept.append(t)
 		rules["coevolution"]["types"] = kept
+	# AI raid weights must name pathogens, so drop any the mutator removed.
+	if rules.has("ai_raids"):
+		for pathogen: String in (rules["ai_raids"]["pathogen_weights"] as Dictionary).keys():
+			if not pathogens.has(pathogen):
+				(rules["ai_raids"]["pathogen_weights"] as Dictionary).erase(pathogen)
 	# AI tower weights must name buildable towers, so drop any the mutator removed.
 	if rules.has("ai_bases"):
 		for tower: String in (rules["ai_bases"]["tower_weights"] as Dictionary).keys():

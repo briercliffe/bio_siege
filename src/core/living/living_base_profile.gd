@@ -34,6 +34,7 @@ static func create_new(cfg: GameConfig, p_seed: int, now_unix: int) -> LivingBas
 	p.layout = grid.to_layout()
 	p.wallet = cfg.lb_start_wallet.duplicate()
 	p.last_clock_unix = now_unix
+	p.last_ai_raid_unix = now_unix  # the first AI raid comes one interval after the first launch
 	return p
 
 ## Banks ATP generated since the last call. Returns the ATP generated.
