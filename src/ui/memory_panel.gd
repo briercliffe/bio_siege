@@ -123,7 +123,7 @@ func refresh() -> void:
 		rows_box.remove_child(c)
 		c.queue_free()
 	var cfg: GameConfig = session.config if session != null else null
-	var mem: ImmuneMemory = session.memory if session != null else null
+	var mem: ImmuneMemory = session.defender_memory() if session != null else null
 	if cfg == null or mem == null or mem.is_empty():
 		empty_label.visible = true
 		return

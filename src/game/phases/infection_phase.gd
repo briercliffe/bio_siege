@@ -120,7 +120,7 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 		add_child(grid_view)
 
 	if session != null:
-		grid_view.setup(session.grid, session.config, session.army)
+		grid_view.setup(session.attack_grid(), session.config, session.army)
 	grid_view.set_night(true)
 	grid_view.deploy_mode = false
 	grid_view.draw_structures = false
@@ -431,11 +431,12 @@ func _on_battle_finished(sim: BattleSim) -> void:
 			session.last_result["analyzed_strains"] = sim.analyzed_strain_keys()
 
 		if session.config != null and session.config.memory_enabled():
-			var mem_changes: Array[Dictionary] = session.memory.update_after_raid(sim.seen_strain_keys(), sim.analyzed_strain_keys(), session.config)
+			var defender_mem: ImmuneMemory = session.defender_memory()
+			var mem_changes: Array[Dictionary] = defender_mem.update_after_raid(sim.seen_strain_keys(), sim.analyzed_strain_keys(), session.config)
 			session.last_result["memory_changes"] = mem_changes
-			session.last_result["memory"] = session.memory.to_dict()
+			session.last_result["memory"] = defender_mem.to_dict()
 			if SessionLogger != null and SessionLogger.has_method("log_event"):
-				SessionLogger.log_event("memory_updated", {"raids": session.memory.raids, "changes": mem_changes})
+				SessionLogger.log_event("memory_updated", {"raids": defender_mem.raids, "changes": mem_changes})
 
 		if session.config != null and session.config.coevolution_enabled():
 			var battle_seed: int = session.battle_setup.seed if session.battle_setup != null else session.seed
@@ -481,19 +482,19 @@ static func breed_after_raid(session: Session, sim: BattleSim, battle_seed: int)
 	type_ids.sort()
 	var base_generation: int = -1
 	for type_id: String in type_ids:
-		var pool: BreedPool = session.population(type_id)
+		var pool: BreedPool = session.pool_for(type_id)
 		var scores: Variant = fitness.get(type_id, null)
 		if scores is Array and (scores as Array).size() == pool.fitness.size():
 			for i: int in range(pool.fitness.size()):
 				pool.fitness[i] = int((scores as Array)[i])
-		session.populations[type_id] = pool
+		session.store_pool(type_id, pool)
 		if base_generation < 0 or pool.generation < base_generation:
 			base_generation = pool.generation
 	var rng := Rng.new(battle_seed + maxi(0, base_generation) * 100003)
 	var evolution: Array[Dictionary] = []
 	var pools_out: Dictionary = {}
 	for type_id: String in type_ids:
-		var pool: BreedPool = session.populations[type_id]
+		var pool: BreedPool = session.pool_for(type_id)
 		var res: Dictionary = pool.breed(rng, cfg)
 		res["type_id"] = type_id
 		evolution.append(res)

@@ -126,7 +126,7 @@ static func from_dict(d: Dictionary, cfg: GameConfig) -> Dictionary:
 	if removed > 0:
 		notices.append("%d structures removed (no longer in the game)" % removed)
 	var grid := GridModel.new(cfg)
-	var err: GridModel.PlaceError = grid.load_layout(kept, _rich_wallet())
+	var err: GridModel.PlaceError = grid.load_layout(kept, unlimited_wallet())
 	if err != GridModel.PlaceError.OK:
 		return _fail("Living Base save has a base layout that does not fit the grid.")
 	p.layout = grid.to_layout()
@@ -172,7 +172,8 @@ static func _fail(message: String) -> Dictionary:
 	var empty: Array[String] = []
 	return {"ok": false, "profile": null, "error": message, "notices": empty}
 
-static func _rich_wallet() -> Wallet:
+## A wallet that affords anything, for building display or validation grids.
+static func unlimited_wallet() -> Wallet:
 	var amounts: Dictionary = {}
 	for cur: String in GameConfig.KNOWN_CURRENCIES:
 		amounts[cur] = 1000000000

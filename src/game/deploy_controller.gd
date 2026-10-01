@@ -140,9 +140,9 @@ func _on_cell_pressed(cell: Vector2i) -> void:
 	if predict_mode:
 		_is_pressing = false
 		if session != null and session.grid != null:
-			var sid: int = session.grid.structure_id_at(cell)
+			var sid: int = session.attack_grid().structure_id_at(cell)
 			if sid > 0:
-				var s: GridModel.PlacedStructure = session.grid.get_structure(sid)
+				var s: GridModel.PlacedStructure = session.attack_grid().get_structure(sid)
 				if s != null:
 					session.prediction_structure_id = sid
 					if grid_view != null:
@@ -158,7 +158,7 @@ func _on_cell_pressed(cell: Vector2i) -> void:
 		return
 
 	# In deploy mode
-	if not session.grid.is_deploy_zone(cell):
+	if not session.attack_grid().is_deploy_zone(cell):
 		_is_pressing = false
 		if toast != null:
 			toast.show_message("Deploy on the green ring")
@@ -217,10 +217,10 @@ func _process(delta: float) -> void:
 		_pending_recall = false
 		hold_delta = _press_elapsed - TAP_HOLD_S
 		_hold_timer = 0.0
-		if session.grid.is_deploy_zone(_current_cell) and not _try_deploy(_current_cell):
+		if session.attack_grid().is_deploy_zone(_current_cell) and not _try_deploy(_current_cell):
 			_is_pressing = false
 			return
-	if not session.grid.is_deploy_zone(_current_cell):
+	if not session.attack_grid().is_deploy_zone(_current_cell):
 		return
 
 	var interval: float = session.config.deploy_hold_interval_s
@@ -247,12 +247,12 @@ func _on_hud_launch_requested() -> void:
 
 	# 3. Auto-place leftovers:
 	#    var rng := Rng.new(session.seed)
-	#    var ring := session.grid.ring_cells()
+	#    var ring := session.attack_grid().ring_cells()
 	#    For each type in session.config.pathogen_ids() (alphabetical order):
 	#      while session.army.reserve_count(type) > 0:
 	#        session.army.deploy(type, ring[rng.next_int(ring.size())])
 	var rng := Rng.new(session.seed)
-	var ring: Array[Vector2i] = session.grid.ring_cells()
+	var ring: Array[Vector2i] = session.attack_grid().ring_cells()
 	if not ring.is_empty():
 		var p_ids: Array[String] = session.config.pathogen_ids()
 		p_ids.sort()
@@ -270,13 +270,13 @@ func _on_hud_launch_requested() -> void:
 			var key: String = "%s/%s" % [str(dep.get("type", "")), str(dep.get("strain", "wild"))]
 			if not strain_keys.has(key):
 				strain_keys.append(key)
-		memory_seed = session.memory.seed_map(strain_keys, session.config)
+		memory_seed = session.defender_memory().seed_map(strain_keys, session.config)
 	var populations: Dictionary = {}
 	if session.config.coevolution_enabled():
 		for type_id: String in session.config.coevo_types:
-			populations[type_id] = session.population(type_id).to_dict()
+			populations[type_id] = session.pool_for(type_id).to_dict()
 	session.battle_setup = BattleSetup.create(
-		session.grid.to_layout(),
+		session.attack_grid().to_layout(),
 		session.army.deployments.duplicate(true),
 		session.seed,
 		memory_seed,
@@ -289,7 +289,7 @@ func _on_hud_launch_requested() -> void:
 			army_counts[p_id] = cnt
 
 	session.last_launch = {
-		"base_atp": session.grid.total_cost().get("atp", 0),
+		"base_atp": session.attack_grid().total_cost().get("atp", 0),
 		"army_atp": session.army.total_cost().get("atp", 0),
 		"unspent_atp": session.wallet.get_amount("atp") if session.wallet != null else 0,
 		"army_counts": army_counts

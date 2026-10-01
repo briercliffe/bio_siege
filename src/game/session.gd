@@ -17,6 +17,21 @@ var best_score: int = 0                   # raid_score flag: best score this ses
 var intent_lines_enabled: bool = true
 var pending_config: GameConfig = null     # hot-reloaded config queued during INFECTION (#27)
 
+enum Mode { LAB, LIVING_BASE }
+var mode: Mode = Mode.LAB
+var profile: LivingBaseProfile = null     # set in LIVING_BASE
+
+# The base being attacked this raid. Empty = the session's own base (Lab self-raid).
+# Assign a whole new array to change it: in-place edits do not reset the cached grid.
+var attack_layout: Array[Dictionary] = []:
+	set(value):
+		attack_layout = value
+		_attack_grid = null
+var attack_memory: ImmuneMemory = null
+var attack_populations: Dictionary = {}   # structure-type pools of the defender
+var attack_opponent_id: String = ""       # AI base id, "" for self-raid
+var _attack_grid: GridModel = null
+
 func _init(p_config: GameConfig = null, settings_path: String = GameSettings.DEFAULT_PATH) -> void:
 	config = p_config
 	if config != null:
@@ -26,6 +41,60 @@ func _init(p_config: GameConfig = null, settings_path: String = GameSettings.DEF
 		grid = GridModel.new(config)
 		grid.reset_with_nucleus()
 		army = Army.new(config)
+
+
+## True when the raid targets a base other than the session's own.
+func has_attack_target() -> bool:
+	return not attack_layout.is_empty()
+
+
+## The base being attacked: a grid built from attack_layout (cached), or the session's own grid.
+func attack_grid() -> GridModel:
+	if attack_layout.is_empty():
+		return grid
+	if _attack_grid == null:
+		_attack_grid = GridModel.new(config)
+		_attack_grid.load_layout(attack_layout, LivingBaseProfile.unlimited_wallet())
+	return _attack_grid
+
+
+## The memory of the base being attacked (seeds the defence against the raiding strains).
+func defender_memory() -> ImmuneMemory:
+	return attack_memory if attack_memory != null else memory
+
+
+func clear_attack_target() -> void:
+	attack_layout = []
+	attack_memory = null
+	attack_populations = {}
+	attack_opponent_id = ""
+	_attack_grid = null
+
+
+## True for a pool that belongs to the defender's structures while an attack target is set.
+func _is_defender_pool(type_id: String) -> bool:
+	return has_attack_target() and config != null and config.structures.has(type_id)
+
+
+## The pool a battle uses for a breeding type: pathogen pools are the attacker's (session),
+## structure pools are the defender's (attack_populations) when raiding another base.
+func pool_for(type_id: String) -> BreedPool:
+	if not _is_defender_pool(type_id):
+		return population(type_id)
+	if config == null or not config.is_breeding_type(type_id):
+		return null
+	var stored: Variant = attack_populations.get(type_id, null)
+	if stored is BreedPool:
+		return stored
+	return BreedPool.wild_pool(type_id, config)
+
+
+## Stores a bred pool back with its owner (see pool_for).
+func store_pool(type_id: String, pool: BreedPool) -> void:
+	if _is_defender_pool(type_id):
+		attack_populations[type_id] = pool
+	else:
+		populations[type_id] = pool
 
 
 ## The stored pool for a breeding type, or a wild pool when none is stored.
@@ -59,6 +128,7 @@ func apply_new_config(new_config: GameConfig) -> Dictionary:
 		"message": "",
 	}
 	pending_config = null
+	_attack_grid = null
 	if new_config == null:
 		return summary
 

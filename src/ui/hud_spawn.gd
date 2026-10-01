@@ -482,7 +482,7 @@ func _update_strain_controls(pdef: PathogenDef) -> void:
 		strain = StrainDef.wild()
 	var remembered: int = 0
 	if session.config.memory_enabled():
-		remembered = session.memory.effective_level("%s/%s" % [pdef.id, strain.id], session.config)
+		remembered = session.defender_memory().effective_level("%s/%s" % [pdef.id, strain.id], session.config)
 	strain_button.text = strain.display_name
 	strain_button.queue_redraw()
 	strain_summary_label.text = strain.summary()
