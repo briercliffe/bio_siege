@@ -81,6 +81,8 @@ var _walls_dirty: bool = true
 ## Destroyed walls, by structure id, whose goo decal stays on the ground for the rest of the battle.
 var _goo: Array[int] = []
 var _proj_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
+## Projection of the last pass, so a resize while paused still redraws once.
+var _drawn_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
 
 
 func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, p_snapshots: BattleSnapshotBuffer, p_runner: BattleRunner) -> void:
@@ -111,9 +113,21 @@ func set_reduce_flashes(value: bool) -> void:
 func _process(delta: float) -> void:
 	if sim == null:
 		return
-	if runner != null and runner.is_running and not runner.paused and not paused:
+	if is_live():
 		view_time += delta
-	queue_redraw()
+		queue_redraw()
+	elif projection != null and _projection_key() != _drawn_key:
+		queue_redraw()
+
+
+## True while the battle runs and is not paused: only then does the layer redraw every frame. Without a
+## runner (tests and tools) there is no battle clock, so it keeps redrawing.
+func is_live() -> bool:
+	return runner == null or (runner.is_running and not runner.paused and not paused)
+
+
+func _projection_key() -> Vector4:
+	return Vector4(projection.tile_px, projection.origin.x, projection.origin.y, projection.scale)
 
 
 # --- sizing, shared with the overlay ---------------------------------------
@@ -204,14 +218,13 @@ func _take_item(kind: int, id: int, key: float, age: float) -> void:
 	item.id = id
 	item.key = key
 	item.age = age
-	_sorted.append(item)
 
 
 func _collect() -> void:
 	_pool_used = 0
-	_sorted.clear()
 	_breached.clear()
 	if sim == null or projection == null:
+		_sorted.resize(0)
 		return
 	# A wall that died without an event reaching the view still leaves its gap, before any post is read.
 	if not _wall_cache_matches_sim():
@@ -259,6 +272,11 @@ func _collect() -> void:
 		_dying_p.erase(uid)
 	_expired.clear()
 
+	# The sort array keeps its size from frame to frame, so it is refilled in place rather than regrown.
+	if _sorted.size() != _pool_used:
+		_sorted.resize(_pool_used)
+	for i: int in range(_pool_used):
+		_sorted[i] = _pool[i]
 	_sorted.sort_custom(_sort_cmp)
 
 
@@ -278,6 +296,7 @@ func _draw() -> void:
 	last_item_count = _sorted.size()
 	if sim == null or projection == null:
 		return
+	_drawn_key = _projection_key()
 	_draw_ground_decals()
 	var n: int = _sorted.size()
 	var i: int = 0

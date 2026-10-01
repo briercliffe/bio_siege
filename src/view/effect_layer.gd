@@ -287,6 +287,8 @@ var _scorch: TriBatch = TriBatch.new()
 var _scorch_version: int = -1
 var _intent: PackedVector2Array = PackedVector2Array()
 var _intent_last: int = 0
+## Projection of the last pass, so a resize while paused still redraws once.
+var _drawn_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
 
 var _disc: PackedVector2Array = PaintKit.unit_circle_points(DISC_POINTS)
 var _ground: PackedVector2Array = PaintKit.unit_circle_points(GROUND_POINTS)
@@ -329,7 +331,20 @@ func _process(_delta: float) -> void:
 		return
 	if model != null:
 		model.advance(sim.tick)
-	queue_redraw()
+	if is_live():
+		queue_redraw()
+	elif projection != null and _projection_key() != _drawn_key:
+		queue_redraw()
+
+
+## True while the battle runs and is not paused: only then does the layer redraw every frame. Without a
+## runner (tests and tools) there is no battle clock, so it keeps redrawing.
+func is_live() -> bool:
+	return runner == null or (runner.is_running and not runner.paused)
+
+
+func _projection_key() -> Vector4:
+	return Vector4(projection.tile_px, projection.origin.x, projection.origin.y, projection.scale)
 
 
 ## Health bar fill: green above 50%, amber from 25% to 50%, red below 25%.
@@ -445,6 +460,7 @@ func _build_splashes() -> void:
 func _draw() -> void:
 	if not build_frame():
 		return
+	_drawn_key = _projection_key()
 	if _intent_last > 0:
 		draw_multiline(_intent, INTENT_COLOR, INTENT_WIDTH_K * projection.tile_px / K_PX)
 	_fx.flush(self)
