@@ -110,8 +110,6 @@ var session: Session = null
 var atp_pill: PillPanel = null
 var atp_label: Label = null
 var phase_pill: PillPanel = null
-var outbreak_pill: PillPanel = null
-var outbreak_badge: Label = null
 var btn_menu: IconButton = null
 var btn_back: PillButton = null
 var btn_launch: PillButton = null
@@ -184,8 +182,6 @@ func _ready() -> void:
 # --- setup and signals ------------------------------------------------------------
 
 func setup(p_session: Session) -> void:
-	_sync_outbreak_badge(p_session)
-
 	if session != null and session.wallet != null and session.wallet.changed.is_connected(_on_wallet_changed):
 		session.wallet.changed.disconnect(_on_wallet_changed)
 	if session != null and session.army != null and session.army.changed.is_connected(_on_army_changed):
@@ -211,14 +207,6 @@ func _capture_budget() -> void:
 	budget_atp = session.wallet.get_amount("atp")
 	if session.army != null:
 		budget_atp += int(session.army.total_cost().get("atp", 0))
-
-
-## Read-only "Generation N · Run T" badge under the phase pill (outbreak_mode flag).
-func _sync_outbreak_badge(p_session: Session) -> void:
-	var run: OutbreakRun = p_session.outbreak if p_session != null else null
-	outbreak_pill.visible = run != null
-	if run != null:
-		outbreak_badge.text = "Generation %d · Run %s" % [run.generation, ResultsPhase._group(run.total_score)]
 
 
 ## Shows the read-only MemoryPanel inside the Army card, only when immune memory is enabled.
@@ -706,15 +694,6 @@ func _build_phase_pill() -> void:
 	phase_pill = _pill("PhasePill")
 	phase_pill.set_phase(PHASE_TITLE, PHASE_SUBTITLE)
 	_anchor_top_center(phase_pill, PHASE_TOP, PillPanel.PHASE_SIZE)
-
-	outbreak_pill = _pill("OutbreakPill")
-	outbreak_pill.visible = false
-	_anchor_top_center(outbreak_pill, PHASE_TOP + PillPanel.PHASE_SIZE.y + 8.0, Vector2(260.0, 36.0))
-	outbreak_pill.custom_minimum_size = Vector2(0.0, 36.0)
-	outbreak_badge = HudParts.label("", 14, 700, _ink)
-	outbreak_badge.name = "OutbreakBadge"
-	outbreak_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	outbreak_pill.add_child(outbreak_badge)
 
 
 func _build_buttons() -> void:

@@ -13,7 +13,6 @@ var last_launch: Dictionary = {}
 var prediction_structure_id: int = 0      # filled by #25
 var memory: ImmuneMemory = ImmuneMemory.new()  # immune_memory flag: strains learned across raids
 var best_score: int = 0                   # raid_score flag: best score this session (not persisted)
-var outbreak: OutbreakRun = null        # outbreak_mode flag: current run (null = Lab mode)
 var intent_lines_enabled: bool = true
 var pending_config: GameConfig = null     # hot-reloaded config queued during INFECTION (#27)
 
@@ -26,14 +25,6 @@ func _init(p_config: GameConfig = null, settings_path: String = GameSettings.DEF
 		grid = GridModel.new(config)
 		grid.reset_with_nucleus()
 		army = Army.new(config)
-		if config.flag("outbreak_mode"):
-			outbreak = OutbreakRun.new()
-
-## Records one raid outcome into the outbreak run (no-op outside outbreak mode).
-func record_outbreak(outcome: String, score: int) -> void:
-	if outbreak == null:
-		return
-	outbreak.record(outcome, score)
 
 
 ## Applies a hot-reloaded config to the running session (issue #27 apply rules).

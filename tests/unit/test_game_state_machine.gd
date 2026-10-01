@@ -403,27 +403,6 @@ func test_phase_change_clears_open_screens() -> void:
 	assert_false(stack.is_open())
 
 
-func test_session_outbreak_follows_flag() -> void:
-	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
-	assert_null(Session.new(cfg).outbreak)
-	cfg.feature_flags["outbreak_mode"] = true
-	var session := Session.new(cfg)
-	assert_not_null(session.outbreak)
-	session.record_outbreak("attacker", 400)
-	session.record_outbreak("attacker", 600)
-	assert_eq(session.outbreak.generation, 3)
-	assert_eq(session.outbreak.total_score, 1000)
-	session.record_outbreak("defender", 0)
-	assert_true(session.outbreak.ended)
-
-
-func test_record_outbreak_noop_without_run() -> void:
-	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
-	var session := Session.new(cfg)
-	session.record_outbreak("attacker", 400)
-	assert_null(session.outbreak)
-
-
 func test_start_builds_the_session_from_the_fsm_settings_path() -> void:
 	GameSettings.set_bool(GameSettings.SECTION_GAMEPLAY, GameSettings.KEY_INTENT_LINES_DEFAULT, false, TEST_SETTINGS_PATH)
 	var fsm := GameStateMachine.new()

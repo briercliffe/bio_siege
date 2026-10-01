@@ -385,33 +385,6 @@ func _route_event(ev: Dictionary) -> void:
 var settings_path: String = GameSettings.DEFAULT_PATH
 
 
-func _record_outbreak(sim: BattleSim) -> void:
-	var structures: Array = session.battle_setup.structures if session.battle_setup != null else []
-	var score: int = int(session.last_result.get("score", RaidScore.compute(session.config, structures, sim.outcome)))
-	session.record_outbreak(sim.outcome, score)
-	var run: OutbreakRun = session.outbreak
-	session.last_result["outbreak"] = run.to_dict()
-	var have_log: bool = SessionLogger != null and SessionLogger.has_method("log_event")
-	if have_log:
-		SessionLogger.log_event("outbreak_generation_end", {
-			"generation": run.generation if run.ended else run.generation - 1,
-			"score": score if sim.outcome == "attacker" else 0,
-			"total_score": run.total_score,
-			"outcome": sim.outcome,
-			"strains": session.last_launch.get("strains", {}),
-		})
-	if run.ended:
-		var best: int = maxi(GameSettings.get_int(GameSettings.SECTION_GAME, GameSettings.KEY_BEST_OUTBREAK, 0, settings_path), run.total_score)
-		GameSettings.set_int(GameSettings.SECTION_GAME, GameSettings.KEY_BEST_OUTBREAK, best, settings_path)
-		session.last_result["outbreak_best"] = best
-		if have_log:
-			SessionLogger.log_event("outbreak_run_end", {
-				"generations_cleared": run.generations_cleared(),
-				"total_score": run.total_score,
-				"best": best,
-			})
-
-
 func _on_battle_finished(sim: BattleSim) -> void:
 	if session != null and sim != null:
 		var tick_rate: int = session.config.tick_rate if (session.config != null and session.config.tick_rate > 0) else 20
@@ -463,9 +436,6 @@ func _on_battle_finished(sim: BattleSim) -> void:
 			session.last_result["memory"] = session.memory.to_dict()
 			if SessionLogger != null and SessionLogger.has_method("log_event"):
 				SessionLogger.log_event("memory_updated", {"raids": session.memory.raids, "changes": mem_changes})
-
-		if session.config != null and session.config.flag("outbreak_mode") and session.outbreak != null:
-			_record_outbreak(sim)
 
 		if session.config != null and session.config.flag("biofilm"):
 			session.last_result["biofilm_max_group"] = _biofilm_max_group

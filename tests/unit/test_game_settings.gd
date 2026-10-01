@@ -44,10 +44,16 @@ func test_file_is_a_plain_config_file_with_the_documented_key() -> void:
 
 
 func test_int_round_trips_and_missing_returns_default() -> void:
-	assert_eq(GameSettings.get_int("game", GameSettings.KEY_BEST_OUTBREAK, 7, TEST_PATH), 7)
-	assert_true(GameSettings.set_int("game", GameSettings.KEY_BEST_OUTBREAK, 2650, TEST_PATH))
-	assert_eq(GameSettings.get_int("game", GameSettings.KEY_BEST_OUTBREAK, 0, TEST_PATH), 2650)
+	assert_eq(GameSettings.get_int("game", "best_score_test", 7, TEST_PATH), 7)
+	assert_true(GameSettings.set_int("game", "best_score_test", 2650, TEST_PATH))
+	assert_eq(GameSettings.get_int("game", "best_score_test", 0, TEST_PATH), 2650)
 	assert_eq(GameSettings.get_int("game", "other_key", 3, TEST_PATH), 3)
+
+
+func test_old_best_outbreak_key_is_harmless() -> void:
+	# Outbreak was removed (#149). A settings file that still has its key loads and is ignored.
+	assert_true(GameSettings.set_int("game", "best_outbreak_score", 2650, TEST_PATH))
+	assert_false(GameSettings.get_bool("game", GameSettings.KEY_SEEN_HOW_TO_PLAY, false, TEST_PATH))
 
 
 func test_float_round_trips_and_missing_returns_default() -> void:
