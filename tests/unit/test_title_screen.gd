@@ -168,3 +168,71 @@ func test_wider_viewport_moves_the_night_side_with_the_right_edge() -> void:
 	assert_eq(title.night_panel.size.x, 680.0)
 	assert_eq(title.island.position.x, 991.0)
 	assert_eq(title.column.position, Vector2(80.0, 80.0))
+
+
+# --- Living Base mode sheet (#158) -------------------------------------------------------------------------
+
+const LB_PATH: String = "user://test_title_lb.json"
+
+
+func _start_fsm_with_flag(on: bool) -> GameStateMachine:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	cfg.feature_flags["living_base"] = on
+	var fsm := GameStateMachine.new()
+	fsm.session = Session.new(cfg)
+	add_child_autoqfree(fsm)
+	fsm.start()
+	return fsm
+
+
+func _remove_lb_file() -> void:
+	DirAccess.remove_absolute(LB_PATH)
+
+
+func test_flag_off_play_goes_straight_to_synthesis_in_lab() -> void:
+	var fsm := _start_fsm_with_flag(false)
+	_title(fsm).btn_play.pressed.emit()
+	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
+	assert_eq(fsm.session.mode, Session.Mode.LAB)
+	assert_null(_title_node_or_null(fsm))
+
+
+func _title_node_or_null(fsm: GameStateMachine) -> TitleScreen:
+	return fsm.current_phase_scene as TitleScreen
+
+
+func test_flag_on_play_opens_the_mode_sheet() -> void:
+	var fsm := _start_fsm_with_flag(true)
+	var title := _title(fsm)
+	title.btn_play.pressed.emit()
+	assert_eq(fsm.phase, GameStateMachine.Phase.TITLE)
+	assert_true(title.mode_sheet_open())
+	assert_gte(title.btn_mode_living.custom_minimum_size.y, 48.0)
+	assert_gte(title.btn_mode_lab.custom_minimum_size.y, 48.0)
+	assert_gte(title.btn_mode_close.custom_minimum_size.y, 48.0)
+	title.btn_mode_close.pressed.emit()
+	assert_false(title.mode_sheet_open())
+	assert_eq(fsm.phase, GameStateMachine.Phase.TITLE)
+
+
+func test_choosing_living_base_sets_the_mode_and_enters_synthesis() -> void:
+	_remove_lb_file()
+	var fsm := _start_fsm_with_flag(true)
+	var session: Session = fsm.session
+	var title := _title(fsm)
+	title.living_base_path = LB_PATH
+	title.btn_play.pressed.emit()
+	title.btn_mode_living.pressed.emit()
+	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
+	assert_eq(session.mode, Session.Mode.LIVING_BASE)
+	assert_not_null(session.profile)
+	_remove_lb_file()
+
+
+func test_choosing_lab_sets_lab_and_enters_synthesis() -> void:
+	var fsm := _start_fsm_with_flag(true)
+	var title := _title(fsm)
+	title.btn_play.pressed.emit()
+	title.btn_mode_lab.pressed.emit()
+	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
+	assert_eq(fsm.session.mode, Session.Mode.LAB)

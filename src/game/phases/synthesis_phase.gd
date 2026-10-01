@@ -66,6 +66,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 	if hud_build != null:
 		hud_build.saves_root = saves_root
 
+	_show_living_base_notices()
+
 	if hud_build != null and session != null and build_controller != null:
 		hud_build.setup(session, build_controller)
 		if not hud_build.finalize_requested.is_connected(_on_finalize_requested):
@@ -78,8 +80,34 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 			hud_build.settings_requested.connect(_on_settings_requested)
 		if not hud_build.quit_requested.is_connected(_on_quit_requested):
 			hud_build.quit_requested.connect(_on_quit_requested)
+		if not hud_build.test_in_lab_requested.is_connected(_on_test_in_lab_requested):
+			hud_build.test_in_lab_requested.connect(_on_test_in_lab_requested)
 
 	_update_grid_layout()
+
+func _exit_tree() -> void:
+	_sync_living_base()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_sync_living_base()
+
+
+## Writes the player's base, wallet, memory and pools to the Living Base profile (Living Base mode only).
+func _sync_living_base() -> void:
+	if session != null and session.living_flow != null:
+		session.living_flow.sync_profile_from_session()
+
+
+## Shows what loading the profile reported (a reset or trimmed save), once.
+func _show_living_base_notices() -> void:
+	if session == null or session.living_flow == null or toast == null:
+		return
+	for notice: String in session.living_flow.notices:
+		toast.show_message(notice)
+	session.living_flow.notices = []
+
 
 ## Called by GameStateMachine after a config hot reload was applied (#27).
 func on_config_changed(_summary: Dictionary) -> void:
@@ -162,7 +190,16 @@ func _on_settings_requested() -> void:
 	if fsm != null and fsm.screen_stack != null:
 		fsm.screen_stack.push("settings")
 
+func _on_test_in_lab_requested() -> void:
+	if session == null or session.living_flow == null:
+		return
+	session.living_flow.start_test_in_lab()
+	if fsm != null:
+		fsm.force_transition(GameStateMachine.Phase.SYNTHESIS)
+
+
 func _on_quit_requested() -> void:
+	_sync_living_base()
 	if fsm != null:
 		fsm.request_transition(GameStateMachine.Phase.TITLE)
 
@@ -172,15 +209,18 @@ func _on_library_requested(kind: String) -> void:
 
 func _on_placed(_type_id: String, _cell: Vector2i) -> void:
 	Sfx.play("place")
+	_sync_living_base()
 
 func _on_nucleus_moved(_from: Vector2i, _to: Vector2i) -> void:
 	Sfx.play("place")
+	_sync_living_base()
 
 func _on_undone(_count: int, refund: Dictionary, cell: Vector2i) -> void:
 	_on_sold("", refund, cell)
 
 func _on_sold(_type_id: String, refund: Dictionary, cell: Vector2i) -> void:
 	Sfx.play("sell")
+	_sync_living_base()
 	if toast == null:
 		return
 	var atp: int = int(refund.get("atp", 0))
