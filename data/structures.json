@@ -36,6 +36,7 @@
     "attack": null,
     "damage_multipliers": {},
     "levels": [],
+    "slow_aura": { "speed_multiplier": 0.5, "adjacency": "orthogonal" },
     "placeholder": {
       "shape": "square",
       "color": "#c8b98a"

@@ -28,6 +28,10 @@ var levels: Array = []
 ## Feature flag that must be on before this structure can be built; "" means always.
 var requires_flag: String = ""
 ## Resource generator (Mitochondria): ATP per real-time hour and the stored-ATP cap.
+## Slow aura (Mucous Wall, behind the mucous_slow flag): pathogens on a neighbouring cell move at this percent.
+var has_slow_aura: bool = false
+var slow_aura_speed_pct: int = 100
+var slow_aura_chebyshev: bool = false
 var has_generator: bool = false
 var generator_atp_per_hour: int = 0
 var generator_storage: int = 0

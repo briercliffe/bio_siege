@@ -21,6 +21,16 @@ const DESCRIPTIONS: Dictionary = {
 }
 
 
+const SLOW_ROLE: String = "Blocks paths. Slows pathogens next to it."
+
+
+## The one-line role: the JSON role, except that a wall with a slow aura says so while mucous_slow is on.
+static func role(def: StructureDef, config: GameConfig = null) -> String:
+	if def != null and def.has_slow_aura and config != null and config.flag("mucous_slow"):
+		return SLOW_ROLE
+	return def.role if def != null else ""
+
+
 ## The description for a type id, or "" when there is none. Pass the config for copy that quotes a stat.
 static func description(type_id: String, config: GameConfig = null) -> String:
 	var text: String = str(DESCRIPTIONS.get(type_id, ""))
