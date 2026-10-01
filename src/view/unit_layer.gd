@@ -67,6 +67,9 @@ var _breached: Dictionary = {}
 var _expired: Array[int] = []
 
 var driver: AnimDriver = AnimDriver.new()
+## Softer hit flashes and shake (Settings: Reduce screen flashes). Set by the phase; kept across setup().
+var reduce_flashes: bool = false:
+	set = set_reduce_flashes
 ## View clock in seconds for idle loops. Advances only while the battle runs.
 var view_time: float = 0.0
 
@@ -85,7 +88,7 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 	projection = p_projection
 	snapshots = p_snapshots
 	runner = p_runner
-	driver = AnimDriver.new()
+	driver = AnimDriver.new(reduce_flashes)
 	view_time = 0.0
 	ModelRegistry.configure(config, projection.scale if projection != null else IsoProjection.DEFAULT_SCALE)
 	ModelRegistry.reset_painters()
@@ -95,6 +98,13 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 	_goo.clear()
 	_walls_dirty = true
 	_proj_key = Vector4(-1.0, 0.0, 0.0, 0.0)
+	queue_redraw()
+
+
+func set_reduce_flashes(value: bool) -> void:
+	reduce_flashes = value
+	if driver != null:
+		driver.reduce_flashes = value
 	queue_redraw()
 
 

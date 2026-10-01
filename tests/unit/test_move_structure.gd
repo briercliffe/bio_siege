@@ -2,6 +2,20 @@ extends GutTest
 
 const NUCLEUS_ORIGIN: Vector2i = Vector2i(18, 18)
 
+
+## These tests read the SessionLogger autoload's output, so consent is forced on whatever the saved choice.
+var _saved_consent: bool = true
+
+
+func before_all() -> void:
+	_saved_consent = SessionLogger.has_consent()
+	SessionLogger.set_consent(true)
+
+
+func after_all() -> void:
+	SessionLogger.set_consent(_saved_consent)
+
+
 var _signal_log: Array[String] = []
 
 func _load_config(move_nucleus: bool = false) -> GameConfig:

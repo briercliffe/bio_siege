@@ -17,11 +17,11 @@ var outbreak: OutbreakRun = null        # outbreak_mode flag: current run (null 
 var intent_lines_enabled: bool = true
 var pending_config: GameConfig = null     # hot-reloaded config queued during INFECTION (#27)
 
-func _init(p_config: GameConfig = null) -> void:
+func _init(p_config: GameConfig = null, settings_path: String = GameSettings.DEFAULT_PATH) -> void:
 	config = p_config
 	if config != null:
 		seed = config.default_seed
-		intent_lines_enabled = bool(config.feature_flags.get("intent_lines_default", true))
+		intent_lines_enabled = SettingsApply.intent_lines_default(config, settings_path)
 		wallet = Wallet.new(config.start_wallet)
 		grid = GridModel.new(config)
 		grid.reset_with_nucleus()

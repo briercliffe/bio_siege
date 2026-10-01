@@ -1,5 +1,19 @@
 extends GutTest
 
+
+## These tests read the SessionLogger autoload's output, so consent is forced on whatever the saved choice.
+var _saved_consent: bool = true
+
+
+func before_all() -> void:
+	_saved_consent = SessionLogger.has_consent()
+	SessionLogger.set_consent(true)
+
+
+func after_all() -> void:
+	SessionLogger.set_consent(_saved_consent)
+
+
 func _load_config() -> GameConfig:
 	var res: ConfigLoadResult = GameConfig.load_from_dir("res://data")
 	assert_true(res.is_ok(), "Config should load successfully from res://data")

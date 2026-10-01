@@ -48,3 +48,27 @@ func test_int_round_trips_and_missing_returns_default() -> void:
 	assert_true(GameSettings.set_int("game", GameSettings.KEY_BEST_OUTBREAK, 2650, TEST_PATH))
 	assert_eq(GameSettings.get_int("game", GameSettings.KEY_BEST_OUTBREAK, 0, TEST_PATH), 2650)
 	assert_eq(GameSettings.get_int("game", "other_key", 3, TEST_PATH), 3)
+
+
+func test_float_round_trips_and_missing_returns_default() -> void:
+	assert_almost_eq(GameSettings.get_float(GameSettings.SECTION_AUDIO, GameSettings.KEY_MASTER_VOLUME, 0.8, TEST_PATH), 0.8, 0.0001)
+	assert_true(GameSettings.set_float(GameSettings.SECTION_AUDIO, GameSettings.KEY_MASTER_VOLUME, 0.35, TEST_PATH))
+	assert_almost_eq(GameSettings.get_float(GameSettings.SECTION_AUDIO, GameSettings.KEY_MASTER_VOLUME, 0.8, TEST_PATH), 0.35, 0.0001)
+	GameSettings.set_bool(GameSettings.SECTION_AUDIO, GameSettings.KEY_MUTED, true, TEST_PATH)
+	assert_almost_eq(GameSettings.get_float(GameSettings.SECTION_AUDIO, GameSettings.KEY_MASTER_VOLUME, 0.8, TEST_PATH), 0.35, 0.0001)
+
+
+func test_settings_keys_match_the_documented_names() -> void:
+	assert_eq(GameSettings.SECTION_AUDIO, "audio")
+	assert_eq(GameSettings.KEY_MASTER_VOLUME, "master_volume")
+	assert_eq(GameSettings.KEY_MUTED, "muted")
+	assert_eq(GameSettings.SECTION_GAMEPLAY, "gameplay")
+	assert_eq(GameSettings.KEY_INTENT_LINES_DEFAULT, "intent_lines_default")
+	assert_eq(GameSettings.SECTION_ACCESSIBILITY, "accessibility")
+	assert_eq(GameSettings.KEY_REDUCE_FLASHES, "reduce_flashes")
+	assert_eq(GameSettings.SECTION_PRIVACY, "privacy")
+	assert_eq(GameSettings.KEY_TELEMETRY_CONSENT, "telemetry_consent")
+	assert_eq(GameSettings.SECTION_DEBUG, "debug")
+	assert_eq(GameSettings.KEY_DEBUG_OVERLAY, "debug_overlay")
+	assert_eq(GameSettings.SECTION_GAME, "game")
+	assert_eq(GameSettings.KEY_SEEN_HOW_TO_PLAY, "seen_how_to_play")

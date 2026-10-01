@@ -9,11 +9,19 @@ extends Node
 @onready var how_to_play: HowToPlay = $HowToPlay
 @onready var screen_stack: ScreenStack = $ScreenStack
 
+## Player preferences file. Tests set it before adding Main to the tree.
+var settings_path: String = GameSettings.DEFAULT_PATH
+
 func _ready() -> void:
+	add_to_group(SettingsApply.GROUP)
+	SettingsApply.apply_all(debug_overlay, settings_path)
+	how_to_play.settings_path = settings_path
 	# The legacy overlay stands in for the How to play screen until #75 adds its scene.
 	screen_stack.fallbacks["how_to_play"] = how_to_play.open
+	screen_stack.screen_opened.connect(_on_screen_opened)
 	if fsm != null:
 		fsm.screen_stack = screen_stack
+		fsm.settings_path = settings_path
 	check_config_errors()
 	if GameData.load_errors.is_empty() and fsm != null:
 		fsm.start()
@@ -28,13 +36,23 @@ func _ready() -> void:
 		fsm.config_applied.connect(_on_config_applied)
 		fsm.phase_changed.connect(_on_phase_changed)
 
+## SettingsApply.GROUP hook: the Settings screen saved a change.
+func on_settings_changed() -> void:
+	if error_panel == null or not error_panel.visible:
+		SettingsApply.apply_debug_overlay(debug_overlay, settings_path)
+
+func _on_screen_opened(_id: String) -> void:
+	var settings: SettingsScreen = screen_stack.top_screen() as SettingsScreen
+	if settings != null and settings.settings_path != settings_path:
+		settings.setup(settings_path)
+
 func _on_phase_changed(_from: GameStateMachine.Phase, _to: GameStateMachine.Phase) -> void:
 	screen_stack.clear()
 
 func _show_how_to_play_on_first_launch() -> void:
 	if fsm == null or fsm.phase != GameStateMachine.Phase.TITLE:
 		return
-	if HowToPlay.should_show_on_launch():
+	if HowToPlay.should_show_on_launch(settings_path):
 		screen_stack.push("how_to_play")
 
 func _on_config_reload_failed(errors: PackedStringArray) -> void:
@@ -71,7 +89,7 @@ func _show_config_error_ui() -> void:
 		fsm.phase_root.visible = false
 	if screen_stack != null:
 		screen_stack.visible = false
-	if debug_overlay != null:
+	if debug_overlay != null and is_instance_valid(debug_overlay):
 		debug_overlay.visible = false
 
 func _show_normal_ui() -> void:
@@ -83,5 +101,4 @@ func _show_normal_ui() -> void:
 		fsm.phase_root.visible = true
 	if screen_stack != null:
 		screen_stack.visible = true
-	if debug_overlay != null and OS.is_debug_build():
-		debug_overlay.visible = true
+	SettingsApply.apply_debug_overlay(debug_overlay, settings_path)

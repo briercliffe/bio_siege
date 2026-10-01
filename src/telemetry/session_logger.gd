@@ -4,6 +4,10 @@ static var instance: Node = null
 
 var _current_path: String = ""
 var _file: FileAccess = null
+## Cached telemetry consent. While it is off, log_event() writes nothing and no session file is opened.
+var _consent: bool = true
+## Player preferences file the consent is read from at _ready(). Tests point it at a temp file.
+var settings_path: String = GameSettings.DEFAULT_PATH
 
 func _enter_tree() -> void:
 	if instance == null:
@@ -19,8 +23,20 @@ func _exit_tree() -> void:
 func _ready() -> void:
 	if instance == null:
 		instance = self
-	if _file == null:
+	_consent = GameSettings.get_bool(GameSettings.SECTION_PRIVACY, GameSettings.KEY_TELEMETRY_CONSENT,
+			GameSettings.DEFAULT_TELEMETRY_CONSENT, settings_path)
+	if _file == null and _consent:
 		_init_session_file()
+
+## Called by the Settings screen after it saves the consent key. Turning consent back on opens a new
+## session file if none was opened yet.
+func set_consent(on: bool) -> void:
+	_consent = on
+	if _consent and _file == null and _current_path.is_empty() and is_inside_tree():
+		_init_session_file()
+
+func has_consent() -> bool:
+	return _consent
 
 func _init_session_file() -> void:
 	if not DirAccess.dir_exists_absolute("user://telemetry"):
@@ -59,6 +75,8 @@ func set_custom_file_path(path: String) -> void:
 		push_warning("SessionLogger: Failed to open custom file path: " + path)
 
 func log_event(event: String, data: Dictionary = {}) -> void:
+	if not _consent:
+		return
 	if _file == null:
 		push_warning("SessionLogger: File not open, cannot log event: " + event)
 		return
