@@ -116,6 +116,20 @@ The three structure painters replace the placeholder billboards in `UnitLayer` (
 - **This deviates from the issue, for performance, like the earlier painters.** The issue only skips the granules and lobes, the halo and Y glow, and the pores and streaks below 10 px. Below 28 px per tile (the battle runs at 23 px) the painters also draw a flat path: the Macrophage body is a smooth two-circle oval without the 24-point lumpy outline (the 4% lumps are under a pixel there) or its rim, the arms are plain lines, hands and cup one circle each; the B-Cell's Y is plain lines without round caps and each glow is one circle; the Nucleus dome and nucleolus are two circles each, without the dome rim, the pore rings or the outer glow rings; and every pedestal is one quad and one top oval. At 28 px and above everything returns, as seen on the contact sheet (32 px cells) and in the T = 80 close-ups.
 - Above 28 px the large spheres (the dome, the nucleolus and the lumpy Macrophage body) are one `PaintKit.RadialMesh` each: the canvas radial gradient as a cached indexed triangle list through `canvas_item_add_triangle_array`, one command instead of the four stacked circles of `PaintKit.sphere`, which banded visibly at close-up sizes.
 
+## Effect layer (issue #71)
+
+`EffectLayer` replaces `IntentLinesView` and the projectile, splash and health-bar parts of `BattleOverlay`. Every effect pass is one command however many effects are on screen: the intent lines are one `draw_multiline`, the shots, vesicles, puffs and sparks one triangle array, the health bars one triangle array, and the scorch decals and splash rings one triangle array each in `UnitLayer`'s ground pass (skipped when empty). Same Linux VM as the three previous sections (Mesa llvmpipe under Xvfb, vsync on), so only comparable within this section. The Infection HUD from #81 now fits the island between its cards, so the bench runs at 14.3 px per tile, not 23. Each row is the mean of three 15 s runs of `tests/perf/rhino_bench.tscn`, interleaved with the build before #71 in a separate worktree and alternating which build runs first.
+
+| Army | Build | Avg ms | p95 ms | Draw calls |
+|---|---|---|---|---|
+| 200 Rhinoviruses | before #71 | 73.10 | 79.91 | 2241 |
+| | after #71 | 72.78 | 76.47 | 2241 |
+| Mixed, 200 units | before #71 | 84.61 | 91.36 | 3219 |
+| | after #71 | 84.15 | 89.11 | 3218 |
+
+- **At parity**, within the 1 to 2 ms run-to-run spread of this VM. Timed inside the bench, `EffectLayer._draw` takes about 0.66 ms per frame, against 0.72 ms for the old `IntentLinesView` and `BattleOverlay` together. Building the batches is under 0.2 ms; the rest is handing them to the server.
+- A first build that always wrapped the empty ground pass in its own pair of transform commands measured about 4.7 ms slower in the Rhinovirus bench (70.6 against 75.4 ms over six interleaved pairs) and 3.2 ms slower with the mixed army. Skipping the pass when there is no scorch or splash removed the difference, so `draw_ground()` now returns early. Skipping the screen-space batches themselves changed less than 1.6 ms, which is within the noise.
+
 ## Budget for #72
 
 The target is 60 fps on desktop and at most 20 ms average frame time with 200 units on the web, with the p95 under 25 ms.
