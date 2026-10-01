@@ -1,7 +1,7 @@
 class_name GameStateMachine
 extends Node
 
-enum Phase { NONE, SYNTHESIS, INCUBATION, INFECTION, RESULTS }
+enum Phase { NONE, TITLE, SYNTHESIS, INCUBATION, INFECTION, RESULTS }
 
 signal phase_changed(from: Phase, to: Phase)
 signal config_applied(summary: Dictionary)
@@ -9,6 +9,7 @@ signal config_applied(summary: Dictionary)
 signal how_to_play_requested
 
 const PHASE_SCENE_PATHS: Dictionary = {
+	Phase.TITLE: "res://src/ui/title.tscn",
 	Phase.SYNTHESIS: "res://src/game/phases/synthesis_phase.tscn",
 	Phase.INCUBATION: "res://src/game/phases/incubation_phase.tscn",
 	Phase.INFECTION: "res://src/game/phases/infection_phase.tscn",
@@ -20,6 +21,8 @@ var previous_phase: Phase = Phase.NONE
 var session: Session = null
 
 var phase_root: Control = null
+## Menu screens (How to play, Saved, Settings) open over the phases through this. Main assigns it.
+var screen_stack: ScreenStack = null
 var current_phase_scene: Control = null
 
 func _enter_tree() -> void:
@@ -47,6 +50,8 @@ static func get_phase_name(p: Phase) -> String:
 	match p:
 		Phase.NONE:
 			return "NONE"
+		Phase.TITLE:
+			return "TITLE"
 		Phase.SYNTHESIS:
 			return "SYNTHESIS"
 		Phase.INCUBATION:
@@ -61,15 +66,17 @@ static func get_phase_name(p: Phase) -> String:
 func can_transition(from: Phase, to: Phase) -> bool:
 	match from:
 		Phase.NONE:
+			return to == Phase.TITLE or to == Phase.SYNTHESIS
+		Phase.TITLE:
 			return to == Phase.SYNTHESIS
 		Phase.SYNTHESIS:
-			return to == Phase.INCUBATION
+			return to == Phase.INCUBATION or to == Phase.TITLE
 		Phase.INCUBATION:
-			return to == Phase.SYNTHESIS or to == Phase.INFECTION
+			return to == Phase.SYNTHESIS or to == Phase.INFECTION or to == Phase.TITLE
 		Phase.INFECTION:
-			return to == Phase.RESULTS
+			return to == Phase.RESULTS or to == Phase.TITLE or to == Phase.INCUBATION
 		Phase.RESULTS:
-			return to == Phase.INCUBATION or to == Phase.SYNTHESIS
+			return to == Phase.INCUBATION or to == Phase.SYNTHESIS or to == Phase.TITLE
 		_:
 			return false
 
@@ -79,7 +86,7 @@ func start() -> void:
 		session = Session.new(cfg)
 	if GameData != null and not GameData.config_reloaded.is_connected(on_config_reloaded):
 		GameData.config_reloaded.connect(on_config_reloaded)
-	request_transition(Phase.SYNTHESIS)
+	request_transition(Phase.TITLE)
 
 ## Hot reload entry point (#27). The running BattleSim keeps its own config
 ## reference, so a reload during INFECTION is queued and applied when the phase ends.

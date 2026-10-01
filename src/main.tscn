@@ -1,10 +1,11 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://src/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://src/game/game_state_machine.gd" id="2_fsm"]
 [ext_resource type="PackedScene" path="res://src/ui/debug_overlay.tscn" id="3_dbg"]
 [ext_resource type="PackedScene" path="res://src/ui/dev_banner.tscn" id="4_banner"]
 [ext_resource type="PackedScene" path="res://src/ui/how_to_play.tscn" id="5_howto"]
+[ext_resource type="Script" path="res://src/game/screen_stack.gd" id="6_screens"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_err"]
 bg_color = Color(0.25, 0.05, 0.05, 1)
@@ -31,6 +32,16 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+
+[node name="ScreenStack" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("6_screens")
 
 [node name="DebugOverlay" parent="." instance=ExtResource("3_dbg")]
 

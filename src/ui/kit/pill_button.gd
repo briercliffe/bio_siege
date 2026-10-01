@@ -19,6 +19,8 @@ var subtitle: String = "":
 	set = set_subtitle
 var font_px: int = 17:
 	set = set_font_px
+var font_weight: int = 800:
+	set = set_font_weight
 
 
 func _init(label: String = "", v: Variant = Variant.PRIMARY) -> void:
@@ -46,6 +48,11 @@ func set_subtitle(value: String) -> void:
 
 func set_font_px(value: int) -> void:
 	font_px = clampi(value, 17, 23)
+	queue_redraw()
+
+
+func set_font_weight(value: int) -> void:
+	font_weight = value
 	queue_redraw()
 
 
@@ -91,10 +98,10 @@ func _draw() -> void:
 				KitDraw.draw_box(self, rect, pal["danger_tint"] as Color, -1.0, 2, pal["danger_border"] as Color)
 				text_col = pal["danger"] as Color
 	if subtitle == "":
-		KitDraw.draw_text_centered(self, text, rect, font_px, 800, text_col)
+		KitDraw.draw_text_centered(self, text, rect, font_px, font_weight, text_col)
 	else:
 		var sub_col: Color = text_col if variant == Variant.PRIMARY or disabled else (pal["muted"] as Color)
 		var title_rect := Rect2(rect.position + Vector2(0.0, -7.0), rect.size)
 		var sub_rect := Rect2(rect.position + Vector2(0.0, 12.0), rect.size)
-		KitDraw.draw_text_centered(self, text, title_rect, font_px, 800, text_col)
+		KitDraw.draw_text_centered(self, text, title_rect, font_px, font_weight, text_col)
 		KitDraw.draw_text_centered(self, subtitle, sub_rect, 12, 600, sub_col)

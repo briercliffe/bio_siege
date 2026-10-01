@@ -7,21 +7,35 @@ extends Node
 @onready var debug_overlay: DebugOverlay = $DebugOverlay
 @onready var dev_banner: DevBanner = $DevBanner
 @onready var how_to_play: HowToPlay = $HowToPlay
+@onready var screen_stack: ScreenStack = $ScreenStack
 
 func _ready() -> void:
+	# The legacy overlay stands in for the How to play screen until #75 adds its scene.
+	screen_stack.fallbacks["how_to_play"] = how_to_play.open
+	if fsm != null:
+		fsm.screen_stack = screen_stack
 	check_config_errors()
 	if GameData.load_errors.is_empty() and fsm != null:
 		fsm.start()
 	if debug_overlay != null and fsm != null:
 		debug_overlay.setup(fsm)
 	if fsm != null:
-		fsm.how_to_play_requested.connect(how_to_play.open)
-	if GameData.load_errors.is_empty() and HowToPlay.should_show_on_launch():
-		how_to_play.open()
+		fsm.how_to_play_requested.connect(screen_stack.push.bind("how_to_play"))
+	_show_how_to_play_on_first_launch()
 	GameData.config_reload_failed.connect(_on_config_reload_failed)
 	GameData.config_reloaded.connect(_on_config_reloaded)
 	if fsm != null:
 		fsm.config_applied.connect(_on_config_applied)
+		fsm.phase_changed.connect(_on_phase_changed)
+
+func _on_phase_changed(_from: GameStateMachine.Phase, _to: GameStateMachine.Phase) -> void:
+	screen_stack.clear()
+
+func _show_how_to_play_on_first_launch() -> void:
+	if fsm == null or fsm.phase != GameStateMachine.Phase.TITLE:
+		return
+	if HowToPlay.should_show_on_launch():
+		screen_stack.push("how_to_play")
 
 func _on_config_reload_failed(errors: PackedStringArray) -> void:
 	dev_banner.show_errors(errors)
@@ -55,6 +69,8 @@ func _show_config_error_ui() -> void:
 		error_label.text = "\n".join(GameData.load_errors)
 	if fsm != null and fsm.phase_root != null:
 		fsm.phase_root.visible = false
+	if screen_stack != null:
+		screen_stack.visible = false
 	if debug_overlay != null:
 		debug_overlay.visible = false
 
@@ -65,5 +81,7 @@ func _show_normal_ui() -> void:
 		error_panel.visible = false
 	if fsm != null and fsm.phase_root != null:
 		fsm.phase_root.visible = true
+	if screen_stack != null:
+		screen_stack.visible = true
 	if debug_overlay != null and OS.is_debug_build():
 		debug_overlay.visible = true

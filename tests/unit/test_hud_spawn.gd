@@ -264,7 +264,8 @@ func test_incubation_phase_wiring_and_overlay_visibility() -> void:
 	add_child_autoqfree(fsm)
 
 	# 1. Entering INCUBATION from SYNTHESIS should show SideSwitchOverlay
-	fsm.start() # enters SYNTHESIS
+	fsm.start() # enters TITLE
+	fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
 	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
 
 	var ok: bool = fsm.request_transition(GameStateMachine.Phase.INCUBATION)

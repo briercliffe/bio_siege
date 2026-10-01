@@ -1,11 +1,12 @@
 extends GutTest
 
-func test_all_25_transition_pairs() -> void:
+func test_all_transition_pairs() -> void:
 	var fsm: GameStateMachine = GameStateMachine.new()
 	add_child_autoqfree(fsm)
 
 	var phases: Array[GameStateMachine.Phase] = [
 		GameStateMachine.Phase.NONE,
+		GameStateMachine.Phase.TITLE,
 		GameStateMachine.Phase.SYNTHESIS,
 		GameStateMachine.Phase.INCUBATION,
 		GameStateMachine.Phase.INFECTION,
@@ -13,13 +14,20 @@ func test_all_25_transition_pairs() -> void:
 	]
 
 	var allowed_pairs: Dictionary = {
+		[GameStateMachine.Phase.NONE, GameStateMachine.Phase.TITLE]: true,
 		[GameStateMachine.Phase.NONE, GameStateMachine.Phase.SYNTHESIS]: true,
+		[GameStateMachine.Phase.TITLE, GameStateMachine.Phase.SYNTHESIS]: true,
 		[GameStateMachine.Phase.SYNTHESIS, GameStateMachine.Phase.INCUBATION]: true,
+		[GameStateMachine.Phase.SYNTHESIS, GameStateMachine.Phase.TITLE]: true,
 		[GameStateMachine.Phase.INCUBATION, GameStateMachine.Phase.SYNTHESIS]: true,
 		[GameStateMachine.Phase.INCUBATION, GameStateMachine.Phase.INFECTION]: true,
+		[GameStateMachine.Phase.INCUBATION, GameStateMachine.Phase.TITLE]: true,
 		[GameStateMachine.Phase.INFECTION, GameStateMachine.Phase.RESULTS]: true,
+		[GameStateMachine.Phase.INFECTION, GameStateMachine.Phase.TITLE]: true,
+		[GameStateMachine.Phase.INFECTION, GameStateMachine.Phase.INCUBATION]: true,
 		[GameStateMachine.Phase.RESULTS, GameStateMachine.Phase.INCUBATION]: true,
 		[GameStateMachine.Phase.RESULTS, GameStateMachine.Phase.SYNTHESIS]: true,
+		[GameStateMachine.Phase.RESULTS, GameStateMachine.Phase.TITLE]: true,
 	}
 
 	var allowed_count: int = 0
@@ -47,11 +55,11 @@ func test_all_25_transition_pairs() -> void:
 			else:
 				disallowed_count += 1
 
-	assert_eq(allowed_count, 7, "Exactly 7 transition pairs must be allowed")
-	assert_eq(disallowed_count, 18, "Exactly 18 transition pairs must be disallowed")
-	assert_eq(allowed_count + disallowed_count, 25, "Total pairs must be 25")
+	assert_eq(allowed_count, 14, "Exactly 14 transition pairs must be allowed")
+	assert_eq(disallowed_count, 22, "Exactly 22 transition pairs must be disallowed")
+	assert_eq(allowed_count + disallowed_count, 36, "Total pairs must be 36")
 
-func test_start_transitions_to_synthesis() -> void:
+func test_start_transitions_to_title() -> void:
 	var fsm: GameStateMachine = GameStateMachine.new()
 	add_child_autoqfree(fsm)
 	watch_signals(fsm)
@@ -62,20 +70,61 @@ func test_start_transitions_to_synthesis() -> void:
 
 	fsm.start()
 
-	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
+	assert_eq(fsm.phase, GameStateMachine.Phase.TITLE)
 	assert_eq(fsm.previous_phase, GameStateMachine.Phase.NONE)
-	assert_signal_emitted_with_parameters(fsm, "phase_changed", [GameStateMachine.Phase.NONE, GameStateMachine.Phase.SYNTHESIS])
+	assert_signal_emitted_with_parameters(fsm, "phase_changed", [GameStateMachine.Phase.NONE, GameStateMachine.Phase.TITLE])
 	assert_not_null(fsm.session)
-	assert_not_null(fsm.current_phase_scene)
+	assert_true(fsm.current_phase_scene is TitleScreen)
+	var title: TitleScreen = fsm.current_phase_scene as TitleScreen
+	assert_eq(title.session, fsm.session)
+	assert_eq(title.fsm, fsm)
+	assert_eq(GameStateMachine.get_phase_name(GameStateMachine.Phase.TITLE), "TITLE")
+
+func test_title_to_synthesis_keeps_session() -> void:
+	var fsm: GameStateMachine = GameStateMachine.new()
+	add_child_autoqfree(fsm)
+	fsm.start()
+	var session: Session = fsm.session
+	var tower_id: int = session.grid.place("macrophage", Vector2i(5, 5), session.wallet)
+	assert_gt(tower_id, 0)
+
+	assert_true(fsm.request_transition(GameStateMachine.Phase.SYNTHESIS))
+	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
 	assert_true(fsm.current_phase_scene is SynthesisPhase)
-
 	var label: Label = fsm.current_phase_scene.get_node("Label") as Label
-	assert_not_null(label)
 	assert_eq(label.text, "SYNTHESIS")
-
 	var synth: SynthesisPhase = fsm.current_phase_scene as SynthesisPhase
-	assert_eq(synth.session, fsm.session)
+	assert_eq(synth.session, session)
 	assert_eq(synth.fsm, fsm)
+
+	assert_true(fsm.request_transition(GameStateMachine.Phase.TITLE), "menu Quit to title")
+	assert_true(fsm.request_transition(GameStateMachine.Phase.SYNTHESIS))
+	assert_eq(fsm.session, session, "the base is kept between visits")
+	assert_not_null(fsm.session.grid.get_structure(tower_id))
+
+func test_title_refuses_infection() -> void:
+	var fsm: GameStateMachine = GameStateMachine.new()
+	add_child_autoqfree(fsm)
+	fsm.start()
+	var scene: Control = fsm.current_phase_scene
+	watch_signals(fsm)
+	assert_false(fsm.request_transition(GameStateMachine.Phase.INFECTION))
+	assert_eq(fsm.phase, GameStateMachine.Phase.TITLE)
+	assert_eq(fsm.current_phase_scene, scene)
+	assert_signal_not_emitted(fsm, "phase_changed")
+
+func test_infection_can_quit_to_title_or_restart_raid() -> void:
+	var fsm: GameStateMachine = GameStateMachine.new()
+	add_child_autoqfree(fsm)
+	assert_true(fsm.can_transition(GameStateMachine.Phase.INFECTION, GameStateMachine.Phase.TITLE))
+	assert_true(fsm.can_transition(GameStateMachine.Phase.INFECTION, GameStateMachine.Phase.INCUBATION))
+	fsm.start()
+	fsm.force_transition(GameStateMachine.Phase.INFECTION)
+	assert_true(fsm.request_transition(GameStateMachine.Phase.INCUBATION))
+	assert_true(fsm.current_phase_scene is IncubationPhase)
+	fsm.force_transition(GameStateMachine.Phase.INFECTION)
+	assert_true(fsm.request_transition(GameStateMachine.Phase.TITLE))
+	assert_true(fsm.current_phase_scene is TitleScreen)
 
 func test_session_init_copies_config_values() -> void:
 	# 1. From GameData config
@@ -118,6 +167,7 @@ func test_invalid_transition_rejected() -> void:
 	var fsm: GameStateMachine = GameStateMachine.new()
 	add_child_autoqfree(fsm)
 	fsm.start()
+	fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
 	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
 
 	var initial_scene: Control = fsm.current_phase_scene
@@ -152,6 +202,10 @@ func test_valid_transition_cycle_and_phase_scenes() -> void:
 	watch_signals(fsm)
 
 	fsm.start()
+	assert_eq(fsm.phase, GameStateMachine.Phase.TITLE)
+
+	# TITLE -> SYNTHESIS
+	assert_true(fsm.request_transition(GameStateMachine.Phase.SYNTHESIS))
 	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
 	assert_true(fsm.current_phase_scene is SynthesisPhase)
 
@@ -205,12 +259,12 @@ func test_force_transition_bypasses_can_transition() -> void:
 	var fsm: GameStateMachine = GameStateMachine.new()
 	add_child_autoqfree(fsm)
 	fsm.start()
-	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
+	assert_eq(fsm.phase, GameStateMachine.Phase.TITLE)
 
-	# Jump directly from SYNTHESIS to RESULTS (normally not allowed)
+	# Jump directly from TITLE to RESULTS (normally not allowed)
 	fsm.force_transition(GameStateMachine.Phase.RESULTS)
 	assert_eq(fsm.phase, GameStateMachine.Phase.RESULTS)
-	assert_eq(fsm.previous_phase, GameStateMachine.Phase.SYNTHESIS)
+	assert_eq(fsm.previous_phase, GameStateMachine.Phase.TITLE)
 	assert_true(fsm.current_phase_scene is ResultsPhase)
 
 	# Jump directly from RESULTS to INFECTION (normally not allowed)
@@ -248,7 +302,7 @@ func test_debug_overlay_toggling_and_buttons() -> void:
 	# Starts closed
 	assert_false(overlay.panel.visible)
 	assert_false(overlay.is_open)
-	assert_eq(overlay.phase_label.text, "SYNTHESIS")
+	assert_eq(overlay.phase_label.text, "TITLE")
 
 	# Toggle via method
 	overlay.toggle()
@@ -290,6 +344,11 @@ func test_debug_overlay_toggling_and_buttons() -> void:
 	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
 	assert_eq(overlay.phase_label.text, "SYNTHESIS")
 
+	assert_gte(overlay.btn_title.custom_minimum_size.y, 48.0)
+	overlay.btn_title.pressed.emit()
+	assert_eq(fsm.phase, GameStateMachine.Phase.TITLE)
+	assert_eq(overlay.phase_label.text, "TITLE")
+
 func test_main_scene_integration() -> void:
 	var main_scene: PackedScene = load("res://src/main.tscn")
 	var main_node: Node = main_scene.instantiate()
@@ -297,12 +356,33 @@ func test_main_scene_integration() -> void:
 
 	var fsm: GameStateMachine = main_node.get_node_or_null("GameStateMachine") as GameStateMachine
 	assert_not_null(fsm, "Main must have GameStateMachine node")
-	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS, "FSM should start in SYNTHESIS")
-	assert_not_null(fsm.current_phase_scene)
+	assert_eq(fsm.phase, GameStateMachine.Phase.TITLE, "FSM should start in TITLE")
+	assert_true(fsm.current_phase_scene is TitleScreen)
+
+	var stack: ScreenStack = main_node.get_node_or_null("ScreenStack") as ScreenStack
+	assert_not_null(stack, "Main must have a ScreenStack node")
+	assert_eq(fsm.screen_stack, stack)
+	assert_gt(stack.get_index(), fsm.get_index(), "above the phase root")
+	assert_lt(stack.get_index(), main_node.get_node("DevBanner").get_index(), "below the dev banner")
 
 	var dbg: DebugOverlay = main_node.get_node_or_null("DebugOverlay") as DebugOverlay
 	assert_not_null(dbg, "Main must have DebugOverlay node")
 	assert_eq(dbg.fsm, fsm, "DebugOverlay should be connected to FSM")
+
+
+func test_phase_change_clears_open_screens() -> void:
+	var main_node: Node = (load("res://src/main.tscn") as PackedScene).instantiate()
+	add_child_autoqfree(main_node)
+	var fsm: GameStateMachine = main_node.get_node("GameStateMachine") as GameStateMachine
+	var stack: ScreenStack = main_node.get_node("ScreenStack") as ScreenStack
+	stack.clear()
+	stack.push("settings")
+	assert_true(stack.is_open())
+	fsm.force_transition(GameStateMachine.Phase.TITLE)
+	assert_false(stack.is_open(), "a phase change closes every menu screen")
+	stack.push("saved")
+	fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
+	assert_false(stack.is_open())
 
 
 func test_session_outbreak_follows_flag() -> void:
