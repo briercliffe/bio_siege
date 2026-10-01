@@ -264,7 +264,7 @@ func test_unit_card_shows_rhinovirus_stats() -> void:
 	var damage: StatTile = hud.unit_tiles["damage"] as StatTile
 	var cost: StatTile = hud.unit_tiles["cost"] as StatTile
 	assert_eq("%s %s" % [health.label_text(), health.value_text()], "Health 30")
-	assert_eq("%s %s" % [speed.label_text(), speed.value_text()], "Speed 5 tiles/s", "2.5 in the JSON times grid_scale 2")
+	assert_eq("%s %s" % [speed.label_text(), speed.value_text()], "Speed 2.8 tiles/s", "1.4 in the JSON times grid_scale 2")
 	assert_eq("%s %s" % [damage.label_text(), damage.value_text()], "Damage 6 / 0.5 s")
 	assert_eq("%s %s" % [cost.label_text(), cost.value_text()], "Cost 10 ATP")
 	assert_true(cost.accent_value, "The cost is green")

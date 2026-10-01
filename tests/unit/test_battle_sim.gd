@@ -2,24 +2,30 @@ extends GutTest
 
 func test_walk_and_first_hit() -> void:
 	var sim := SimFixtures.make_sim([], [{"type": "rhinovirus", "cell": Vector2i(0, 20)}])
-	for i in range(71):
+	# Rhinovirus walks 140 mt/tick (1.4 tiles/s at grid_scale 2, 20 ticks/s), so
+	# step until first contact instead of hard-coding the tick.
+	while sim.first_contact_tick < 0 and sim.tick < 300:
+		sim.step()
+	var contact_tick: int = sim.first_contact_tick
+	assert_gt(contact_tick, 0, "Unit should reach the Nucleus")
+	for i in range(3):
 		sim.step()
 
 	var nucleus := sim.structure(sim.nucleus_id)
 	assert_not_null(nucleus)
-	assert_eq(nucleus.hp, 1994, "Nucleus hp after 71 steps should be 1994")
+	assert_eq(nucleus.hp, 1994, "Nucleus hp 3 steps after contact should be 1994")
 
 	var unit := sim.pathogen(1)
 	assert_not_null(unit)
 	assert_eq(unit.state, PathogenState.State.ATTACKING, "Unit state should be ATTACKING")
 	assert_eq(unit.target_id, 1, "Unit target_id should be 1")
 	assert_eq(unit.pos, Vector2i(17500, 20500), "Unit pos should be (17500, 20500)")
-	assert_eq(sim.first_contact_tick, 68, "First contact tick should be 68")
+	assert_eq(sim.first_contact_tick, contact_tick, "First contact tick should not change")
 
 	for i in range(10):
 		sim.step()
 
-	assert_eq(nucleus.hp, 1988, "Nucleus hp after 81 steps should be 1988")
+	assert_eq(nucleus.hp, 1988, "Nucleus hp 13 steps after contact should be 1988")
 
 
 func test_blocker() -> void:
@@ -28,7 +34,7 @@ func test_blocker() -> void:
 		walls.append({"type": "mucous_wall", "origin": Vector2i(10, y)})
 	var sim := SimFixtures.make_sim(walls, [{"type": "rhinovirus", "cell": Vector2i(0, 20)}])
 
-	while sim.pathogen(1).state != PathogenState.State.ATTACKING and sim.tick < 50:
+	while sim.pathogen(1).state != PathogenState.State.ATTACKING and sim.tick < 300:
 		sim.step()
 
 	var unit := sim.pathogen(1)
@@ -77,7 +83,7 @@ func test_retarget_mid_walk() -> void:
 		sim.step()
 
 	var unit := sim.pathogen(1)
-	assert_eq(unit.pos, Vector2i(1250, 20500))
+	assert_eq(unit.pos, Vector2i(920, 20500))
 	assert_ne(unit.pos, FixedMath.cell_center(unit.cell))
 
 	var b_cell := sim.structure(1)
@@ -88,12 +94,12 @@ func test_retarget_mid_walk() -> void:
 
 	sim.step()
 	assert_eq(unit.target_id, sim.nucleus_id)
-	assert_eq(unit.pos, Vector2i(1500, 20500))
+	assert_eq(unit.pos, Vector2i(1060, 20500))
 
-	while unit.pos != Vector2i(2500, 20500):
+	while unit.pos.x <= 2500:
 		sim.step()
 
-	assert_eq(unit.pos, Vector2i(2500, 20500))
+	assert_gt(unit.pos.x, 2500)
 	assert_eq(unit.cell, Vector2i(2, 20))
 
 	sim.step()
@@ -201,7 +207,7 @@ func test_status_hooks() -> void:
 	sim_speed.status.add(key, StatusEffects.Kind.SPEED_PCT, 50, 100, "slow_effect")
 	var speed_start_pos := sim_speed.pathogen(1).pos
 	sim_speed.step()
-	assert_eq(sim_speed.pathogen(1).pos, speed_start_pos + Vector2i(125, 0), "SPEED_PCT 50 unit should move 125 mt in one step")
+	assert_eq(sim_speed.pathogen(1).pos, speed_start_pos + Vector2i(70, 0), "SPEED_PCT 50 unit should move 70 mt in one step")
 
 
 func test_determinism() -> void:

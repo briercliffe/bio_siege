@@ -6,7 +6,7 @@
       "atp": 10
     },
     "hp": 30,
-    "speed_tiles_s": 2.5,
+    "speed_tiles_s": 1.4,
     "attack": {
       "damage": 6,
       "interval_s": 0.5,
@@ -36,7 +36,7 @@
       "atp": 40
     },
     "hp": 80,
-    "speed_tiles_s": 1.5,
+    "speed_tiles_s": 1.15,
     "attack": {
       "damage": 20,
       "interval_s": 1.0,
