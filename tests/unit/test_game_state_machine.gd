@@ -249,7 +249,6 @@ func test_valid_transition_cycle_and_phase_scenes() -> void:
 	assert_eq(fsm.phase, GameStateMachine.Phase.RESULTS)
 	assert_eq(fsm.previous_phase, GameStateMachine.Phase.INFECTION)
 	assert_true(fsm.current_phase_scene is ResultsPhase)
-	assert_eq(fsm.current_phase_scene.get_node("Label").text, "RESULTS")
 
 	# RESULTS -> SYNTHESIS
 	ok = fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)

@@ -409,6 +409,12 @@ func _on_battle_finished(sim: BattleSim) -> void:
 		var nucleus_hp: int = nucleus.hp if nucleus != null else 0
 		var nucleus_max_hp: int = nucleus.max_hp if nucleus != null else 0
 
+		# Sim structure ids still standing at the end, for the Results screen's final-state island.
+		var alive_structure_ids: Array[int] = []
+		for st: StructureState in sim.structures:
+			if st.alive:
+				alive_structure_ids.append(st.id)
+
 		session.last_result = {
 			"outcome": sim.outcome,
 			"end_reason": sim.end_reason,
@@ -423,6 +429,7 @@ func _on_battle_finished(sim: BattleSim) -> void:
 			"first_contact_s": first_contact_s,
 			"first_destroyed_structure_id": sim.first_destroyed_structure_id,
 			"first_destroyed_structure_type": sim.first_destroyed_structure_type,
+			"alive_structure_ids": alive_structure_ids,
 			"final_state_hash": sim.state_hash(),
 		}
 

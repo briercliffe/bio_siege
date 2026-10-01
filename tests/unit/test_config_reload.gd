@@ -711,12 +711,12 @@ func test_results_phase_refreshes_new_base_label_on_config_change() -> void:
 	fsm.force_transition(GameStateMachine.Phase.RESULTS)
 	var results: ResultsPhase = fsm.current_phase_scene as ResultsPhase
 	assert_not_null(results)
-	assert_eq(results.btn_new_base.text, "Start over with 1000 ATP")
+	assert_eq(results.btn_new_base.subtitle, "Reset to 1000 ATP")
 	var richer: GameConfig = _variant(func(r: Dictionary, _s: Dictionary, _p: Dictionary) -> void:
 		r["start_wallet"]["atp"] = 1500
 	)
 	fsm.on_config_reloaded(richer)
-	assert_eq(results.btn_new_base.text, "Start over with 1500 ATP")
+	assert_eq(results.btn_new_base.subtitle, "Reset to 1500 ATP")
 
 
 func test_error_banner_is_cleared_by_reload_queued_during_infection() -> void:
@@ -777,7 +777,7 @@ func test_prediction_survives_to_results_when_grid_resets_on_leaving_infection()
 	assert_eq(fsm.session.config, wide)
 	assert_eq(fsm.session.prediction_structure_id, 0, "the reset base has new structure ids")
 	var results: ResultsPhase = fsm.current_phase_scene as ResultsPhase
-	assert_true(results.val_prediction.visible, "the battle's prediction is still shown")
+	assert_ne(results.get_stat("Prediction"), "", "the battle's prediction is still shown")
 	assert_eq(fsm.session.last_result["prediction_structure_id"], nucleus_id)
 
 

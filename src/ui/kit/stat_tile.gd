@@ -8,6 +8,11 @@ var night: bool = false:
 ## Draws the value in the theme accent (the green "10 ATP" cost tile).
 var accent_value: bool = false:
 	set = set_accent_value
+## Font sizes; the Results tiles use larger text than the Synthesis and Incubation cards.
+var label_px: int = 12:
+	set = set_label_px
+var value_px: int = 18:
+	set = set_value_px
 
 var _label: Label = Label.new()
 var _value: Label = Label.new()
@@ -60,6 +65,16 @@ func set_accent_value(value: bool) -> void:
 	_refresh()
 
 
+func set_label_px(value: int) -> void:
+	label_px = value
+	_refresh()
+
+
+func set_value_px(value: int) -> void:
+	value_px = value
+	_refresh()
+
+
 func _refresh() -> void:
 	var pal: Dictionary = UiPalette.for_theme(night)
 	var sb: StyleBoxFlat = KitDraw.make_box(pal["chip"] as Color, 16.0)
@@ -68,7 +83,7 @@ func _refresh() -> void:
 	sb.content_margin_top = 10.0
 	sb.content_margin_bottom = 10.0
 	add_theme_stylebox_override("panel", sb)
-	UiFonts.style_label(_label, 12, 400, pal["muted"] as Color)
-	UiFonts.style_label(_value, 18, 800, (pal["accent"] if accent_value else pal["ink"]) as Color)
+	UiFonts.style_label(_label, label_px, 400, pal["muted"] as Color)
+	UiFonts.style_label(_value, value_px, 800, (pal["accent"] if accent_value else pal["ink"]) as Color)
 	UiFonts.style_label(_suffix, 14, 400, pal["muted"] as Color)
 	_suffix.size_flags_vertical = Control.SIZE_SHRINK_END
