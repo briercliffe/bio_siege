@@ -114,6 +114,7 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 	hud_combat.visible = true
 	hud_combat.pause_button.disabled = false
 	pause_menu.visible = false
+	pause_menu.set_replay(session != null and session.replay_mode)
 
 	banner_panel.visible = false
 
