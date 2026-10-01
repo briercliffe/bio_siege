@@ -285,13 +285,7 @@ func test_grid_view_input_touch_events() -> void:
 	gv._unhandled_input(touch_press)
 	assert_eq(pressed_cells, [Vector2i(3, 4)])
 
-	# Touch with index 1 should be ignored
-	var touch_idx1 := InputEventScreenTouch.new()
-	touch_idx1.index = 1
-	touch_idx1.pressed = true
-	touch_idx1.position = touch_press.position
-	gv._unhandled_input(touch_idx1)
-	assert_eq(pressed_cells.size(), 1)
+	# A second finger starts a pinch and cancels the press; see test_grid_view_iso.gd.
 
 	# 2. Drag to (4, 4)
 	var touch_drag := InputEventScreenDrag.new()

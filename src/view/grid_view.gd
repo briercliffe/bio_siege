@@ -9,6 +9,8 @@ signal cell_dragged(cell: Vector2i)
 signal cell_released(cell: Vector2i)
 ## A touch ended off the grid, after a press that began on it.
 signal touch_cancelled
+## A one-finger press was abandoned because a second finger landed (a pinch). Nothing should be committed.
+signal press_cancelled
 
 const CORNER_RADIUS_TILES: float = 3.2
 const HEADROOM_T: float = 4.5
@@ -26,6 +28,8 @@ const DOT_RADIUS_TILES: float = 5.5
 const BLOB_RINGS: int = 6
 const BLOB_RING_ALPHA: float = 0.22
 const DECOR_SEED: int = 11
+## Pinch zoom range, as a multiple of the fitted tile size.
+const MAX_ZOOM: float = 4.0
 const NO_CELL: Vector2i = Vector2i(-99999, -99999)
 
 # Day and night theme colours, from the canvas mockup (Field.dc.html).
@@ -126,6 +130,9 @@ var _g_line_border: Array[PackedVector2Array] = []
 
 var _last_cell: Vector2i = NO_CELL
 var _touching: bool = false
+## Live finger positions (local px) by touch index, and the tile size fit_to_rect chose (the zoom floor).
+var _fingers: Dictionary = {}
+var _fit_tile_px: float = 0.0
 
 var _pulse_time: float = 0.0
 var _redraw_accum: float = 0.0
@@ -385,6 +392,7 @@ func fit_to_rect(r: Rect2) -> void:
 	var origin_y: float = r.position.y + (r.size.y - total_h) * 0.5 + HEADROOM_T * t
 	projection.tile_px = t
 	projection.origin = Vector2(origin_x, origin_y)
+	_fit_tile_px = t
 	_fitted = true
 	_geometry_dirty = true
 	_items_dirty = true
@@ -440,6 +448,16 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventScreenTouch:
 		var touch: InputEventScreenTouch = event
+		if touch.pressed:
+			_fingers[touch.index] = to_local(touch.position)
+			if _fingers.size() >= 2:
+				_cancel_press()
+				return
+		else:
+			var was_pinching: bool = _fingers.size() >= 2
+			_fingers.erase(touch.index)
+			if was_pinching:
+				return
 		if touch.index != 0:
 			return
 		if touch.pressed:
@@ -454,9 +472,54 @@ func _unhandled_input(event: InputEvent) -> void:
 			_handle_release(touch.position)
 	elif event is InputEventScreenDrag:
 		var drag: InputEventScreenDrag = event
+		if _fingers.size() >= 2:
+			if _fingers.has(drag.index):
+				_pinch(drag.index, to_local(drag.position))
+			return
+		if _fingers.has(drag.index):
+			_fingers[drag.index] = to_local(drag.position)
 		if drag.index != 0 or not _touching:
 			return
 		_handle_drag(drag.position)
+
+func _cancel_press() -> void:
+	if not _touching:
+		return
+	_touching = false
+	_last_cell = NO_CELL
+	press_cancelled.emit()
+
+## Zooms about the midpoint of the first two fingers, and pans with it, clamped to [fit, fit * MAX_ZOOM].
+func _pinch(index: int, new_pos: Vector2) -> void:
+	var ids: Array = _fingers.keys()
+	ids.sort()
+	var a: int = ids[0]
+	var b: int = ids[1]
+	var old_a: Vector2 = _fingers[a]
+	var old_b: Vector2 = _fingers[b]
+	_fingers[index] = new_pos
+	if index != a and index != b:
+		return
+	var new_a: Vector2 = _fingers[a]
+	var new_b: Vector2 = _fingers[b]
+	var old_dist: float = old_a.distance_to(old_b)
+	if old_dist < 1.0:
+		return
+	var ratio: float = new_a.distance_to(new_b) / old_dist
+	var floor_px: float = _fit_tile_px if _fit_tile_px > 0.0 else projection.tile_px
+	var target: float = clampf(projection.tile_px * ratio, floor_px, floor_px * MAX_ZOOM)
+	apply_zoom(target, (old_a + old_b) * 0.5, (new_a + new_b) * 0.5)
+
+## Sets the tile size so the ground point under `from_pt` lands on `to_pt` (local px).
+func apply_zoom(new_tile_px: float, from_pt: Vector2, to_pt: Vector2) -> void:
+	var k: float = new_tile_px / projection.tile_px
+	projection.origin = to_pt - (from_pt - projection.origin) * k
+	projection.tile_px = new_tile_px
+	_geometry_dirty = true
+	_items_dirty = true
+	_markers_dirty = true
+	_ghost_dirty = true
+	queue_redraw()
 
 func _handle_press(screen_pos: Vector2) -> void:
 	var cell: Vector2i = projection.screen_to_cell(to_local(screen_pos))

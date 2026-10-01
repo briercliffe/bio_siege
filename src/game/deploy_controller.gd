@@ -41,6 +41,8 @@ func setup(p_session: Session, p_grid_view: GridView, p_hud: HudSpawn, p_toast: 
 			grid_view.cell_dragged.disconnect(_on_cell_dragged)
 		if grid_view.cell_released.is_connected(_on_cell_released):
 			grid_view.cell_released.disconnect(_on_cell_released)
+		if grid_view.press_cancelled.is_connected(_on_press_cancelled):
+			grid_view.press_cancelled.disconnect(_on_press_cancelled)
 
 	session = p_session
 	grid_view = p_grid_view
@@ -72,6 +74,15 @@ func setup(p_session: Session, p_grid_view: GridView, p_hud: HudSpawn, p_toast: 
 		grid_view.cell_pressed.connect(_on_cell_pressed)
 		grid_view.cell_dragged.connect(_on_cell_dragged)
 		grid_view.cell_released.connect(_on_cell_released)
+		grid_view.press_cancelled.connect(_on_press_cancelled)
+
+## A pinch took over the touch: abandon the press without recalling or deploying.
+func _on_press_cancelled() -> void:
+	_is_pressing = false
+	_pending_recall = false
+	_hold_active = false
+	_hold_timer = 0.0
+	_press_elapsed = 0.0
 
 func select_deploy_type(type_id: String) -> void:
 	selected_type = type_id
