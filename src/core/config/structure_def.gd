@@ -25,6 +25,8 @@ var damage_multipliers_pct: Dictionary = {}
 var placeholder_shape: String = ""
 var placeholder_color: Color = Color.WHITE
 var levels: Array = []
+## Feature flag that must be on before this structure can be built; "" means always.
+var requires_flag: String = ""
 
 func has_tag(t: String) -> bool:
 	return tags.has(t)

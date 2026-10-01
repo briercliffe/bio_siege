@@ -2,10 +2,10 @@ class_name GameConfig
 extends RefCounted
 
 const KNOWN_TAGS: Array[String] = [
-	"core", "wall", "defense", "resource", "virus", "bacteria", "small", "hidden"
+	"core", "wall", "defense", "resource", "virus", "bacteria", "small", "hidden", "support"
 ]
 const KNOWN_CURRENCIES: Array[String] = [
-	"atp"
+	"atp", "amino_acids", "dna"
 ]
 const KNOWN_SHAPES: Array[String] = [
 	"square", "rounded_square", "circle", "triangle", "diamond", "lander", "cluster"
@@ -66,7 +66,7 @@ func pathogen_ids() -> Array[String]:
 func buildable_structure_ids() -> Array[String]:
 	var buildable: Array[StructureDef] = []
 	for s: StructureDef in structures.values():
-		if s.buildable:
+		if s.buildable and is_structure_enabled(s.id):
 			buildable.append(s)
 	buildable.sort_custom(func(a: StructureDef, b: StructureDef) -> bool:
 		var cost_a: int = int(a.cost.get("atp", 0))
@@ -79,6 +79,11 @@ func buildable_structure_ids() -> Array[String]:
 	for s: StructureDef in buildable:
 		result.append(s.id)
 	return result
+
+## A structure is enabled unless it names a feature flag (requires_flag) that is off.
+func is_structure_enabled(type_id: String) -> bool:
+	var d: StructureDef = structures.get(type_id)
+	return d != null and (d.requires_flag == "" or flag(d.requires_flag))
 
 func core_structure_id() -> String:
 	for s: StructureDef in structures.values():
@@ -359,6 +364,8 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 			s.attack_range_mt = roundi(float(atk.get("range_tiles", 0.0)) * float(config.grid_scale) * 1000.0)
 			s.splash_radius_mt = roundi(float(atk.get("splash_radius_tiles", 0.0)) * float(config.grid_scale) * 1000.0)
 			s.projectile_speed_mt_per_tick = roundi(float(atk.get("projectile_speed_tiles_s", 0.0)) * float(config.grid_scale) * 1000.0 / float(config.tick_rate))
+
+		s.requires_flag = str(s_data.get("requires_flag", ""))
 
 		var an_cfg: Variant = s_data.get("analysis", null)
 		if an_cfg is Dictionary:
@@ -885,7 +892,7 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 		"is_targetable", "visible_to_attacker", "path_weight", "tags",
 		"attack", "damage_multipliers", "levels", "placeholder"
 	]
-	var optional_keys: Array[String] = ["analysis"]
+	var optional_keys: Array[String] = ["analysis", "requires_flag"]
 
 	var core_count: int = 0
 
@@ -912,6 +919,15 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 
 		if s_data.has("analysis"):
 			_validate_analysis(id, s_data, errors)
+
+		if s_data.has("requires_flag"):
+			var rf: Variant = s_data["requires_flag"]
+			var rf_ok: bool = typeof(rf) == TYPE_STRING and not str(rf).is_empty()
+			if rf_ok:
+				var rf_re: RegEx = RegEx.create_from_string("^[a-z_]+$")
+				rf_ok = rf_re.search(str(rf)) != null
+			if not rf_ok:
+				errors.append("structures.json: %s.requires_flag: must be a non-empty flag name (got %s)" % [id, _format_val(rf)])
 
 		if s_data.has("display_name"):
 			var dn: Variant = s_data["display_name"]
