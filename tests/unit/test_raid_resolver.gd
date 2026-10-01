@@ -202,3 +202,63 @@ func _has_error(res: ConfigLoadResult, fragment: String) -> bool:
 		if e.find(fragment) != -1:
 			return true
 	return false
+
+
+# --- antigen presentation bias (#167) ---
+
+func _bred_with(presented: Dictionary) -> Dictionary:
+	_cfg.feature_flags["coevolution"] = true
+	_cfg.feature_flags["dendritic_cell"] = true
+	_cfg.coevo_mutation_pct = 100
+	var structs: Array = [
+		{"type": "nucleus", "origin": Vector2i(18, 18)},
+		{"type": "b_cell", "origin": Vector2i(5, 5)},
+		{"type": "macrophage", "origin": Vector2i(10, 5)},
+	]
+	var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 20)}]
+	var setup: BattleSetup = BattleSetup.create(structs, units, 1)
+	var sim: BattleSim = SimFixtures.make_sim(structs, units, 1, _cfg)
+	sim.finished = true
+	sim.outcome = "defender"
+	sim._survival_granted = true
+	sim.presented_antigens = presented
+	for type_id: String in _cfg.coevo_types:
+		(sim._pools[type_id] as BreedPool).fitness[0] = 10
+	var pools: Dictionary = {}
+	var evolution: Array[Dictionary] = RaidResolver.breed_after_battle(_cfg, setup, sim, pools)
+	return {"pools": pools, "evolution": evolution}
+
+
+func test_only_the_bcell_pool_receives_the_bias() -> void:
+	var plain: Dictionary = _bred_with({})
+	var biased: Dictionary = _bred_with({"capsule_a": true})
+	for type_id: String in _cfg.coevo_types:
+		var a: Dictionary = (plain["pools"][type_id] as BreedPool).to_dict()
+		var b: Dictionary = (biased["pools"][type_id] as BreedPool).to_dict()
+		if type_id == "b_cell":
+			assert_ne(a, b, "the b_cell pool differs")
+			for g: Dictionary in b["genomes"]:
+				for r: String in g["receptors"]:
+					assert_true(r == "" or r == "binder_a", "%s binds a presented antigen" % r)
+		else:
+			assert_eq(a, b, "%s breeds exactly as without presentation" % type_id)
+
+
+func test_the_bcell_entry_lists_what_was_presented() -> void:
+	var biased: Dictionary = _bred_with({"capsule_a": true, "spike_b": true})
+	for e: Dictionary in biased["evolution"]:
+		if e["type_id"] == "b_cell":
+			assert_eq(e["presented"], ["capsule_a", "spike_b"] as Array[String])
+		else:
+			assert_false(e.has("presented"))
+	var plain: Dictionary = _bred_with({})
+	for e: Dictionary in plain["evolution"]:
+		assert_false(e.has("presented"))
+
+
+func test_the_results_line_names_the_presented_antigens() -> void:
+	var biased: Dictionary = _bred_with({"capsule_a": true, "spike_b": true})
+	var line: String = ResultsPhase.evolution_line(biased["evolution"], _cfg)
+	assert_true(line.contains("B-Cell parent"), line)
+	assert_true(line.contains("(presented: Capsule A, Spike B)"), line)
+	assert_false(line.contains("Macrophage parent 1/8 (presented"))

@@ -78,7 +78,19 @@ static func row_text(type_id: String, pool: BreedPool, breed_summary: Dictionary
 	var text: String = "%s: %s vs %s" % [type_name(type_id, config), receptor_text, antigen_text]
 	if bool(breed_summary.get("bred", false)):
 		text += " · parent %d/%d" % [int(breed_summary.get("top_count", 0)), int(breed_summary.get("pool_size", 0))]
+		text += presented_suffix(breed_summary, config)
 	return text
+
+
+## " (presented: Capsule A, Spike B)" when Dendritic Cells biased this type's breeding, else "".
+static func presented_suffix(breed_summary: Dictionary, config: GameConfig) -> String:
+	var presented: Variant = breed_summary.get("presented", [])
+	if not (presented is Array) or (presented as Array).is_empty():
+		return ""
+	var names: Array[String] = []
+	for a: Variant in presented:
+		names.append(str(config.coevo_antigen_name.get(str(a), str(a))) if config != null else str(a))
+	return " (presented: %s)" % ", ".join(names)
 
 
 static func type_name(type_id: String, config: GameConfig) -> String:

@@ -153,3 +153,67 @@ func test_presenter_validation() -> void:
 	assert_true(_has_error(_load_structures(func(s: Dictionary) -> void: s["dendritic_cell"]["presenter"] = {}), "structures.json: dendritic_cell.presenter.radius_tiles: missing required field"))
 	assert_true(_has_error(_load_structures(func(s: Dictionary) -> void: s["dendritic_cell"]["presenter"] = 3), "structures.json: dendritic_cell.presenter: must be a JSON object"))
 	assert_true(_load_structures(func(s: Dictionary) -> void: s["dendritic_cell"].erase("presenter")).is_ok())
+
+
+# --- antigen presentation (#167) ---
+
+func _coevo_cfg(dendritic: bool = true) -> GameConfig:
+	var cfg: GameConfig = _cfg(dendritic)
+	cfg.feature_flags["coevolution"] = true
+	return cfg
+
+
+## A battle with a Dendritic Cell and one rhinovirus whose genome carries capsule_a and spike_b.
+func _presenting_sim(cfg: GameConfig, unit_cell: Vector2i) -> BattleSim:
+	var pops: Dictionary = {"rhinovirus": {"genomes": [{"antigens": ["capsule_a", "spike_b"], "receptors": ["", ""]}]}}
+	var structs: Array = [_dendritic(10), {"type": "nucleus", "origin": Vector2i(18, 18)}]
+	return BattleSim.new(cfg, BattleSetup.create(structs, [{"type": "rhinovirus", "cell": unit_cell}], 1, {}, pops))
+
+
+func test_antigens_near_a_dendritic_cell_are_recorded() -> void:
+	var sim: BattleSim = _presenting_sim(_coevo_cfg(), Vector2i(12, 10))
+	sim.step()
+	assert_eq(sim.presented_antigen_ids(), ["capsule_a", "spike_b"] as Array[String])
+
+
+func test_antigens_out_of_radius_are_not_recorded() -> void:
+	var sim: BattleSim = _presenting_sim(_coevo_cfg(), Vector2i(30, 30))
+	sim.step()
+	assert_true(sim.presented_antigen_ids().is_empty())
+
+
+func test_nothing_is_recorded_without_the_flags() -> void:
+	var off: BattleSim = _presenting_sim(_coevo_cfg(false), Vector2i(12, 10))
+	off.step()
+	assert_true(off.presented_antigen_ids().is_empty())
+	var no_coevo: GameConfig = _cfg()
+	var plain: BattleSim = _presenting_sim(no_coevo, Vector2i(12, 10))
+	plain.step()
+	assert_true(plain.presented_antigen_ids().is_empty())
+
+
+func test_presentation_never_touches_analysis() -> void:
+	var cfg: GameConfig = _coevo_cfg()
+	var sim: BattleSim = _presenting_sim(cfg, Vector2i(12, 10))
+	sim.step()
+	assert_true(sim.analyzed_strain_keys().is_empty())
+	for s: StructureState in sim.structures:
+		assert_true(s.analyzed.is_empty())
+
+
+func test_the_record_shows_in_the_hash_only_when_active() -> void:
+	var on: BattleSim = _presenting_sim(_coevo_cfg(), Vector2i(12, 10))
+	var near: BattleSim = _presenting_sim(_coevo_cfg(), Vector2i(30, 30))
+	on.step()
+	near.step()
+	assert_ne(on.state_hash(), near.state_hash())
+	var off_a: BattleSim = _presenting_sim(_coevo_cfg(false), Vector2i(12, 10))
+	var off_b: BattleSim = _presenting_sim(_coevo_cfg(false), Vector2i(12, 10))
+	off_a.step()
+	off_b.step()
+	assert_eq(off_a.state_hash(), off_b.state_hash())
+
+
+func test_record_interval_is_one_second() -> void:
+	var cfg: GameConfig = _cfg()
+	assert_eq(cfg.presenter_record_interval_ticks, cfg.tick_rate)

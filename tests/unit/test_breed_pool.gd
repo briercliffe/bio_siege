@@ -152,3 +152,46 @@ func test_wild_pool_is_wild() -> void:
 	assert_eq(p.genomes.size(), 8)
 	p.genomes[3] = _g(["coat_a"], [])
 	assert_false(p.is_wild())
+
+
+# --- receptor bias (#167) ---
+
+func test_a_receptor_bias_narrows_mutated_receptors() -> void:
+	cfg.coevo_mutation_pct = 100
+	var bias: Array[String] = ["binder_a"]
+	var got_binder: bool = false
+	for seed: int in range(1, 9):
+		var p: BreedPool = _pool()
+		p.fitness[0] = 1
+		p.breed(Rng.new(seed), cfg, bias)
+		for g: Genome in p.genomes:
+			for r: String in g.receptors:
+				assert_true(r == "" or r == "binder_a", "receptor %s is binder_a or empty" % r)
+			got_binder = got_binder or g.receptors.has("binder_a")
+	assert_true(got_binder, "some mutation picks the biased receptor")
+
+
+func test_an_empty_bias_matches_ce01_exactly() -> void:
+	cfg.coevo_mutation_pct = 100
+	var a: BreedPool = _two_parent_pool(100)
+	var b: BreedPool = _two_parent_pool(100)
+	var rng_a := Rng.new(7)
+	var rng_b := Rng.new(7)
+	a.breed(rng_a, cfg)
+	b.breed(rng_b, cfg, [] as Array[String])
+	assert_eq(a.to_dict(), b.to_dict())
+	assert_eq(rng_a.randi(), rng_b.randi(), "the same random numbers were used")
+
+
+func test_a_bias_uses_as_many_random_numbers_as_none() -> void:
+	cfg.coevo_mutation_pct = 100
+	var a: BreedPool = _two_parent_pool(100)
+	var b: BreedPool = _two_parent_pool(100)
+	var rng_a := Rng.new(7)
+	var rng_b := Rng.new(7)
+	a.breed(rng_a, cfg)
+	b.breed(rng_b, cfg, ["binder_a", "clamp_a"] as Array[String])
+	assert_eq(rng_a.randi(), rng_b.randi())
+	# Antigen slots are not biased.
+	for i: int in range(a.genomes.size()):
+		assert_eq(a.genomes[i].antigens, b.genomes[i].antigens)

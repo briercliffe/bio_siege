@@ -570,7 +570,7 @@ static func evolution_line(entries: Array, config: GameConfig) -> String:
 		var e: Dictionary = e_val
 		if not bool(e.get("bred", false)):
 			continue
-		parts.append("%s parent %d/%d" % [CoevolutionPanel.type_name(str(e.get("type_id", "")), config), int(e.get("top_count", 0)), int(e.get("pool_size", 0))])
+		parts.append("%s parent %d/%d%s" % [CoevolutionPanel.type_name(str(e.get("type_id", "")), config), int(e.get("top_count", 0)), int(e.get("pool_size", 0)), CoevolutionPanel.presented_suffix(e, config)])
 	if parts.is_empty():
 		return ""
 	return "Populations: " + " · ".join(parts)

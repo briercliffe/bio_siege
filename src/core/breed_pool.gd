@@ -61,7 +61,10 @@ func _pick_parent(total: int, rng: Rng) -> int:
 	return fitness.size() - 1
 
 ## Replaces the pool with fitness-weighted offspring. Does not reseed rng.
-func breed(rng: Rng, cfg: GameConfig) -> Dictionary:
+## `receptor_bias` (receptor ids) narrows where a mutated receptor slot draws from, instead of the whole catalog:
+## 0 clears the slot, otherwise the value is receptor_bias[n - 1]. Antigen slots and an empty bias behave exactly
+## as before and consume the same random numbers.
+func breed(rng: Rng, cfg: GameConfig, receptor_bias: Array[String] = []) -> Dictionary:
 	var total: int = 0
 	for f: int in fitness:
 		total += maxi(0, f)
@@ -99,8 +102,9 @@ func breed(rng: Rng, cfg: GameConfig) -> Dictionary:
 				var n: int = rng.next_int(antigen_ids.size() + 1)
 				child.antigens[slot] = "" if n == 0 else antigen_ids[n - 1]
 			else:
-				var n2: int = rng.next_int(receptor_ids.size() + 1)
-				child.receptors[slot - a_slots] = "" if n2 == 0 else receptor_ids[n2 - 1]
+				var pick_from: Array[String] = receptor_bias if not receptor_bias.is_empty() else receptor_ids
+				var n2: int = rng.next_int(pick_from.size() + 1)
+				child.receptors[slot - a_slots] = "" if n2 == 0 else pick_from[n2 - 1]
 		children.append(child)
 		credit[pa] += 1
 		if pb != pa:

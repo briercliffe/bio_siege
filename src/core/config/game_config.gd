@@ -36,6 +36,7 @@ var loot_atp_pct: int = 0 # share of a destroyed Mitochondria's stored ATP the r
 var loot_amino_structure_pct: int = 0
 var loot_amino_kill_pct: int = 0
 var loot_dna_per_win: int = 0
+var presenter_record_interval_ticks: int = 20 # Dendritic Cells record antigens once per second (#167)
 var ai_opponents_shown: int = 0 # AI base generator (#160)
 var ai_tower_weights: Dictionary = {} # structure id -> weight
 var ai_tiers: Array[Dictionary] = [] # {id, display_name, budget_atp, wall_pct, mitochondria, dendritic, stored_atp}
@@ -291,6 +292,7 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 
 	config.grid_scale = int(rules_data.get("grid_scale", 1))
 	config.tick_rate = int(rules_data.get("tick_rate", 20))
+	config.presenter_record_interval_ticks = maxi(1, config.tick_rate)
 	config.battle_timeout_ticks = int(roundi(float(rules_data.get("battle_timeout_s", 180)) * float(config.tick_rate)))
 	config.max_path_recalcs_per_tick = int(rules_data.get("max_path_recalcs_per_tick", 20))
 	config.empty_path_weight = float(rules_data.get("empty_path_weight", 1.0))
