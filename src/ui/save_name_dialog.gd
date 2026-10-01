@@ -9,7 +9,7 @@ signal canceled
 const PANEL_SIZE: Vector2 = Vector2(420.0, 0.0)
 const FIELD_SIZE: Vector2 = Vector2(380.0, 52.0)
 const BUTTON_SIZE: Vector2 = Vector2(140.0, 52.0)
-const MAX_NAME_LENGTH: int = 40
+const MAX_NAME_LENGTH: int = SaveLibrary.MAX_NAME_LENGTH
 
 var backdrop: ColorRect = null
 var panel: FloatingCard = null

@@ -51,6 +51,7 @@ func _on_screen_opened(_id: String) -> void:
 		how_to_play.setup(settings_path, fsm)
 	var saved: SavedScreen = top as SavedScreen
 	if saved != null:
+		SaveLibrary.open(saves_root, GameData.config, true)
 		saved.setup(saves_root, fsm)
 
 ## Opens the Saved bases and armies screen on one tab ("base" or "army").

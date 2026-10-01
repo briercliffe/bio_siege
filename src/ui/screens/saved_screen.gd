@@ -313,7 +313,7 @@ func setup(root: String = SaveLibrary.DEFAULT_ROOT, p_fsm: GameStateMachine = nu
 	if cfg == null and GameData != null:
 		cfg = GameData.config
 	config = cfg
-	library = SaveLibrary.open(root, config)
+	library = SaveLibrary.new(root)
 	refresh()
 
 
@@ -703,6 +703,7 @@ func _make_button(node_name: String, label: String, v: PillButton.Variant, min_s
 	b.custom_minimum_size = min_size
 	b.font_px = px
 	b.font_weight = w
+	b.mouse_filter = Control.MOUSE_FILTER_PASS
 	return b
 
 

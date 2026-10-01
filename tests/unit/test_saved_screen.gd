@@ -229,6 +229,27 @@ func test_loading_a_base_from_the_title_goes_to_synthesis() -> void:
 			int(cfg.start_wallet["atp"]) - int(demo.total_cost().get("atp", 0)))
 
 
+func test_loading_a_base_in_incubation_refunds_the_army_and_goes_to_synthesis() -> void:
+	var cfg := _config()
+	_seed_bases(cfg, ["Ring fort"] as Array[String])
+	var fsm := _start_fsm()
+	fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
+	fsm.request_transition(GameStateMachine.Phase.INCUBATION)
+	assert_eq(fsm.phase, GameStateMachine.Phase.INCUBATION)
+	assert_true(fsm.session.army.buy("rhinovirus", fsm.session.wallet))
+	assert_true(fsm.session.army.deploy("rhinovirus", Vector2i(0, 5)))
+	assert_true(fsm.session.army.buy("bacteriophage", fsm.session.wallet))
+	var screen := _make_screen(fsm.session.config, fsm)
+	screen.slot_cards[0].load_button.pressed.emit()
+	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
+	assert_eq(fsm.session.army.total_count(), 0, "the army was refunded")
+	var demo: GridModel = TitleScreen.build_demo_grid(cfg)
+	assert_eq(fsm.session.grid.structures().size(), demo.structures().size())
+	assert_eq(fsm.session.wallet.get_amount("atp"),
+			int(cfg.start_wallet["atp"]) - int(demo.total_cost().get("atp", 0)),
+			"the wallet is the start budget minus the base, with nothing left in the army")
+
+
 func test_armies_load_only_in_incubation() -> void:
 	var cfg := _config()
 	_seed_army(cfg, "Swarm")
@@ -258,3 +279,14 @@ func test_nothing_is_read_before_setup() -> void:
 	add_child_autofree(screen)
 	assert_null(screen.library)
 	assert_eq(screen.slot_cards.size(), 0)
+	screen.setup(ROOT, null, _config())
+	assert_true(screen.library.legacy_dirs.is_empty(), "the screen never migrates on its own")
+
+
+func test_card_buttons_let_drags_reach_the_scroll() -> void:
+	var cfg := _config()
+	_seed_bases(cfg, ["Ring fort"] as Array[String])
+	var screen := _make_screen(cfg)
+	var card: SavedScreen.SlotCard = screen.slot_cards[0]
+	for b: Button in [card.load_button, card.share_button, card.delete_button]:
+		assert_eq(b.mouse_filter, Control.MOUSE_FILTER_PASS, b.name)

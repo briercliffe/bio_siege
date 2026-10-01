@@ -14,6 +14,7 @@ const KIND_BASE: String = "base"
 const KIND_ARMY: String = "army"
 const KIND_DIRS: Dictionary = {KIND_BASE: "bases", KIND_ARMY: "armies"}
 const FULL_ERROR: String = "Library is full (%d). Delete a slot first."
+const MAX_NAME_LENGTH: int = 40
 
 ## Where HudBuild.export_base and HudSpawn.export_army wrote files before the library existed.
 const LEGACY_BASES_DIR: String = "user://bases"
@@ -26,8 +27,8 @@ const SECONDS_PER_DAY: int = 86400
 const WALL_TAG: String = "wall"
 
 var root: String = DEFAULT_ROOT
-## Legacy folders moved into the library by migrate_legacy(). Only the default root migrates by default,
-## so a test library never touches the player's files.
+## Legacy folders moved into the library by migrate_legacy(). Empty unless open() is asked to migrate,
+## so screens, HUDs and tests never touch the player's old files.
 var legacy_dirs: Dictionary = {}
 ## Pins the clock for tests; 0 uses the system time.
 var now_unix: int = 0
@@ -35,15 +36,22 @@ var now_unix: int = 0
 
 func _init(p_root: String = DEFAULT_ROOT) -> void:
 	root = p_root.trim_suffix("/")
-	if root == DEFAULT_ROOT:
-		legacy_dirs = {KIND_BASE: LEGACY_BASES_DIR, KIND_ARMY: LEGACY_ARMIES_DIR}
 
 
-## A library at `p_root` with the legacy files already moved in (they need a config to validate).
-static func open(p_root: String, config: GameConfig) -> SaveLibrary:
+## A library at `p_root`. With `migrate` (only Main passes it) the legacy export folders move in first;
+## they only ever move into the game's own DEFAULT_ROOT, never into a test folder.
+static func open(p_root: String, config: GameConfig, migrate: bool = false) -> SaveLibrary:
 	var lib := SaveLibrary.new(p_root)
-	lib.migrate_legacy(config)
+	if migrate:
+		lib.legacy_dirs = default_legacy_dirs(lib.root)
+		lib.migrate_legacy(config)
 	return lib
+
+
+static func default_legacy_dirs(p_root: String) -> Dictionary:
+	if p_root.trim_suffix("/") != DEFAULT_ROOT:
+		return {}
+	return {KIND_BASE: LEGACY_BASES_DIR, KIND_ARMY: LEGACY_ARMIES_DIR}
 
 
 func kind_dir(kind: String) -> String:
@@ -97,8 +105,7 @@ func load_slot(path: String, config: GameConfig) -> Dictionary:
 	if slot.is_empty():
 		return {"ok": false, "kind": "", "name": "", "parsed": {}, "error": "Could not read this slot"}
 	var kind: String = str(slot["kind"])
-	var text: String = SnapshotIO.to_json(slot["data"] as Dictionary)
-	var parsed: Dictionary = SnapshotIO.parse_army(text, config) if kind == KIND_ARMY else SnapshotIO.parse_base(text, config)
+	var parsed: Dictionary = _parse(kind, SnapshotIO.to_json(slot["data"] as Dictionary), config)
 	return {
 		"ok": bool(parsed.get("ok", false)),
 		"kind": kind,
@@ -109,7 +116,7 @@ func load_slot(path: String, config: GameConfig) -> Dictionary:
 
 
 func delete_slot(path: String) -> bool:
-	if not _is_inside_root(path) or not FileAccess.file_exists(path):
+	if not _is_slot_path(path) or not FileAccess.file_exists(path):
 		return false
 	return DirAccess.remove_absolute(path) == OK
 
@@ -140,48 +147,44 @@ func import_json(text: String, slot_name: String, config: GameConfig) -> Diction
 	return _import_base(source, slot_name, config)
 
 
-## Moves the pre-library export folders into the library once. Files that do not validate, or that no
-## longer fit once the library is full, stay where they are.
+## Moves the pre-library export folders into the library, newest file first. An original is removed only
+## after its new slot reads back and validates; if anything fails, the original stays, the new slot is
+## removed and migration stops until the next run. Files that do not validate stay where they are. Valid
+## files that do not fit stay too and move in on a later run once slots are free. The marker is written
+## only when no valid legacy file is left behind, so later runs skip the scan.
 func migrate_legacy(config: GameConfig) -> int:
 	if legacy_dirs.is_empty() or FileAccess.file_exists(_marker_path()):
 		return 0
 	var moved: int = 0
+	var left_behind: bool = false
 	for kind: String in [KIND_BASE, KIND_ARMY]:
-		var legacy: String = str(legacy_dirs.get(kind, ""))
+		var legacy: String = str(legacy_dirs.get(kind, "")).trim_suffix("/")
 		if legacy.is_empty() or not DirAccess.dir_exists_absolute(legacy):
 			continue
-		var files: Array[String] = []
+		var files: Array[Dictionary] = []
 		for file_name: String in DirAccess.get_files_at(legacy):
 			if file_name.ends_with(".json"):
-				files.append(file_name)
-		files.sort()
-		var n: int = 0
-		for file_name: String in files:
-			var path: String = "%s/%s" % [legacy.trim_suffix("/"), file_name]
-			var text: String = FileAccess.get_file_as_string(path)
-			var parsed: Dictionary = SnapshotIO.parse_army(text, config) if kind == KIND_ARMY else SnapshotIO.parse_base(text, config)
+				var path: String = "%s/%s" % [legacy, file_name]
+				files.append({"path": path, "saved_unix": _legacy_unix(file_name, path)})
+		files.sort_custom(_newer_first)
+		for entry: Dictionary in files:
+			var path: String = str(entry["path"])
+			var parsed: Dictionary = _parse(kind, FileAccess.get_file_as_string(path), config)
 			if not bool(parsed.get("ok", false)):
 				continue
-			var saved: int = _legacy_unix(file_name, path)
-			var res: Dictionary
-			if kind == KIND_ARMY:
-				var units: Array = parsed.get("units", [])
-				res = _write_slot(kind, LEGACY_NAMES[kind] % (n + 1), SnapshotIO.army_to_dict(units),
-						summary_for_units(units, config), saved)
-			else:
-				var layout: Array = parsed.get("layout", [])
-				res = _write_slot(kind, LEGACY_NAMES[kind] % (n + 1), _base_dict(layout, parsed.get("memory", {}), config),
-						summary_for_layout(layout, config), saved)
-			if not bool(res.get("ok", false)):
+			if count(kind) >= MAX_SLOTS:
+				left_behind = true
 				break
-			n += 1
-			moved += 1
-			DirAccess.remove_absolute(path)
-	DirAccess.make_dir_recursive_absolute(root)
-	var marker := FileAccess.open(_marker_path(), FileAccess.WRITE)
-	if marker != null:
-		marker.store_string(str(_now()))
-		marker.close()
+			var res: Dictionary = _write_legacy_slot(kind, parsed, int(entry["saved_unix"]), config)
+			var ok: bool = bool(res.get("ok", false))
+			if ok and _slot_is_valid(str(res["path"]), kind, config) and DirAccess.remove_absolute(path) == OK:
+				moved += 1
+				continue
+			if ok:
+				DirAccess.remove_absolute(str(res["path"]))
+			return moved
+	if not left_behind:
+		_write_marker()
 	return moved
 
 
@@ -353,10 +356,37 @@ func _import_army(text: String, slot_name: String, config: GameConfig) -> Dictio
 
 
 func _name_or_default(slot_name: String, kind: String) -> String:
-	var trimmed: String = slot_name.strip_edges()
+	var trimmed: String = clean_name(slot_name)
 	if not trimmed.is_empty():
 		return trimmed
 	return LEGACY_NAMES[kind] % (count(kind) + 1)
+
+
+## Trimmed and cut to MAX_NAME_LENGTH characters.
+static func clean_name(slot_name: String) -> String:
+	return slot_name.strip_edges().substr(0, MAX_NAME_LENGTH).strip_edges()
+
+
+func _write_legacy_slot(kind: String, parsed: Dictionary, saved_unix: int, config: GameConfig) -> Dictionary:
+	var slot_name: String = _name_or_default("", kind)
+	if kind == KIND_ARMY:
+		var units: Array = parsed.get("units", [])
+		return _write_slot(kind, slot_name, SnapshotIO.army_to_dict(units), summary_for_units(units, config), saved_unix)
+	var layout: Array = parsed.get("layout", [])
+	return _write_slot(kind, slot_name, _base_dict(layout, parsed.get("memory", {}), config),
+			summary_for_layout(layout, config), saved_unix)
+
+
+## The slot at `path` reads back as `kind` and its data passes SnapshotIO.
+func _slot_is_valid(path: String, kind: String, config: GameConfig) -> bool:
+	var slot: Dictionary = _read_slot(path)
+	if slot.is_empty() or str(slot.get("kind", "")) != kind:
+		return false
+	return bool(_parse(kind, SnapshotIO.to_json(slot["data"] as Dictionary), config).get("ok", false))
+
+
+static func _parse(kind: String, text: String, config: GameConfig) -> Dictionary:
+	return SnapshotIO.parse_army(text, config) if kind == KIND_ARMY else SnapshotIO.parse_base(text, config)
 
 
 ## SnapshotIO's base format rebuilt from a parsed layout (a GridModel cannot place without a wallet).
@@ -380,9 +410,7 @@ static func _base_dict(layout: Array, memory: Variant, config: GameConfig) -> Di
 func _write_slot(kind: String, slot_name: String, data: Dictionary, summary: Dictionary, saved_unix: int = 0) -> Dictionary:
 	if count(kind) >= MAX_SLOTS:
 		return {"ok": false, "path": "", "error": FULL_ERROR % MAX_SLOTS}
-	var final_name: String = slot_name.strip_edges()
-	if final_name.is_empty():
-		final_name = LEGACY_NAMES[kind] % (count(kind) + 1)
+	var final_name: String = _name_or_default(slot_name, kind)
 	var stamp: int = saved_unix if saved_unix > 0 else _now()
 	var dir_path: String = kind_dir(kind)
 	if DirAccess.make_dir_recursive_absolute(dir_path) != OK and not DirAccess.dir_exists_absolute(dir_path):
@@ -403,11 +431,17 @@ func _write_slot(kind: String, slot_name: String, data: Dictionary, summary: Dic
 		"summary": summary,
 		"data": data,
 	}
-	var file := FileAccess.open(path, FileAccess.WRITE)
+	# Written next to the slot and renamed over it, so a failed write never leaves a half-written slot.
+	var tmp_path: String = path + ".tmp"
+	var file := FileAccess.open(tmp_path, FileAccess.WRITE)
 	if file == null:
 		return {"ok": false, "path": "", "error": "Could not write %s" % path}
-	file.store_string(SnapshotIO.to_json(wrapper))
+	var stored: bool = file.store_string(SnapshotIO.to_json(wrapper))
+	var err: Error = file.get_error()
 	file.close()
+	if not stored or err != OK or DirAccess.rename_absolute(tmp_path, path) != OK:
+		DirAccess.remove_absolute(tmp_path)
+		return {"ok": false, "path": "", "error": "Could not write %s" % path}
 	return {"ok": true, "path": path, "error": ""}
 
 
@@ -440,12 +474,24 @@ static func _whole_numbers_to_int(value: Variant) -> Variant:
 	return value
 
 
-func _is_inside_root(path: String) -> bool:
-	return path.begins_with(root + "/") and not path.contains("..")
+## A .json file directly inside the bases or armies folder; nothing else in the root is deletable.
+func _is_slot_path(path: String) -> bool:
+	if path.contains("..") or path.get_extension() != "json" or path.get_file().get_basename().is_empty():
+		return false
+	var parent: String = path.get_base_dir()
+	return parent == kind_dir(KIND_BASE) or parent == kind_dir(KIND_ARMY)
 
 
 func _marker_path() -> String:
 	return "%s/%s" % [root, MIGRATED_MARKER]
+
+
+func _write_marker() -> void:
+	DirAccess.make_dir_recursive_absolute(root)
+	var marker := FileAccess.open(_marker_path(), FileAccess.WRITE)
+	if marker != null:
+		marker.store_string(str(_now()))
+		marker.close()
 
 
 func _now() -> int:

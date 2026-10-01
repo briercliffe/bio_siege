@@ -2,6 +2,7 @@ extends GutTest
 
 const ROOT: String = "user://test_save_library"
 const LEGACY_BASES: String = "user://test_save_library_legacy_bases"
+const LEGACY_ARMIES: String = "user://test_save_library_legacy_armies"
 const NOW: int = 1790726400
 const DAY: int = 86400
 
@@ -15,7 +16,7 @@ func after_each() -> void:
 
 
 func _cleanup() -> void:
-	for dir_path: String in [ROOT, LEGACY_BASES]:
+	for dir_path: String in [ROOT, LEGACY_BASES, LEGACY_ARMIES]:
 		_remove_tree(dir_path)
 
 
@@ -51,11 +52,36 @@ func _layout_of(grid: GridModel) -> Array:
 	return out
 
 
-func test_default_root_and_temp_root_never_migrate_by_default() -> void:
+func _write_text(path: String, text: String) -> void:
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(text)
+	f.close()
+
+
+func _legacy_base_json(cfg: GameConfig) -> String:
+	return SnapshotIO.to_json(SnapshotIO.base_to_dict(TitleScreen.build_demo_grid(cfg)))
+
+
+func _slot_times(lib: SaveLibrary, kind: String) -> Array[int]:
+	var out: Array[int] = []
+	for slot: Dictionary in lib.list(kind):
+		out.append(int(slot["saved_unix"]))
+	return out
+
+
+func test_migration_is_opt_in_and_never_reads_the_real_folders_from_a_temp_root() -> void:
 	assert_eq(SaveLibrary.DEFAULT_ROOT, "user://saves")
 	assert_eq(SaveLibrary.MAX_SLOTS, 12)
-	assert_true(SaveLibrary.new().legacy_dirs.has("base"), "the game's library moves user://bases in")
-	assert_true(_library().legacy_dirs.is_empty(), "a temp library leaves the player's files alone")
+	assert_true(SaveLibrary.new().legacy_dirs.is_empty(), "a plain library never migrates")
+	assert_true(SaveLibrary.new(SaveLibrary.DEFAULT_ROOT).legacy_dirs.is_empty())
+	assert_eq(SaveLibrary.default_legacy_dirs(SaveLibrary.DEFAULT_ROOT),
+			{"base": "user://bases", "army": "user://armies"}, "Main's library moves the old folders in")
+	assert_true(SaveLibrary.default_legacy_dirs(ROOT).is_empty(), "a temp root leaves the player's files alone")
+	var cfg := _config()
+	assert_true(SaveLibrary.open(ROOT, cfg).legacy_dirs.is_empty())
+	assert_true(SaveLibrary.open(ROOT, cfg, true).legacy_dirs.is_empty())
+	assert_false(DirAccess.dir_exists_absolute(ROOT), "nothing is written for a temp root")
 
 
 func test_base_round_trips_through_save_list_and_load() -> void:
@@ -259,14 +285,149 @@ func test_legacy_bases_move_in_once() -> void:
 	assert_eq(lib.migrate_legacy(cfg), 2)
 	var slots: Array[Dictionary] = lib.list("base")
 	assert_eq(slots.size(), 2)
-	assert_eq(slots[0]["name"], "Imported base 2")
+	assert_eq(slots[0]["name"], "Imported base 1", "the newest file moves first")
 	assert_eq(slots[0]["saved_unix"], NOW)
-	assert_eq(slots[1]["name"], "Imported base 1")
+	assert_eq(slots[1]["name"], "Imported base 2")
 	assert_eq(lib.export_json(slots[0]["path"]), json)
 	assert_eq(DirAccess.get_files_at(LEGACY_BASES), PackedStringArray(["base_1.json"]), "invalid files stay put")
 
 	var again := FileAccess.open("%s/base_%d.json" % [LEGACY_BASES, NOW + DAY], FileAccess.WRITE)
 	again.store_string(json)
 	again.close()
-	assert_eq(lib.migrate_legacy(cfg), 0, "runs only the first time")
+	assert_eq(lib.migrate_legacy(cfg), 0, "everything valid moved in, so later runs skip the scan")
 	assert_eq(lib.list("base").size(), 2)
+
+
+func test_legacy_armies_move_in() -> void:
+	var cfg := _config()
+	var units: Array = [{"type": "rhinovirus", "cell": Vector2i(0, 5)}, {"type": "bacteriophage", "cell": Vector2i(1, 6)}]
+	var json: String = SnapshotIO.to_json(SnapshotIO.army_to_dict(units))
+	_write_text("%s/army_%d.json" % [LEGACY_ARMIES, NOW - DAY], json)
+	_write_text("%s/army_%d.json" % [LEGACY_ARMIES, NOW], json)
+	_write_text("%s/army_7.json" % LEGACY_ARMIES, "{\"format\": \"bio_siege.army\"}")
+
+	var lib := _library()
+	lib.legacy_dirs = {"base": LEGACY_BASES, "army": LEGACY_ARMIES}
+	assert_eq(lib.migrate_legacy(cfg), 2)
+	var slots: Array[Dictionary] = lib.list("army")
+	assert_eq(slots.size(), 2)
+	assert_eq(slots[0]["name"], "Imported army 1")
+	assert_eq(slots[0]["saved_unix"], NOW)
+	assert_eq(int((slots[0]["summary"] as Dictionary)["units"]), 2)
+	assert_eq(lib.export_json(slots[0]["path"]), json, "the army file is unchanged inside its slot")
+	assert_eq(lib.list("base").size(), 0)
+	assert_eq(DirAccess.get_files_at(LEGACY_ARMIES), PackedStringArray(["army_7.json"]), "the invalid army stays put")
+	assert_true(FileAccess.file_exists("%s/%s" % [ROOT, SaveLibrary.MIGRATED_MARKER]))
+
+
+func test_migration_takes_the_newest_twelve_and_pulls_more_in_once_slots_free_up() -> void:
+	var cfg := _config()
+	var json: String = _legacy_base_json(cfg)
+	for i: int in range(SaveLibrary.MAX_SLOTS + 2):
+		_write_text("%s/base_%d.json" % [LEGACY_BASES, NOW - i * DAY], json)
+	var lib := _library()
+	lib.legacy_dirs = {"base": LEGACY_BASES}
+	assert_eq(lib.migrate_legacy(cfg), 12)
+	var expected: Array[int] = []
+	for i: int in range(SaveLibrary.MAX_SLOTS):
+		expected.append(NOW - i * DAY)
+	assert_eq(_slot_times(lib, "base"), expected, "the newest twelve moved in")
+	assert_eq(DirAccess.get_files_at(LEGACY_BASES),
+			PackedStringArray(["base_%d.json" % (NOW - 13 * DAY), "base_%d.json" % (NOW - 12 * DAY)]),
+			"the two oldest stay on disk")
+	assert_false(FileAccess.file_exists("%s/%s" % [ROOT, SaveLibrary.MIGRATED_MARKER]), "more are waiting")
+	assert_eq(lib.migrate_legacy(cfg), 0, "nothing fits while the library is full")
+
+	assert_true(lib.delete_slot(str(lib.list("base")[0]["path"])))
+	assert_eq(lib.migrate_legacy(cfg), 1, "a free slot pulls the next newest in")
+	assert_eq(_slot_times(lib, "base")[-1], NOW - 12 * DAY)
+	assert_eq(DirAccess.get_files_at(LEGACY_BASES), PackedStringArray(["base_%d.json" % (NOW - 13 * DAY)]))
+	assert_false(FileAccess.file_exists("%s/%s" % [ROOT, SaveLibrary.MIGRATED_MARKER]))
+
+	assert_true(lib.delete_slot(str(lib.list("base")[0]["path"])))
+	assert_eq(lib.migrate_legacy(cfg), 1)
+	assert_eq(DirAccess.get_files_at(LEGACY_BASES).size(), 0)
+	assert_true(FileAccess.file_exists("%s/%s" % [ROOT, SaveLibrary.MIGRATED_MARKER]), "done once nothing is left")
+
+
+func test_a_failed_write_keeps_the_legacy_original() -> void:
+	var cfg := _config()
+	var json: String = _legacy_base_json(cfg)
+	var original: String = "%s/base_%d.json" % [LEGACY_BASES, NOW]
+	_write_text(original, json)
+	var slot_path: String = "%s/bases/imported_base_1_%d.json" % [ROOT, NOW]
+	# A folder where the temp file goes makes the write fail; one where the slot goes makes the rename fail.
+	for blocker: String in [slot_path + ".tmp", slot_path]:
+		DirAccess.make_dir_recursive_absolute(blocker)
+		var lib := _library()
+		lib.legacy_dirs = {"base": LEGACY_BASES}
+		assert_eq(lib.migrate_legacy(cfg), 0, blocker)
+		assert_true(FileAccess.file_exists(original), "the original stays (%s)" % blocker)
+		assert_eq(FileAccess.get_file_as_string(original), json)
+		assert_eq(lib.list("base").size(), 0, "no slot is left behind")
+		assert_false(FileAccess.file_exists(slot_path + ".tmp"), "no temp file is left behind")
+		assert_false(FileAccess.file_exists("%s/%s" % [ROOT, SaveLibrary.MIGRATED_MARKER]), "a later run retries")
+		DirAccess.remove_absolute(blocker)
+
+	var lib := _library()
+	lib.legacy_dirs = {"base": LEGACY_BASES}
+	assert_eq(lib.migrate_legacy(cfg), 1, "the retry succeeds once the path is free")
+	assert_false(FileAccess.file_exists(original))
+	assert_eq(lib.export_json(slot_path), json)
+
+
+func test_save_reports_a_failed_write() -> void:
+	var cfg := _config()
+	var grid := GridModel.new(cfg)
+	grid.reset_with_nucleus()
+	var slot_path: String = "%s/bases/ring_fort_%d.json" % [ROOT, NOW]
+	DirAccess.make_dir_recursive_absolute(slot_path + ".tmp")
+	var res: Dictionary = _library().save_base("Ring fort", grid, cfg)
+	assert_false(res["ok"])
+	assert_string_starts_with(str(res["error"]), "Could not write")
+	assert_eq(_library().list("base").size(), 0)
+
+
+func test_delete_only_accepts_slot_files() -> void:
+	var cfg := _config()
+	var grid := GridModel.new(cfg)
+	grid.reset_with_nucleus()
+	var lib := _library()
+	lib.legacy_dirs = {"base": LEGACY_BASES}
+	lib.migrate_legacy(cfg)
+	var marker: String = "%s/%s" % [ROOT, SaveLibrary.MIGRATED_MARKER]
+	assert_true(FileAccess.file_exists(marker))
+	assert_false(lib.delete_slot(marker), "the migration marker is not a slot")
+	assert_true(FileAccess.file_exists(marker))
+	var stray: String = "%s/bases/notes.txt" % ROOT
+	_write_text(stray, "keep")
+	assert_false(lib.delete_slot(stray), "only .json files")
+	var nested: String = "%s/bases/deeper/slot.json" % ROOT
+	_write_text(nested, "{}")
+	assert_false(lib.delete_slot(nested), "only files directly in bases/ or armies/")
+	var at_root: String = "%s/slot.json" % ROOT
+	_write_text(at_root, "{}")
+	assert_false(lib.delete_slot(at_root))
+	assert_false(lib.delete_slot("%s/bases/../slot.json" % ROOT))
+	assert_true(FileAccess.file_exists(at_root))
+	var path: String = lib.save_army("Swarm", Army.new(cfg), cfg)["path"]
+	assert_true(lib.delete_slot(path), "army slots delete")
+
+
+func test_names_are_cut_to_the_max_length() -> void:
+	var cfg := _config()
+	var grid := GridModel.new(cfg)
+	grid.reset_with_nucleus()
+	assert_eq(SaveLibrary.MAX_NAME_LENGTH, 40)
+	assert_eq(SaveNameDialog.MAX_NAME_LENGTH, SaveLibrary.MAX_NAME_LENGTH, "the name field uses the same limit")
+	var lib := _library()
+	var long_name: String = "A".repeat(60)
+	assert_true(lib.save_base(long_name, grid, cfg)["ok"])
+	assert_eq(lib.list("base")[0]["name"], "A".repeat(40))
+
+	var shared: Dictionary = {"slot_version": 1, "name": "B".repeat(39) + "   tail", "kind": "base",
+			"saved_unix": NOW, "summary": {}, "data": SnapshotIO.base_to_dict(grid)}
+	var res: Dictionary = lib.import_json(JSON.stringify(shared), "", cfg)
+	assert_true(res["ok"], str(res["error"]))
+	assert_eq(res["name"], "B".repeat(39), "trailing spaces left by the cut are trimmed")
+	assert_eq(lib.list("base")[0]["name"], "B".repeat(39))

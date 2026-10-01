@@ -555,8 +555,7 @@ func open_import_dialog() -> void:
 ## "Save army…": asks for a name, defaulting to "Army N" after the slots already saved.
 func open_save_dialog() -> void:
 	_ensure_nodes()
-	var cfg: GameConfig = session.config if session != null else null
-	var n: int = SaveLibrary.open(saves_root, cfg).count(SaveLibrary.KIND_ARMY) + 1
+	var n: int = SaveLibrary.new(saves_root).count(SaveLibrary.KIND_ARMY) + 1
 	save_dialog.open(MENU_SAVE_TEXT, DEFAULT_NAME % n)
 
 
@@ -565,7 +564,7 @@ func save_army(slot_name: String) -> Dictionary:
 	_ensure_nodes()
 	if session == null or session.army == null:
 		return {"ok": false, "path": "", "error": "Nothing to save"}
-	var lib: SaveLibrary = SaveLibrary.open(saves_root, session.config)
+	var lib := SaveLibrary.new(saves_root)
 	var res: Dictionary = lib.save_army(slot_name, session.army, session.config)
 	if not bool(res.get("ok", false)):
 		save_dialog.set_error(str(res.get("error", "")))
