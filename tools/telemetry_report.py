@@ -16,10 +16,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 def parse_telemetry_files(file_paths: List[str]) -> List[Dict[str, Any]]:
+    """Reads JSONL logs. Every event gets `_tester` (the name of the log's folder: one folder per tester),
+    `_file` and `_session` (the index of the session_start it follows in that file), used by the Living Base
+    section of the summary."""
     events: List[Dict[str, Any]] = []
     for path in file_paths:
         if not os.path.exists(path):
             continue
+        tester = os.path.basename(os.path.dirname(os.path.abspath(path)))
+        session_index = 0
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
                 line = line.strip()
@@ -28,6 +33,11 @@ def parse_telemetry_files(file_paths: List[str]) -> List[Dict[str, Any]]:
                 try:
                     event = json.loads(line)
                     if isinstance(event, dict):
+                        if event.get("event") == "session_start":
+                            session_index += 1
+                        event["_tester"] = tester
+                        event["_file"] = path
+                        event["_session"] = session_index
                         events.append(event)
                 except Exception:
                     # Gracefully skip truncated or invalid lines
@@ -170,6 +180,132 @@ def identity_metrics_lines(battles: List[Dict[str, Any]]) -> List[str]:
     return lines
 
 
+def _num(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def living_base_sessions(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """One record per session that logged any lb_* event: tester, unix start (or None), length in seconds."""
+    groups: Dict[Tuple[Any, Any, Any], List[Dict[str, Any]]] = {}
+    for ev in events:
+        key = (ev.get("_tester", ""), ev.get("_file", ""), ev.get("_session", 0))
+        groups.setdefault(key, []).append(ev)
+    sessions: List[Dict[str, Any]] = []
+    for (tester, _file, _idx), evs in groups.items():
+        if not any(str(e.get("event", "")).startswith("lb_") for e in evs):
+            continue
+        start = next((e for e in evs if e.get("event") == "session_start"), None)
+        unix = start.get("unix_s") if start else None
+        times = [_num(e.get("t_ms")) for e in evs if "t_ms" in e]
+        length_s = (max(times) - min(times)) / 1000.0 if times else 0.0
+        sessions.append({
+            "tester": tester,
+            "unix": float(unix) if _is_number(unix) else None,
+            "length_s": length_s,
+            "events": evs,
+        })
+    return sessions
+
+
+def living_base_metrics(events: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The Phase 2 gate numbers (plan section 14), or None when the logs hold no Living Base events."""
+    sessions = living_base_sessions(events)
+    if not sessions:
+        return None
+    metrics: Dict[str, Any] = {"sessions": len(sessions)}
+
+    # Sessions per tester per day: the mean over every (tester, UTC day) that has a session.
+    per_day: Dict[Tuple[Any, int], int] = {}
+    for s in sessions:
+        if s["unix"] is not None:
+            day = int(s["unix"] // 86400)
+            per_day[(s["tester"], day)] = per_day.get((s["tester"], day), 0) + 1
+    metrics["sessions_per_tester_day"] = (
+        sum(per_day.values()) / len(per_day) if per_day else None
+    )
+    metrics["median_session_s"] = statistics.median([s["length_s"] for s in sessions])
+
+    # Return within 24 h: a session is followed by another of the same tester starting within a day.
+    timed = [s for s in sessions if s["unix"] is not None]
+    returned = 0
+    for s in timed:
+        later = [
+            o["unix"] - s["unix"]
+            for o in timed
+            if o["tester"] == s["tester"] and o["unix"] > s["unix"]
+        ]
+        if later and min(later) <= 86400:
+            returned += 1
+    metrics["return_24h"] = returned / len(timed) if timed else None
+
+    raid_ends = [e for s in sessions for e in s["events"] if e.get("event") == "lb_raid_end"]
+    metrics["raids_per_session"] = len(raid_ends) / len(sessions)
+
+    # Army change between consecutive raids on the same opponent (identity proposal section 8).
+    last_army: Dict[Tuple[Any, Any], Any] = {}
+    pairs = 0
+    changed = 0
+    for e in raid_ends:
+        key = (e.get("_tester", ""), e.get("opponent_id", ""))
+        army = e.get("army_counts")
+        if key in last_army:
+            pairs += 1
+            if army != last_army[key]:
+                changed += 1
+        last_army[key] = army
+    metrics["army_change_rate"] = changed / pairs if pairs else None
+    metrics["army_change_pairs"] = pairs
+
+    all_events = [e for s in sessions for e in s["events"]]
+    earned = sum(_num(e.get("amino")) for e in all_events if e.get("event") == "lb_raid_end")
+    earned += sum(_num(e.get("amino_gained")) for e in all_events if e.get("event") == "lb_defense_end")
+    upgrades = [e for e in all_events if e.get("event") == "lb_upgrade"]
+    metrics["amino_earned"] = earned
+    metrics["amino_spent"] = sum(_num(e.get("cost")) for e in upgrades)
+    picks: Dict[str, int] = {}
+    for e in upgrades:
+        picks[str(e.get("id", "?"))] = picks.get(str(e.get("id", "?")), 0) + 1
+    metrics["upgrade_picks"] = picks
+
+    offline = [e for e in all_events if e.get("event") == "lb_defense_end" and e.get("live") is not True]
+    replays = [e for e in all_events if e.get("event") == "lb_replay_watched"]
+    metrics["offline_raids"] = len(offline)
+    metrics["replays_watched"] = len(replays)
+    metrics["replays_per_offline_raid"] = len(replays) / len(offline) if offline else None
+    return metrics
+
+
+def living_base_lines(events: List[Dict[str, Any]]) -> List[str]:
+    """The 'Living Base' summary section. Empty when there are no Living Base events."""
+    m = living_base_metrics(events)
+    if m is None:
+        return []
+
+    def pct(v: Optional[float]) -> str:
+        return f"{v * 100:.1f}%" if v is not None else "n/a"
+
+    def num(v: Optional[float], digits: int = 2) -> str:
+        return f"{v:.{digits}f}" if v is not None else "n/a"
+
+    picks = ", ".join(f"{k} x{v}" for k, v in sorted(m["upgrade_picks"].items())) or "none"
+    return [
+        "",
+        "Living Base:",
+        f"  sessions: {m['sessions']}",
+        f"  sessions per tester per day: {num(m['sessions_per_tester_day'])}",
+        f"  median session length: {m['median_session_s']:.1f} s",
+        f"  sessions that return within 24 h: {pct(m['return_24h'])}",
+        f"  raids per session: {num(m['raids_per_session'])}",
+        f"  army change rate between consecutive raids on the same opponent: {pct(m['army_change_rate'])} ({m['army_change_pairs']} pairs)",
+        f"  Amino Acids earned: {m['amino_earned']:g}, spent: {m['amino_spent']:g}",
+        f"  upgrade picks: {picks}",
+        f"  replays watched per offline raid: {num(m['replays_per_offline_raid'])} ({m['replays_watched']} replays, {m['offline_raids']} offline raids)",
+    ]
+
+
 def generate_report(events: List[Dict[str, Any]], out_dir: str) -> None:
     os.makedirs(out_dir, exist_ok=True)
     battles = extract_battles(events)
@@ -298,6 +434,7 @@ def generate_report(events: List[Dict[str, Any]], out_dir: str) -> None:
         ])
 
     lines.extend(identity_metrics_lines(battles))
+    lines.extend(living_base_lines(events))
 
     with open(summary_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")

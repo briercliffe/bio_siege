@@ -11,6 +11,14 @@ Inputs (exactly one required):
   --battle=<file>      Path to battle snapshot JSON file
   --base=<file> --army=<file>
                        Paths to base and army snapshot JSON files
+  --ai-base=<tier>:<seed>
+                       Use a generated AI base (AiBaseGenerator) instead of --base
+                       (needs --flag=living_base for Mitochondria)
+  --ai-army=<seed>     Use a generated AI army (AiArmyGenerator) against the base instead of --army
+  --ai-campaign=<tier>:<seed>:<raids>
+                       Living Base campaign: the --army raids the same AI base <raids> times (1-50),
+                       with learning and breeding between raids. Prints one CSV row per raid:
+                       raid,outcome,ticks,atp_looted,amino_attacker,memory_levels_sum,bcell_generation
 
 Options:
   --runs=N             Number of runs per sweep value (default: 100)
@@ -28,10 +36,16 @@ Options:
   --memory=<key>:<level>[,<key>:<level>...]
                        Starting immune memory (e.g. --memory=rhinovirus/wild:3)
   --generations=G      Consecutive battles per run with memory carried forward (1-50, default: 1)
+  --upgrades=<id>:<level>[,<id>:<level>...]
+                       Living Base upgrades for the defender (memory_slot, analysis_speed,
+                       memory_retention, receptor_slot); needs --flag=amino_upgrades
   --out=<file>         Output CSV file path (default: stdout)
   --help, -h           Show this help message and exit
 """
 
+## Added to every row only when a flag that feeds them is on (mucous_trap, dendritic_cell, phage_turncoat).
+const EXTRA_CSV_COLUMNS: String = ",units_trapped,analyses_shared,turncoat_damage"
+const EXTRA_COLUMN_FLAGS: Array[String] = ["mucous_trap", "dendritic_cell", "phage_turncoat"]
 const CSV_HEADER: String = "sweep_path,sweep_value,run,seed,outcome,end_reason,battle_s,nucleus_hp_remaining,structures_destroyed,walls_destroyed,walls_damaged,pathogens_alive,first_destroyed_type,first_contact_s,generation,score,analyzed_strains,memory_after,hijacks_completed,biofilm_max_group"
 
 
@@ -147,6 +161,8 @@ func _init() -> void:
 	var runs_count: int = int(options.get("runs", 100))
 	var option_seed: int = int(options.get("seed", -1))
 	var csv_rows: Array[String] = []
+	var campaign_mode: bool = str(inputs.get("type", "")) == "ai_campaign"
+	var extra_columns: bool = false
 
 	# Run simulation sweeps
 	for sweep_value: Variant in sweep_values:
@@ -179,6 +195,24 @@ func _init() -> void:
 
 		var config: GameConfig = cfg_res.config
 		var base_seed: int = option_seed if option_seed != -1 else config.default_seed
+		for extra_flag: String in EXTRA_COLUMN_FLAGS:
+			if config.flag(extra_flag):
+				extra_columns = true
+
+		if campaign_mode:
+			var camp_units: Array = _army_units(str(inputs.get("army", "")), config)
+			if camp_units.is_empty():
+				quit(1)
+				return
+			var camp: Dictionary = options.get("ai_campaign", {})
+			var camp_res: Dictionary = BalanceCampaign.run(config, str(camp.get("tier", "")), int(camp.get("seed", 0)), int(camp.get("raids", 1)), camp_units)
+			if not camp_res.get("ok", false):
+				printerr("Error: %s" % camp_res.get("error", "campaign failed"))
+				quit(1)
+				return
+			for camp_row: Dictionary in camp_res.get("rows", []):
+				csv_rows.append(BalanceCampaign.csv_row(camp_row))
+			continue
 
 		# Resolve base setup
 		var base_setup: BattleSetup = _resolve_setup(inputs, config, base_seed)
@@ -195,6 +229,7 @@ func _init() -> void:
 				base_setup.memory_seed
 			)
 
+		var upgrades: Dictionary = options.get("upgrades", {})
 		var setup_errors: PackedStringArray = base_setup.validate(config)
 		if not setup_errors.is_empty():
 			for serr: String in setup_errors:
@@ -223,7 +258,7 @@ func _init() -> void:
 		for run_idx in range(runs_count):
 			var run_seed: int = base_seed + run_idx
 			var results: Array[Dictionary] = BalanceSimRunner.run_run(
-				config, base_setup, run_idx, run_seed, jitter, generations, start_levels, ring_cells
+				config, base_setup, run_idx, run_seed, jitter, generations, start_levels, ring_cells, upgrades
 			)
 
 			for res: Dictionary in results:
@@ -261,6 +296,8 @@ func _init() -> void:
 					int(res["hijacks_completed"]),
 					int(res["biofilm_max_group"]),
 				]
+				if extra_columns:
+					row += ",%d,%d,%d" % [int(res["units_trapped"]), int(res["analyses_shared"]), int(res["turncoat_damage"])]
 				csv_rows.append(row)
 
 			if (run_idx + 1) % progress_interval == 0 or (run_idx + 1) == runs_count:
@@ -306,16 +343,34 @@ func _init() -> void:
 			printerr("Error: Failed to open output file: %s" % out_path)
 			quit(1)
 			return
-		out_f.store_line(CSV_HEADER)
+		out_f.store_line(_csv_header(campaign_mode, extra_columns))
 		for r: String in csv_rows:
 			out_f.store_line(r)
 		out_f.close()
 	else:
-		print(CSV_HEADER)
+		print(_csv_header(campaign_mode, extra_columns))
 		for r: String in csv_rows:
 			print(r)
 
 	quit(0)
+
+
+static func _csv_header(campaign_mode: bool, extra_columns: bool) -> String:
+	if campaign_mode:
+		return BalanceCampaign.CSV_HEADER
+	return CSV_HEADER + (EXTRA_CSV_COLUMNS if extra_columns else "")
+
+
+## The units of an army snapshot file, or [] (after printing an error).
+func _army_units(army_file: String, config: GameConfig) -> Array:
+	if not FileAccess.file_exists(army_file):
+		printerr("Error: Army file not found: %s" % army_file)
+		return []
+	var army_res: Dictionary = SnapshotIO.parse_army(FileAccess.get_file_as_string(army_file), config)
+	if not army_res.get("ok", false):
+		printerr("Error parsing army file: %s" % army_res.get("error", "Unknown error"))
+		return []
+	return army_res.get("units", [])
 
 
 func _resolve_setup(inputs: Dictionary, config: GameConfig, seed: int) -> BattleSetup:
@@ -360,6 +415,33 @@ func _resolve_setup(inputs: Dictionary, config: GameConfig, seed: int) -> Battle
 		if setup != null:
 			setup.seed = seed
 		return setup
+	elif itype == "base_army" and (inputs.has("ai_base") or inputs.has("ai_army_seed")):
+		var layout: Array = []
+		if inputs.has("ai_base"):
+			var ab: Dictionary = inputs["ai_base"]
+			var gen: Dictionary = AiBaseGenerator.generate(config, str(ab.get("tier", "")), int(ab.get("seed", 0)))
+			layout = gen["layout"]
+			if layout.is_empty():
+				printerr("Error: Unknown AI tier '%s' (is the living_base flag on?)" % str(ab.get("tier", "")))
+				return null
+		else:
+			var base_file_ai: String = inputs.get("base", "")
+			if not FileAccess.file_exists(base_file_ai):
+				printerr("Error: Base file not found: %s" % base_file_ai)
+				return null
+			var base_res_ai: Dictionary = SnapshotIO.parse_base(FileAccess.get_file_as_string(base_file_ai), config)
+			if not base_res_ai.get("ok", false):
+				printerr("Error parsing base file: %s" % base_res_ai.get("error", "Unknown error"))
+				return null
+			layout = base_res_ai.get("layout", [])
+		var units: Array = []
+		if inputs.has("ai_army_seed"):
+			units = AiArmyGenerator.generate(config, layout, int(inputs["ai_army_seed"]))["units"]
+		else:
+			units = _army_units(str(inputs.get("army", "")), config)
+			if units.is_empty():
+				return null
+		return BattleSetup.create(layout, units, seed)
 	elif itype == "base_army":
 		var base_file: String = inputs.get("base", "")
 		var army_file: String = inputs.get("army", "")

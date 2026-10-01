@@ -304,3 +304,75 @@ func test_memory_from_levels_clamps_to_max_level() -> void:
 	assert_eq(m.level_of("rhinovirus/wild"), cfg.memory_max_level)
 	assert_eq(m.level_of("staphylococcus/wild"), 1)
 	assert_eq(m.raids, 0)
+
+
+# --- Phase 2 arguments (#172) ---
+
+func _parse(extra: Array) -> Dictionary:
+	var args: Array[String] = []
+	for a: Variant in extra:
+		args.append(str(a))
+	return BalanceSimArgs.parse_args(args)
+
+
+func test_ai_base_and_ai_army_parse_as_a_base_army_input() -> void:
+	var res: Dictionary = _parse(["--ai-base=cold:7", "--ai-army=3"])
+	assert_true(res["ok"], str(res))
+	assert_eq(res["inputs"]["type"], "base_army")
+	assert_eq(res["inputs"]["ai_base"], {"tier": "cold", "seed": 7})
+	assert_eq(res["inputs"]["ai_army_seed"], 3)
+
+
+func test_an_ai_base_can_take_an_army_file_and_a_base_file_an_ai_army() -> void:
+	assert_true(_parse(["--ai-base=flu:1", "--army=a.json"])["ok"])
+	assert_true(_parse(["--base=b.json", "--ai-army=2"])["ok"])
+
+
+func test_ai_base_needs_an_army_side_and_vice_versa() -> void:
+	var a: Dictionary = _parse(["--ai-base=cold:1"])
+	assert_false(a["ok"])
+	assert_true(str(a["error"]).contains("Both a base"), a["error"])
+	assert_false(_parse(["--ai-army=1"])["ok"])
+	# The old message is unchanged for the old arguments.
+	assert_eq(_parse(["--base=b.json"])["error"], "Both --base and --army must be specified together")
+	assert_false(_parse(["--base=b.json", "--ai-base=cold:1", "--army=a.json"])["ok"])
+	assert_false(_parse(["--base=b.json", "--army=a.json", "--ai-army=1"])["ok"])
+
+
+func test_bad_ai_values_give_readable_errors() -> void:
+	assert_true(str(_parse(["--ai-base=cold", "--ai-army=1"])["error"]).contains("Invalid --ai-base value 'cold': expected <tier>:<seed>"))
+	assert_true(str(_parse(["--ai-base=Cold:1", "--ai-army=1"])["error"]).contains("Invalid --ai-base"))
+	assert_true(str(_parse(["--ai-base=cold:x", "--ai-army=1"])["error"]).contains("Invalid --ai-base"))
+	assert_true(str(_parse(["--ai-base=cold:1", "--ai-army=abc"])["error"]).contains("Invalid --ai-army value 'abc': must be an integer seed"))
+
+
+func test_ai_campaign_parses_and_validates() -> void:
+	var res: Dictionary = _parse(["--ai-campaign=cold:1:3", "--army=a.json"])
+	assert_true(res["ok"], str(res))
+	assert_eq(res["inputs"]["type"], "ai_campaign")
+	assert_eq(res["options"]["ai_campaign"], {"tier": "cold", "seed": 1, "raids": 3})
+	assert_true(str(_parse(["--ai-campaign=cold:1:3"])["error"]).contains("needs --army"))
+	assert_true(str(_parse(["--ai-campaign=cold:1", "--army=a.json"])["error"]).contains("expected <tier>:<seed>:<raids>"))
+	assert_true(str(_parse(["--ai-campaign=cold:1:0", "--army=a.json"])["error"]).contains("must be an integer from 1 to 50"))
+	assert_true(str(_parse(["--ai-campaign=cold:1:51", "--army=a.json"])["error"]).contains("must be an integer from 1 to 50"))
+	assert_true(str(_parse(["--ai-campaign=cold:1:3", "--army=a.json", "--scenario=open_field"])["error"]).contains("cannot be combined"))
+	assert_true(str(_parse(["--ai-campaign=cold:1:3", "--army=a.json", "--ai-base=cold:1"])["error"]).contains("cannot be combined"))
+
+
+func test_upgrades_parse_and_validate() -> void:
+	var res: Dictionary = _parse(["--scenario=open_field", "--upgrades=memory_slot:2,analysis_speed:1"])
+	assert_true(res["ok"], str(res))
+	assert_eq(res["options"]["upgrades"], {"memory_slot": 2, "analysis_speed": 1})
+	assert_false(_parse(["--scenario=open_field"])["options"].has("upgrades"))
+	assert_true(str(_parse(["--scenario=open_field", "--upgrades=hp_boost:1"])["error"]).contains("unknown upgrade 'hp_boost'"))
+	assert_true(str(_parse(["--scenario=open_field", "--upgrades=memory_slot"])["error"]).contains("must be <upgrade>:<level>"))
+	assert_true(str(_parse(["--scenario=open_field", "--upgrades=memory_slot:x"])["error"]).contains("must be an integer from 0 to 10"))
+	assert_true(str(_parse(["--scenario=open_field", "--upgrades=memory_slot:11"])["error"]).contains("must be an integer from 0 to 10"))
+	assert_true(str(_parse(["--scenario=open_field", "--upgrades="])["error"]).contains("empty upgrades specification"))
+
+
+func test_old_arguments_keep_their_exact_options_shape() -> void:
+	var res: Dictionary = _parse(["--scenario=open_field", "--runs=5"])
+	assert_false(res["options"].has("ai_campaign"))
+	assert_false(res["options"].has("upgrades"))
+	assert_eq(res["inputs"], {"type": "scenario", "scenario": "open_field", "name": "open_field"})

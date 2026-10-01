@@ -1,0 +1,4 @@
+sweep_path,sweep_value,run,seed,outcome,end_reason,battle_s,nucleus_hp_remaining,structures_destroyed,walls_destroyed,walls_damaged,pathogens_alive,first_destroyed_type,first_contact_s,generation,score,analyzed_strains,memory_after,hijacks_completed,biofilm_max_group
+,,0,5,attacker,nucleus_destroyed,40.60,0,1,0,0,5,nucleus,6.05,1,0,,,0,0
+,,1,6,attacker,nucleus_destroyed,40.60,0,1,0,0,5,nucleus,6.05,1,0,,,0,0
+,,2,7,attacker,nucleus_destroyed,40.60,0,1,0,0,5,nucleus,6.05,1,0,,,0,0

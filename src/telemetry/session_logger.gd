@@ -59,6 +59,7 @@ func _init_session_file() -> void:
 	var build_str: String = BuildInfo.read()
 
 	log_event("session_start", {
+		"unix_s": unix_time,
 		"config_hash": config_hash,
 		"flag_overrides": flag_overrides,
 		"platform": OS.get_name(),

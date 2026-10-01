@@ -1,0 +1,5 @@
+sweep_path,sweep_value,run,seed,outcome,end_reason,battle_s,nucleus_hp_remaining,structures_destroyed,walls_destroyed,walls_damaged,pathogens_alive,first_destroyed_type,first_contact_s,generation,score,analyzed_strains,memory_after,hijacks_completed,biofilm_max_group
+,,0,901,defender,all_pathogens_dead,11.65,2000,0,0,0,0,,8.90,1,0,rhinovirus/wild,rhinovirus/wild=1,0,0
+,,0,902,defender,all_pathogens_dead,11.65,2000,0,0,0,0,,1.75,2,0,rhinovirus/wild,rhinovirus/wild=2,0,0
+,,1,1001,defender,all_pathogens_dead,11.65,2000,0,0,0,0,,2.10,1,0,rhinovirus/wild,rhinovirus/wild=1,0,0
+,,1,1002,defender,all_pathogens_dead,10.45,2000,0,0,0,0,,2.10,2,0,rhinovirus/wild,rhinovirus/wild=2,0,0
