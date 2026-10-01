@@ -48,7 +48,7 @@ func _ensure_phase_root() -> Control:
 	phase_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	phase_root.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	phase_root.grow_vertical = Control.GROW_DIRECTION_BOTH
-	phase_root.mouse_filter = Control.MOUSE_FILTER_PASS
+	phase_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(phase_root)
 	return phase_root
 
