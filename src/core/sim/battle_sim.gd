@@ -36,6 +36,9 @@ var _turncoat_on: bool = false
 var _turncoat_hit_tick: Dictionary = {}  # structure id -> last tick it took turncoat damage
 var turncoat_damage_dealt: int = 0
 var _coevo_on: bool = false
+var _presenter_on: bool = false
+## Analyses a Dendritic Cell handed to another B-Cell (telemetry).
+var analyses_shared: int = 0
 var _trap_on: bool = false
 ## cell -> sorted Array[int] of Mucous Wall ids whose trap reaches that cell (orthogonal neighbours, free cells only).
 var _trap_cells: Dictionary = {}
@@ -62,6 +65,7 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 	_coevo_on = p_config != null and p_config.coevolution_enabled()
 	_slow_on = p_config != null and p_config.flag("mucous_slow")
 	_trap_on = p_config != null and p_config.flag("mucous_trap")
+	_presenter_on = p_config != null and p_config.flag("dendritic_cell") and _analysis_on
 	if _biofilm_on:
 		for pd: PathogenDef in p_config.pathogens.values():
 			if pd.has_biofilm and (_biofilm_regroup_ticks == 0 or pd.biofilm_regroup_ticks < _biofilm_regroup_ticks):
@@ -634,6 +638,33 @@ func _accrue_analysis(s: StructureState) -> void:
 	if e >= s.def.analysis_threshold_ticks * 100:
 		s.analyzed[key] = true
 		_emit_event(SimEvents.ANALYSIS_COMPLETE, {"structure_id": s.id, "strain_key": key, "unit_type": tgt.type_id})
+		if _presenter_on:
+			_present(s, key)
+
+
+## Dendritic Cells share a freshly completed analysis: every other alive analysis tower inside the radius of a
+## Dendritic Cell that also covers `source` gains it at once. One hop only, so overlapping presenters never chain.
+func _present(source: StructureState, key: String) -> void:
+	for d: StructureState in structures:
+		if not d.alive or d.def == null or not d.def.has_presenter:
+			continue
+		var radius: int = d.def.presenter_radius_mt
+		if not FixedMath.within(d.center, source.center, radius):
+			continue
+		for b: StructureState in structures:
+			if not b.alive or b.id == source.id or b.def == null or not b.def.has_analysis or b.analyzed.has(key):
+				continue
+			if not FixedMath.within(d.center, b.center, radius):
+				continue
+			b.analyzed[key] = true
+			b.analysis_exposure[key] = b.def.analysis_threshold_ticks * 100
+			analyses_shared += 1
+			_emit_event(SimEvents.ANALYSIS_SHARED, {
+				"presenter_id": d.id,
+				"from_id": source.id,
+				"to_id": b.id,
+				"strain_key": key,
+			})
 
 
 ## Sorted, unique strain keys of every pathogen in the battle.

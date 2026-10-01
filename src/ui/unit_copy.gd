@@ -5,12 +5,14 @@ extends RefCounted
 ## not in data/*.json. Numbers inside the copy come from the config, never from this file.
 
 const MULTIPLIER_TOKEN: String = "{mult}"
+const RADIUS_TOKEN: String = "{radius}"
 const DEFENSE_TAG: String = "defense"
 ## Fallback when a multiplier cannot be read from the config.
 const MULTIPLIER_FALLBACK: String = "much harder"
 const MULTIPLIER_WORDS: Dictionary = {2: "twice", 3: "three times", 4: "four times", 5: "five times"}
 
 const DESCRIPTIONS: Dictionary = {
+	"dendritic_cell": "Shares B-Cell analysis within {radius} tiles.",
 	"mucous_wall": "Blocks paths. Pathogens walk around short walls and break through long ones.",
 	"macrophage": "Splashes every pathogen near its target. Great against swarms, weak against tanks.",
 	"b_cell": "Shots home in and never miss. Fragile up close, so keep walls in front of it.",
@@ -36,6 +38,9 @@ static func description(type_id: String, config: GameConfig = null) -> String:
 	var text: String = str(DESCRIPTIONS.get(type_id, ""))
 	if text.contains(MULTIPLIER_TOKEN):
 		text = text.replace(MULTIPLIER_TOKEN, _defense_multiplier_text(type_id, config))
+	if text.contains(RADIUS_TOKEN):
+		var sdef: StructureDef = config.structures.get(type_id) as StructureDef if config != null else null
+		text = text.replace(RADIUS_TOKEN, str(sdef.presenter_radius_mt / 1000) if sdef != null else "a few")
 	return text
 
 

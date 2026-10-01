@@ -30,6 +30,7 @@
     "debug_dna": false,
     "mucous_slow": false,
     "mucous_trap": false,
+    "dendritic_cell": false,
     "intent_lines_default": true
   },
   "living_base": {

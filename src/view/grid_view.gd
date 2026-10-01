@@ -827,8 +827,12 @@ func _rebuild_ghost() -> void:
 			_g_dots.append(projection.ground_to_screen(tile_c))
 			_g_dot_alpha.append(1.0 - d / DOT_RADIUS_TILES)
 
-	if sdef != null and sdef.has_attack and sdef.attack_range_mt > 0:
-		var ring_g: PackedVector2Array = _circle_ground(center_g, float(sdef.attack_range_mt) / 1000.0)
+	# A tower shows its attack range; a Dendritic Cell shows the radius it shares analysis within.
+	var ring_mt: int = 0
+	if sdef != null:
+		ring_mt = sdef.attack_range_mt if sdef.has_attack else (sdef.presenter_radius_mt if sdef.has_presenter else 0)
+	if ring_mt > 0:
+		var ring_g: PackedVector2Array = _circle_ground(center_g, float(ring_mt) / 1000.0)
 		for piece: PackedVector2Array in Geometry2D.intersect_polygons(ring_g, _island_ground):
 			if piece.size() >= 3 and not Geometry2D.is_polygon_clockwise(piece):
 				_g_range_fill.append(_project(piece))

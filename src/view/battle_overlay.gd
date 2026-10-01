@@ -12,6 +12,8 @@ const HIJACK_RING: Color = Color(HIJACK_COLOR, 0.8)
 const STRAIN_DOT: Color = Color(1.0, 1.0, 1.0, 0.9)
 ## How long a turncoat beam (#150) stays on screen after its shot.
 const TURNCOAT_BEAM_TICKS: int = 6
+## How long a Dendritic Cell share pulse stays on screen.
+const SHARE_PULSE_TICKS: int = 10
 
 var sim: BattleSim = null
 var config: GameConfig = null
@@ -23,6 +25,8 @@ var _hijack_until: Dictionary = {}
 var _badges: Dictionary = {}
 ## Turncoat beams: {"from": structure id, "to": structure id, "until": tick}.
 var _beams: Array[Dictionary] = []
+## Dendritic Cell shares (#166): {"from": presenter id, "to": receiving B-Cell id, "until": tick}.
+var _shares: Array[Dictionary] = []
 ## Reused polyline for _ground_arc; draw_polyline copies the points into its command.
 var _arc: PackedVector2Array = PackedVector2Array()
 var _drawn_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
@@ -37,6 +41,7 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 	_hijack_until.clear()
 	_badges.clear()
 	_beams.clear()
+	_shares.clear()
 	queue_redraw()
 
 
@@ -71,6 +76,12 @@ func on_event(ev: Dictionary) -> void:
 				"to": int(ev.get("target_structure_id", 0)),
 				"until": sim.tick + TURNCOAT_BEAM_TICKS,
 			})
+		SimEvents.ANALYSIS_SHARED:
+			_shares.append({
+				"from": int(ev.get("presenter_id", 0)),
+				"to": int(ev.get("to_id", 0)),
+				"until": sim.tick + SHARE_PULSE_TICKS,
+			})
 		SimEvents.ANALYSIS_COMPLETE:
 			var sid: int = int(ev.get("structure_id", 0))
 			var pdef: PathogenDef = config.pathogens.get(str(ev.get("unit_type", ""))) if config != null else null
@@ -99,6 +110,7 @@ func _draw() -> void:
 	var k: float = projection.tile_px / 14.0
 	_draw_structure_marks(k)
 	_draw_turncoat_beams(k)
+	_draw_share_pulses(k)
 	_draw_pathogen_marks(k)
 
 
@@ -123,6 +135,27 @@ func _draw_turncoat_beams(k: float) -> void:
 		draw_line(a + lift, z + lift, HIJACK_RING, 3.0 * k, true)
 		draw_circle(z + lift, 4.0 * k, HIJACK_COLOR)
 	_beams = kept
+
+
+## A quick line from a Dendritic Cell to each B-Cell it just taught.
+func _draw_share_pulses(k: float) -> void:
+	var kept: Array[Dictionary] = []
+	for b: Dictionary in _shares:
+		var left: int = int(b["until"]) - sim.tick
+		if left <= 0:
+			continue
+		kept.append(b)
+		var from_s: StructureState = sim.structure(int(b["from"]))
+		var to_s: StructureState = sim.structure(int(b["to"]))
+		if from_s == null or to_s == null:
+			continue
+		var a: Vector2 = projection.ground_to_screen(UnitLayer.structure_anchor(from_s))
+		var z: Vector2 = projection.ground_to_screen(UnitLayer.structure_anchor(to_s))
+		var fade: float = float(left) / float(SHARE_PULSE_TICKS)
+		var col := Color(ANALYSIS_COLOR, 0.35 + 0.55 * fade)
+		draw_line(a, z, col, 3.0 * k, true)
+		draw_circle(z, 5.0 * k * (1.5 - fade), col)
+	_shares = kept
 
 
 func _draw_structure_marks(k: float) -> void:
