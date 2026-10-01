@@ -7,6 +7,8 @@ extends Node2D
 signal cell_pressed(cell: Vector2i)
 signal cell_dragged(cell: Vector2i)
 signal cell_released(cell: Vector2i)
+## A touch ended off the grid, after a press that began on it.
+signal touch_cancelled
 
 const CORNER_RADIUS_TILES: float = 3.2
 const HEADROOM_T: float = 4.5
@@ -116,6 +118,11 @@ var _has_ghost: bool = false
 var _ghost_type_id: String = ""
 var _ghost_origin: Vector2i = Vector2i.ZERO
 var _ghost_valid: bool = false
+## A wall line ghost: one cell per entry, and whether each can be built. Empty for a single-cell ghost.
+var _ghost_line: Array[Vector2i] = []
+var _ghost_line_ok: Array[bool] = []
+var _g_line_fill: Array[PackedVector2Array] = []
+var _g_line_border: Array[PackedVector2Array] = []
 
 var _last_cell: Vector2i = NO_CELL
 var _touching: bool = false
@@ -217,6 +224,8 @@ class GroundSprite extends Node2D:
 class GhostCanvas extends Node2D:
 	var walls: WallRenderer = WallRenderer.new()
 	var cell: Vector2i = Vector2i.ZERO
+	## A run of wall cells; when set it is painted instead of `cell`.
+	var cells: Array[Vector2i] = []
 	var pose: ModelPose = ModelPose.new()
 	## Set for a tower or core ghost, which is painted at `foot` instead of the wall cell.
 	var painter: ModelPainter = null
@@ -228,7 +237,11 @@ class GhostCanvas extends Node2D:
 			painter.paint(self, foot, pose, tile_px)
 			return
 		walls.paint_shadows(self)
-		walls.paint_cell(self, cell, 1.0, pose)
+		if cells.is_empty():
+			walls.paint_cell(self, cell, 1.0, pose)
+		else:
+			for c: Vector2i in cells:
+				walls.paint_cell(self, c, 1.0, pose)
 
 
 func _init() -> void:
@@ -384,6 +397,22 @@ func set_ghost(type_id: String, origin: Vector2i, valid: bool) -> void:
 	_ghost_type_id = type_id
 	_ghost_origin = origin
 	_ghost_valid = valid
+	_ghost_line = []
+	_ghost_line_ok = []
+	_ghost_dirty = true
+	queue_redraw()
+
+## Previews a straight run of `type_id` cells; `ok[i]` says whether cells[i] can be built.
+func set_ghost_line(type_id: String, cells: Array[Vector2i], ok: Array[bool]) -> void:
+	if cells.is_empty():
+		clear_ghost()
+		return
+	_has_ghost = true
+	_ghost_type_id = type_id
+	_ghost_origin = cells[0]
+	_ghost_valid = ok.has(true)
+	_ghost_line = cells.duplicate()
+	_ghost_line_ok = ok.duplicate()
 	_ghost_dirty = true
 	queue_redraw()
 
@@ -391,6 +420,8 @@ func clear_ghost() -> void:
 	if _has_ghost:
 		_has_ghost = false
 		_ghost_type_id = ""
+		_ghost_line = []
+		_ghost_line_ok = []
 		_g_item = null
 		_hide_ghost()
 		queue_redraw()
@@ -447,6 +478,7 @@ func _handle_release(screen_pos: Vector2) -> void:
 	var cell: Vector2i = projection.screen_to_cell(to_local(screen_pos))
 	_last_cell = NO_CELL
 	if grid == null or not grid.in_bounds(cell):
+		touch_cancelled.emit()
 		return
 	cell_released.emit(cell)
 
@@ -710,6 +742,9 @@ func _rebuild_ghost() -> void:
 	_g_fill = _project(fill_g)
 	_g_border = _closed(_g_fill)
 	_g_item = _make_item(0, _ghost_type_id, _ghost_origin, footprint)
+	if not _ghost_line.is_empty() and _g_item.kind == 1:
+		_rebuild_ghost_line()
+		return
 	if _g_item.kind == 1:
 		_show_ghost_wall(_ghost_origin)
 	else:
@@ -905,9 +940,26 @@ func _draw_plates(ci: CanvasItem, k: float) -> void:
 			ci.draw_colored_polygon(item.plate, NUCLEUS_PLATE)
 			ci.draw_polyline(item.plate_rim, NUCLEUS_PLATE_RIM, 2.0 * k, true)
 
+func _rebuild_ghost_line() -> void:
+	_g_line_fill.clear()
+	_g_line_border.clear()
+	var walls: Dictionary = {}
+	for cell: Vector2i in _ghost_line:
+		var fill: PackedVector2Array = _project(KitDraw.rounded_rect_points(Rect2(Vector2(cell), Vector2.ONE), 0.35, ARC_STEPS))
+		_g_line_fill.append(fill)
+		_g_line_border.append(_closed(fill))
+		walls[cell] = true
+	_ghost_canvas.painter = null
+	_ghost_canvas.cells = _ghost_line.duplicate()
+	_ghost_canvas.walls.rebuild(walls, projection)
+	_ghost_group.visible = true
+	_ghost_canvas.queue_redraw()
+
+
 func _show_ghost_wall(cell: Vector2i) -> void:
 	_ghost_canvas.painter = null
 	_ghost_canvas.cell = cell
+	_ghost_canvas.cells = []
 	_ghost_canvas.walls.rebuild({cell: true}, projection)
 	_ghost_group.visible = true
 	_ghost_canvas.queue_redraw()
@@ -940,8 +992,17 @@ func _draw_item(item: StructureItem) -> void:
 	item.pose.pulse_phase = fposmod(item.pose.time * NucleusPainter.pulse_rate(item.pose.hp_frac), 1.0)
 	item.painter.paint(self, item.foot, item.pose, projection.tile_px)
 
+func _draw_ghost_line(k: float) -> void:
+	for i: int in range(_g_line_fill.size()):
+		var ok: bool = _ghost_line_ok[i]
+		draw_colored_polygon(_g_line_fill[i], GHOST_OK_FILL if ok else GHOST_BAD_FILL)
+		draw_polyline(_g_line_border[i], GREEN if ok else RED, 2.0 * k, true)
+
 func _draw_ghost(k: float) -> void:
 	if _g_item == null or _g_border.size() < 2:
+		return
+	if not _ghost_line.is_empty():
+		_draw_ghost_line(k)
 		return
 	var tint: Color = GREEN if _ghost_valid else RED
 	for frag: PackedVector2Array in _g_range_fill:
