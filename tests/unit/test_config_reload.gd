@@ -31,6 +31,13 @@ func _variant(mutator: Callable) -> GameConfig:
 	var structures: Dictionary = _read_json("structures.json")
 	var pathogens: Dictionary = _read_json("pathogens.json")
 	mutator.call(rules, structures, pathogens)
+	# Coevolution types must name known content, so drop any type the mutator removed.
+	if rules.has("coevolution"):
+		var kept: Array = []
+		for t: Variant in rules["coevolution"]["types"]:
+			if structures.has(t) or pathogens.has(t):
+				kept.append(t)
+		rules["coevolution"]["types"] = kept
 	var res: ConfigLoadResult = GameConfig.load_from_strings(JSON.stringify(rules), JSON.stringify(structures), JSON.stringify(pathogens))
 	assert_true(res.is_ok(), "variant config must be valid: %s" % ["\n".join(res.errors)])
 	return res.config

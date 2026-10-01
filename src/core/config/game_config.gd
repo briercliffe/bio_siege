@@ -29,6 +29,17 @@ var memory_seed_pct_per_level: int = 0
 var memory_decay_raids: int = 0
 var memory_slots: int = 0
 var memory_drift_pct: int = 0
+var coevo_pool_size: int = 0
+var coevo_antigen_slots: int = 0
+var coevo_receptor_slots: int = 0
+var coevo_hit_bonus_pct: int = 0
+var coevo_miss_penalty_pct: int = 0
+var coevo_mutation_pct: int = 0
+var coevo_survival_bonus: int = 0
+var coevo_types: Array[String] = []
+var coevo_antigen_name: Dictionary = {} # antigen id -> display name
+var coevo_receptor_name: Dictionary = {} # receptor id -> display name
+var coevo_receptor_binds: Dictionary = {} # receptor id -> antigen id
 var structures: Dictionary = {} # String -> StructureDef
 var pathogens: Dictionary = {} # String -> PathogenDef
 var content_hash: String = ""
@@ -78,6 +89,14 @@ func flag(flag_name: String) -> bool:
 ## Immune memory needs its own flag, B-Cell analysis, and a loaded immune_memory block.
 func memory_enabled() -> bool:
 	return flag("immune_memory") and flag("bcell_analysis") and memory_max_level > 0
+
+## Coevolution needs its flag and a loaded coevolution block (#141).
+func coevolution_enabled() -> bool:
+	return flag("coevolution") and coevo_pool_size > 0
+
+## True for the types that keep a genome pool. Does not check the flag.
+func is_breeding_type(type_id: String) -> bool:
+	return coevo_types.has(type_id)
 
 func move_nucleus_enabled() -> bool:
 	return bool(feature_flags.get("move_nucleus", false))
@@ -174,6 +193,9 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 			pathogens_data = json_pathogens.data
 			_validate_pathogens(pathogens_data, errors)
 
+	if not rules_data.is_empty():
+		_validate_coevolution(rules_data, structures_data, pathogens_data, errors)
+
 	if not errors.is_empty():
 		result.errors = errors
 		return result
@@ -214,6 +236,26 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 		config.memory_decay_raids = int(mem.get("decay_raids", 0))
 		config.memory_slots = int(mem.get("slots", 0))
 		config.memory_drift_pct = int(mem.get("drift_pct", 0))
+
+	var coevo_raw: Variant = rules_data.get("coevolution", null)
+	if typeof(coevo_raw) == TYPE_DICTIONARY:
+		var co: Dictionary = coevo_raw
+		config.coevo_pool_size = int(co.get("pool_size", 0))
+		config.coevo_antigen_slots = int(co.get("antigen_slots", 0))
+		config.coevo_receptor_slots = int(co.get("receptor_slots", 0))
+		config.coevo_hit_bonus_pct = int(co.get("hit_bonus_pct", 0))
+		config.coevo_miss_penalty_pct = int(co.get("miss_penalty_pct", 0))
+		config.coevo_mutation_pct = int(co.get("mutation_pct", 0))
+		config.coevo_survival_bonus = int(co.get("survival_bonus", 0))
+		for t: Variant in co.get("types", []):
+			config.coevo_types.append(str(t))
+		for a: Variant in co.get("antigens", []):
+			var ad: Dictionary = a
+			config.coevo_antigen_name[str(ad["id"])] = str(ad["display_name"])
+		for r: Variant in co.get("receptors", []):
+			var rd: Dictionary = r
+			config.coevo_receptor_name[str(rd["id"])] = str(rd["display_name"])
+			config.coevo_receptor_binds[str(rd["id"])] = str(rd["binds"])
 
 	for id_variant: Variant in structures_data.keys():
 		var id: String = str(id_variant)
@@ -499,7 +541,7 @@ static func _validate_rules(data: Dictionary, errors: PackedStringArray) -> void
 		"battle_timeout_s", "max_path_recalcs_per_tick", "empty_path_weight",
 		"deploy_hold_interval_s", "default_seed", "feature_flags"
 	]
-	var optional_rule_keys: Array[String] = ["immune_memory"]
+	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution"]
 	for k_var: Variant in data.keys():
 		var k: String = str(k_var)
 		if not k.begins_with("_") and not allowed_keys.has(k) and not optional_rule_keys.has(k):
@@ -675,6 +717,115 @@ static func _validate_immune_memory(data: Dictionary, errors: PackedStringArray)
 			errors.append("game_rules.json: immune_memory.%s: must be >= %d (got %s)" % [key, lo, _format_val(v)])
 		elif hi >= 0 and int(v) > hi:
 			errors.append("game_rules.json: immune_memory.%s: must be <= %d (got %s)" % [key, hi, _format_val(v)])
+
+static func _validate_coevolution(data: Dictionary, structures_data: Dictionary, pathogens_data: Dictionary, errors: PackedStringArray) -> void:
+	var flags_val: Variant = data.get("feature_flags", null)
+	var flag_on: bool = false
+	if typeof(flags_val) == TYPE_DICTIONARY:
+		flag_on = (flags_val as Dictionary).get("coevolution", false) == true
+	if not data.has("coevolution"):
+		if flag_on:
+			errors.append("game_rules.json: coevolution: required when feature_flags.coevolution is true (got null)")
+		return
+	var c_val: Variant = data["coevolution"]
+	if typeof(c_val) != TYPE_DICTIONARY:
+		errors.append("game_rules.json: coevolution: must be a JSON object (got %s)" % [_format_val(c_val)])
+		return
+	var c: Dictionary = c_val
+	# key -> [min, max]; max -1 means unbounded.
+	var int_spec: Dictionary = {
+		"pool_size": [2, 32], "antigen_slots": [1, 4], "receptor_slots": [1, 4],
+		"hit_bonus_pct": [0, 100], "miss_penalty_pct": [0, 100], "mutation_pct": [0, 100],
+		"survival_bonus": [0, -1]
+	}
+	var list_keys: Array[String] = ["types", "antigens", "receptors"]
+	for ck_var: Variant in c.keys():
+		var ck: String = str(ck_var)
+		if not ck.begins_with("_") and not int_spec.has(ck) and not list_keys.has(ck):
+			errors.append("game_rules.json: coevolution.%s: unknown key (got %s)" % [ck, ck])
+	for key_var: Variant in int_spec.keys():
+		var key: String = str(key_var)
+		var range_arr: Array = int_spec[key]
+		var lo: int = int(range_arr[0])
+		var hi: int = int(range_arr[1])
+		if not c.has(key):
+			errors.append("game_rules.json: coevolution.%s: missing required field (got null)" % [key])
+			continue
+		var v: Variant = c[key]
+		if not _is_whole_number(v):
+			errors.append("game_rules.json: coevolution.%s: must be an integer (got %s)" % [key, _format_val(v)])
+		elif int(v) < lo:
+			errors.append("game_rules.json: coevolution.%s: must be >= %d (got %s)" % [key, lo, _format_val(v)])
+		elif hi >= 0 and int(v) > hi:
+			errors.append("game_rules.json: coevolution.%s: must be <= %d (got %s)" % [key, hi, _format_val(v)])
+	for lk: String in list_keys:
+		if not c.has(lk):
+			errors.append("game_rules.json: coevolution.%s: missing required field (got null)" % [lk])
+		elif typeof(c[lk]) != TYPE_ARRAY or (c[lk] as Array).is_empty():
+			errors.append("game_rules.json: coevolution.%s: must be an array of 1 or more entries (got %s)" % [lk, _format_val(c[lk])])
+
+	var antigen_ids: Dictionary = {}
+	if c.get("antigens", null) is Array:
+		var a_arr: Array = c["antigens"]
+		for i: int in range(a_arr.size()):
+			var path: String = "coevolution.antigens[%d]" % i
+			var e_val: Variant = a_arr[i]
+			if typeof(e_val) != TYPE_DICTIONARY:
+				errors.append("game_rules.json: %s: must be a JSON object (got %s)" % [path, _format_val(e_val)])
+				continue
+			var e: Dictionary = e_val
+			_check_catalog_entry(e, path, ["id", "display_name"], errors)
+			var id_v: Variant = e.get("id", null)
+			if typeof(id_v) == TYPE_STRING and (id_v as String) != "":
+				if antigen_ids.has(id_v):
+					errors.append("game_rules.json: %s.id: duplicate id (got %s)" % [path, _format_val(id_v)])
+				antigen_ids[id_v] = true
+	if c.get("receptors", null) is Array:
+		var r_arr: Array = c["receptors"]
+		var receptor_ids: Dictionary = {}
+		for i: int in range(r_arr.size()):
+			var path: String = "coevolution.receptors[%d]" % i
+			var e_val: Variant = r_arr[i]
+			if typeof(e_val) != TYPE_DICTIONARY:
+				errors.append("game_rules.json: %s: must be a JSON object (got %s)" % [path, _format_val(e_val)])
+				continue
+			var e: Dictionary = e_val
+			_check_catalog_entry(e, path, ["id", "display_name", "binds"], errors)
+			var id_v: Variant = e.get("id", null)
+			if typeof(id_v) == TYPE_STRING and (id_v as String) != "":
+				if receptor_ids.has(id_v):
+					errors.append("game_rules.json: %s.id: duplicate id (got %s)" % [path, _format_val(id_v)])
+				receptor_ids[id_v] = true
+			var b_v: Variant = e.get("binds", null)
+			if typeof(b_v) == TYPE_STRING and (b_v as String) != "" and not antigen_ids.has(b_v):
+				errors.append("game_rules.json: %s.binds: must be an antigen id (got %s)" % [path, _format_val(b_v)])
+	if c.get("types", null) is Array:
+		var seen: Dictionary = {}
+		var t_arr: Array = c["types"]
+		for i: int in range(t_arr.size()):
+			var t_v: Variant = t_arr[i]
+			var path: String = "coevolution.types[%d]" % i
+			if typeof(t_v) != TYPE_STRING or (t_v as String) == "":
+				errors.append("game_rules.json: %s: must be a non-empty string (got %s)" % [path, _format_val(t_v)])
+				continue
+			var t: String = t_v
+			if seen.has(t):
+				errors.append("game_rules.json: %s: duplicate type (got %s)" % [path, _format_val(t)])
+			seen[t] = true
+			var catalogs_loaded: bool = not structures_data.is_empty() and not pathogens_data.is_empty()
+			if catalogs_loaded and not structures_data.has(t) and not pathogens_data.has(t):
+				errors.append("game_rules.json: %s: must be a known pathogen or structure id (got %s)" % [path, _format_val(t)])
+
+static func _check_catalog_entry(e: Dictionary, path: String, keys: Array[String], errors: PackedStringArray) -> void:
+	for ek_var: Variant in e.keys():
+		var ek: String = str(ek_var)
+		if not ek.begins_with("_") and not keys.has(ek):
+			errors.append("game_rules.json: %s.%s: unknown key (got %s)" % [path, ek, ek])
+	for k: String in keys:
+		if not e.has(k):
+			errors.append("game_rules.json: %s.%s: missing required field (got null)" % [path, k])
+		elif typeof(e[k]) != TYPE_STRING or (e[k] as String) == "":
+			errors.append("game_rules.json: %s.%s: must be a non-empty string (got %s)" % [path, k, _format_val(e[k])])
 
 static func _validate_structures(data: Dictionary, errors: PackedStringArray) -> void:
 	if data.is_empty():

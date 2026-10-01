@@ -25,7 +25,38 @@
     "phage_turncoat": false,
     "strains": false,
     "immune_memory": false,
+    "coevolution": false,
     "intent_lines_default": true
   },
-  "immune_memory": { "max_level": 3, "seed_pct_per_level": 25, "decay_raids": 2, "slots": 3, "drift_pct": 50 }
+  "immune_memory": { "max_level": 3, "seed_pct_per_level": 25, "decay_raids": 2, "slots": 3, "drift_pct": 50 },
+  "coevolution": {
+    "pool_size": 8,
+    "antigen_slots": 2,
+    "receptor_slots": 2,
+    "hit_bonus_pct": 25,
+    "miss_penalty_pct": 25,
+    "mutation_pct": 10,
+    "survival_bonus": 50,
+    "types": ["rhinovirus", "bacteriophage", "staphylococcus", "macrophage", "b_cell"],
+    "antigens": [
+      {"id": "capsule_a", "display_name": "Capsule A"},
+      {"id": "capsule_b", "display_name": "Capsule B"},
+      {"id": "spike_a", "display_name": "Spike A"},
+      {"id": "spike_b", "display_name": "Spike B"},
+      {"id": "coat_a", "display_name": "Coat A"},
+      {"id": "coat_b", "display_name": "Coat B"},
+      {"id": "wall_a", "display_name": "Wall A"},
+      {"id": "wall_b", "display_name": "Wall B"}
+    ],
+    "receptors": [
+      {"id": "binder_a", "display_name": "Binder A", "binds": "capsule_a"},
+      {"id": "binder_b", "display_name": "Binder B", "binds": "capsule_b"},
+      {"id": "clamp_a", "display_name": "Clamp A", "binds": "spike_a"},
+      {"id": "clamp_b", "display_name": "Clamp B", "binds": "spike_b"},
+      {"id": "latch_a", "display_name": "Latch A", "binds": "coat_a"},
+      {"id": "latch_b", "display_name": "Latch B", "binds": "coat_b"},
+      {"id": "hook_a", "display_name": "Hook A", "binds": "wall_a"},
+      {"id": "hook_b", "display_name": "Hook B", "binds": "wall_b"}
+    ]
+  }
 }
