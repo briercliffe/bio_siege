@@ -282,6 +282,8 @@ func _on_hud_launch_requested() -> void:
 		memory_seed,
 		populations
 	)
+	if session.living_flow != null:
+		session.living_flow.on_launch()
 	var army_counts: Dictionary = {}
 	for p_id: String in session.config.pathogen_ids():
 		var cnt: int = session.army.deployed_count(p_id)

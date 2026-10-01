@@ -52,6 +52,9 @@ func _on_screen_opened(_id: String) -> void:
 	if saved != null:
 		SaveLibrary.open(saves_root, GameData.config, true)
 		saved.setup(saves_root, fsm)
+	var opponents: OpponentScreen = top as OpponentScreen
+	if opponents != null and fsm != null:
+		opponents.setup(fsm.session, fsm)
 
 ## Opens the Saved bases and armies screen on one tab ("base" or "army").
 func open_library(kind: String) -> void:

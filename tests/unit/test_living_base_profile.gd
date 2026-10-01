@@ -127,3 +127,50 @@ func test_config_block_loaded() -> void:
 	assert_eq(_cfg.lb_start_wallet["atp"], 1000)
 	assert_eq(_cfg.lb_max_offline_s, 24 * 3600)
 	assert_eq(_cfg.lb_defense_log_size, 20)
+
+
+# --- AI opponents (#161) ---
+
+func test_ensure_opponents_fills_the_slots_deterministically() -> void:
+	var a: LivingBaseProfile = LivingBaseProfile.create_new(_cfg, 42, 0)
+	var b: LivingBaseProfile = LivingBaseProfile.create_new(_cfg, 42, 0)
+	a.ensure_opponents(_cfg)
+	b.ensure_opponents(_cfg)
+	assert_eq(a.opponents.size(), 3)
+	assert_eq(a.opponents, b.opponents)
+	assert_eq(a.opponent_counter, 3)
+	assert_eq(str(a.opponents[0]["id"]), "cold-0")
+	assert_eq(str(a.opponents[2]["tier"]), "pneumonia")
+	assert_eq(int(a.opponents[1]["seed"]), 42 + 7919)
+	assert_eq(int(a.opponents[2]["stored_atp"]), 500)
+	assert_eq(int(a.opponents[0]["raids"]), 0)
+	a.ensure_opponents(_cfg)
+	assert_eq(a.opponents.size(), 3, "nothing is added when the slots are full")
+
+
+func test_replace_opponent_changes_the_layout_and_keeps_the_tier() -> void:
+	var p: LivingBaseProfile = LivingBaseProfile.create_new(_cfg, 42, 0)
+	p.ensure_opponents(_cfg)
+	var old: Dictionary = (p.opponents[1] as Dictionary).duplicate(true)
+	assert_true(p.replace_opponent("flu-1", _cfg))
+	assert_eq(str(p.opponents[1]["tier"]), "flu")
+	assert_eq(str(p.opponents[1]["id"]), "flu-3")
+	assert_ne(p.opponents[1]["layout"], old["layout"])
+	assert_eq(p.opponents.size(), 3)
+	assert_false(p.replace_opponent("nope", _cfg))
+
+
+func test_opponents_survive_a_json_round_trip() -> void:
+	var p: LivingBaseProfile = LivingBaseProfile.create_new(_cfg, 42, 0)
+	p.ensure_opponents(_cfg)
+	p.opponents[0]["raids"] = 2
+	p.memory = ImmuneMemory.new().to_dict()
+	var json: Variant = JSON.parse_string(JSON.stringify(p.to_dict()))
+	var res: Dictionary = LivingBaseProfile.from_dict(json, _cfg)
+	var q: LivingBaseProfile = res["profile"]
+	assert_eq(q.opponent_counter, 3)
+	assert_eq(q.opponents.size(), 3)
+	assert_eq(int(q.opponents[0]["raids"]), 2)
+	assert_eq(JSON.stringify(q.to_dict()), JSON.stringify(p.to_dict()))
+	var grid := GridModel.new(_cfg)
+	assert_eq(grid.load_layout(q.opponents[1]["layout"], LivingBaseProfile.unlimited_wallet()), GridModel.PlaceError.OK)

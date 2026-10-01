@@ -865,3 +865,60 @@ func test_breeding_is_deterministic() -> void:
 		_finished_battle(session)
 		children.append(session.population("rhinovirus").to_dict())
 	assert_eq(children[0], children[1])
+
+
+# --- Living Base results (#161) ---
+
+func test_living_base_results_buttons_and_loot_line() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	cfg.feature_flags["living_base"] = true
+	var store := LivingBaseStore.new()
+	store.path = "user://test_results_lb.json"
+	var session := Session.new(cfg)
+	LivingBaseFlow.new(store).enter(session)
+	session.living_flow.begin_raid(str(session.profile.opponents[0]["id"]))
+	session.last_result = {"outcome": "attacker", "end_reason": "nucleus_destroyed", "battle_s": 30.0,
+		"living_base": {"atp_looted": 120, "amino_attacker": 30, "dna_attacker": 0, "outcome": "attacker"}}
+	var results := ResultsPhase.new()
+	add_child_autofree(results)
+	results.setup(session)
+	assert_eq(results.loot_label.text, "+120 ATP · +30 Amino Acids")
+	assert_true(results.loot_label.visible)
+	assert_eq(results.btn_re_raid.text, "Raid again")
+	assert_eq(results.btn_edit_base.text, "Back to base")
+	assert_false(results.btn_new_base.visible)
+	assert_eq(ResultsPhase.loot_text({"atp_looted": 5, "amino_attacker": 0, "dna_attacker": 2}), "+5 ATP · +2 DNA")
+	DirAccess.remove_absolute(store.path)
+
+
+func test_living_base_results_choices() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	cfg.feature_flags["living_base"] = true
+	var store := LivingBaseStore.new()
+	store.path = "user://test_results_lb2.json"
+	var session := Session.new(cfg)
+	LivingBaseFlow.new(store).enter(session)
+	var fsm := GameStateMachine.new()
+	add_child_autoqfree(fsm)
+	fsm.session = session
+	var opp_id: String = str(session.profile.opponents[0]["id"])
+	session.living_flow.begin_raid(opp_id)
+	session.army.buy("rhinovirus", session.wallet)
+	var spent_wallet: int = session.wallet.get_amount("atp")
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("raid_again", session, fsm)
+	assert_eq(fsm.phase, GameStateMachine.Phase.INCUBATION)
+	assert_eq(session.attack_opponent_id, opp_id)
+	assert_eq(session.army.total_count(), 0)
+	assert_eq(session.wallet.get_amount("atp"), spent_wallet, "the army is not refunded")
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("back_to_base", session, fsm)
+	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
+	assert_false(session.has_attack_target())
+	# A replaced base cannot be raided again: the choice returns to the base.
+	session.living_flow.begin_raid(opp_id)
+	session.profile.replace_opponent(opp_id, cfg)
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("raid_again", session, fsm)
+	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
+	DirAccess.remove_absolute(store.path)
