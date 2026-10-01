@@ -70,8 +70,10 @@ var driver: AnimDriver = AnimDriver.new()
 ## Softer hit flashes and shake (Settings: Reduce screen flashes). Set by the phase; kept across setup().
 var reduce_flashes: bool = false:
 	set = set_reduce_flashes
-## View clock in seconds for idle loops. Advances only while the battle runs.
+## View clock in seconds for idle loops. Advances only while the battle runs and is not paused.
 var view_time: float = 0.0
+## Set by the phase while the Pause menu is open; freezes the view clock (and so every idle loop).
+var paused: bool = false
 
 ## Connected wall segments for the live wall cells. Rebuilt when a wall is destroyed or the projection changes.
 var walls: WallRenderer = WallRenderer.new()
@@ -111,7 +113,7 @@ func set_reduce_flashes(value: bool) -> void:
 func _process(delta: float) -> void:
 	if sim == null:
 		return
-	if runner != null and runner.is_running:
+	if runner != null and runner.is_running and not runner.paused and not paused:
 		view_time += delta
 	queue_redraw()
 

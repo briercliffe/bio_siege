@@ -9,6 +9,8 @@ var alpha: float = 0.0              # 0..1 interpolation factor for views
 var config: GameConfig = null
 var setup: BattleSetup = null
 var is_running: bool = false
+## Pause menu: while true the sim is not stepped and no time accumulates, so resuming changes nothing.
+var paused: bool = false
 var _accumulator: float = 0.0
 var _tick_dt: float = 0.05          # 1.0 / config.tick_rate
 var _finish_timer: float = 0.0
@@ -33,7 +35,7 @@ func start(p_config: GameConfig, p_setup: BattleSetup) -> void:
 
 
 func _process(delta: float) -> void:
-	if not is_running or sim == null:
+	if not is_running or sim == null or paused:
 		return
 
 	if not sim.finished:
