@@ -1,37 +1,96 @@
 class_name ResultsPhase
 extends Control
 
+## Results screens 13 (Nucleus destroyed) and 14 (Defense held), night theme at 1280x720. The left column
+## (x 64 to 764) holds the outcome header, four stat tiles, the ATP split card and the three choice buttons.
+## The right column (x 820 to 1216) holds the final-state card, the one-question survey and the log export.
+## Positions follow the mockup canvas sources Victory and Defeat; both columns are anchored to their edge.
+
 signal choice_made(choice: String)
+
+const KICKER_TEXT: String = "PHASE 4 · RESULTS"
+const KICKER_ATTACKER: Color = Color("#2ecc71")
+const KICKER_DEFENDER: Color = Color("#8fb8ff")
+const BADGE_FILL: Color = Color("#1f3b66")
+const BADGE_TEXT: String = "Time limit reached"
+const SPLIT_COLOR_BASE: Color = Color("#2e86de")
+const SPLIT_COLOR_ARMY: Color = Color("#2ecc71")
+const SPLIT_COLOR_UNSPENT: Color = Color("#8a7a7e")
+## get_atp_split_widths() is reported against this bar width; the drawn bar uses the same fractions.
+const SPLIT_BAR_WIDTH: float = 560.0
+const SPLIT_BAR_HEIGHT: float = 28.0
+const SPLIT_GAP: float = 2.0
+
+const MARGIN: float = 64.0
+const TOP: float = 48.0
+const LEFT_WIDTH: float = 700.0
+const RIGHT_WIDTH: float = 396.0
+const TILE_SIZE: Vector2 = Vector2(165.0, 88.0)
+const BUTTON_HEIGHT: float = 72.0
+const RE_RAID_WIDTH: float = 250.0
+const EDIT_WIDTH: float = 210.0
+const NEW_BASE_WIDTH: float = 212.0
+const ISLAND_SIZE: Vector2 = Vector2(230.0, 150.0)
+
+const TITLE_ATTACKER: String = "Nucleus destroyed"
+const TITLE_DEFENDER: String = "Defense held"
+
+
+## Holds the final-state island thumbnail and clips it to its frame.
+class IslandHolder:
+	extends Control
+
+	func _init() -> void:
+		custom_minimum_size = ISLAND_SIZE
+		clip_contents = true
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+
+## A small coloured dot for the ATP legend.
+class LegendDot:
+	extends Control
+
+	var color: Color = Color.WHITE
+
+	func _init(p_color: Color) -> void:
+		color = p_color
+		custom_minimum_size = Vector2(12.0, 12.0)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		draw_circle(size * 0.5, 6.0, color)
+
 
 var session: Session = null
 var fsm: GameStateMachine = null
+## Receives the survey and export events. Null means the SessionLogger autoload; tests pass their own.
+var logger: Node = null
 
-# UI references
-var panel: PanelContainer = null
-var scroll_container: ScrollContainer = null
+var background: AmbientBackground = null
+
+# Header
+var kicker_label: Label = null
+var badge: PanelContainer = null
 var title_label: Label = null
 var reason_label: Label = null
 var score_label: Label = null
 var memory_label: Label = null
 var outbreak_label: Label = null
-var stats_container: VBoxContainer = null
 
-# Stat value labels
-var val_battle_time: Label = null
-var val_nucleus_hp: Label = null
-var val_structures_destroyed: Label = null
-var val_pathogens_lost: Label = null
-var val_first_structure: Label = null
-var val_first_contact: Label = null
+# Stat tiles
+var tile_battle_time: StatTile = null
+var tile_nucleus_hp: StatTile = null
+var tile_pathogens_alive: StatTile = null
+var tile_structures_lost: StatTile = null
 
 var stats: Dictionary = {}
 
-# ATP Split bar
-var atp_bar: HBoxContainer = null
-var bar_base: ColorRect = null
-var bar_army: ColorRect = null
-var bar_unspent: ColorRect = null
-var legend_label: Label = null
+# ATP split card
+var atp_title_label: Label = null
+var atp_track: ProgressTrack = null
+## "base", "army" and "unspent" -> the bold amount label in the legend.
+var legend_values: Dictionary = {}
 
 var base_atp: int = 0
 var army_atp: int = 0
@@ -39,327 +98,267 @@ var unspent_atp: int = 0
 var split_widths: Dictionary = {}
 
 # Buttons
-var btn_re_raid: Button = null
-var btn_edit_base: Button = null
-var btn_new_base: Button = null
-var btn_new_outbreak: Button = null
-var btn_retry_base: Button = null
+var btn_re_raid: PillButton = null
+var btn_edit_base: PillButton = null
+var btn_new_base: PillButton = null
+var btn_new_outbreak: PillButton = null
+var btn_retry_base: PillButton = null
 
-# Telemetry slots and controls
-var survey_slot: VBoxContainer = null
-var export_slot: VBoxContainer = null
-var val_prediction: Label = null
+# Right column
+var final_card: FloatingCard = null
+var island_holder: IslandHolder = null
+var island_view: GridView = null
+var island_grid: GridModel = null
+var final_title_label: Label = null
+var final_summary_label: Label = null
+var survey_card: ResultsSurveyCard = null
+var btn_export_logs: ResultsSurveyCard.TextLink = null
 
-var btn_toggle_survey: Button = null
-var survey_body: VBoxContainer = null
-var btn_submit_survey: Button = null
-var btn_export_logs: Button = null
-
-var survey_pivot: int = 3
-var survey_predictability: int = 3
-var survey_economy: int = 3
-var survey_map_feel: String = "right"
-var survey_submitted: bool = false
+var _ink: Color = UiPalette.color(true, "ink")
+var _muted: Color = UiPalette.color(true, "muted")
 
 
-func _ready() -> void:
-	_resolve_nodes()
-	_wire_buttons()
-	if session != null:
-		_populate()
-
-
-func _resolve_nodes() -> void:
-	if panel == null:
-		panel = find_child("Panel", true, false) as PanelContainer
-	if scroll_container == null:
-		scroll_container = find_child("ScrollContainer", true, false) as ScrollContainer
-	if title_label == null:
-		title_label = find_child("TitleLabel", true, false) as Label
-	if reason_label == null:
-		reason_label = find_child("ReasonLabel", true, false) as Label
-	if score_label == null:
-		score_label = find_child("ScoreLabel", true, false) as Label
-	if memory_label == null:
-		memory_label = find_child("MemoryLabel", true, false) as Label
-	if outbreak_label == null:
-		outbreak_label = find_child("OutbreakLabel", true, false) as Label
-	if stats_container == null:
-		stats_container = find_child("StatsContainer", true, false) as VBoxContainer
-
-	if val_battle_time == null:
-		val_battle_time = find_child("ValBattleTime", true, false) as Label
-	if val_nucleus_hp == null:
-		val_nucleus_hp = find_child("ValNucleusHp", true, false) as Label
-	if val_structures_destroyed == null:
-		val_structures_destroyed = find_child("ValStructuresDestroyed", true, false) as Label
-	if val_pathogens_lost == null:
-		val_pathogens_lost = find_child("ValPathogensLost", true, false) as Label
-	if val_first_structure == null:
-		val_first_structure = find_child("ValFirstStructure", true, false) as Label
-	if val_first_contact == null:
-		val_first_contact = find_child("ValFirstContact", true, false) as Label
-	if val_prediction == null:
-		val_prediction = find_child("ValPrediction", true, false) as Label
-
-	if atp_bar == null:
-		atp_bar = find_child("AtpBar", true, false) as HBoxContainer
-	if bar_base == null:
-		bar_base = find_child("BarBase", true, false) as ColorRect
-	if bar_army == null:
-		bar_army = find_child("BarArmy", true, false) as ColorRect
-	if bar_unspent == null:
-		bar_unspent = find_child("BarUnspent", true, false) as ColorRect
-	if legend_label == null:
-		legend_label = find_child("LegendLabel", true, false) as Label
-
-	if btn_re_raid == null:
-		btn_re_raid = find_child("BtnReRaid", true, false) as Button
-	if btn_edit_base == null:
-		btn_edit_base = find_child("BtnEditBase", true, false) as Button
-	if btn_new_base == null:
-		btn_new_base = find_child("BtnNewBase", true, false) as Button
-
-	if btn_new_outbreak == null:
-		btn_new_outbreak = find_child("BtnNewOutbreak", true, false) as Button
-	if btn_retry_base == null:
-		btn_retry_base = find_child("BtnRetryBase", true, false) as Button
-
-	if survey_slot == null:
-		survey_slot = find_child("SurveySlot", true, false) as VBoxContainer
-	if export_slot == null:
-		export_slot = find_child("ExportSlot", true, false) as VBoxContainer
-
-	# If instantiated directly without scene file, build programmatically
-	if title_label == null:
-		_build_ui_fallback()
-
-
-func _build_ui_fallback() -> void:
-	if theme == null:
-		var theme_res: Theme = load("res://src/ui/theme_spawn.tres") as Theme
-		if theme_res != null:
-			theme = theme_res
-
-	var dummy_label := Label.new()
-	dummy_label.name = "Label"
-	dummy_label.text = "RESULTS"
-	dummy_label.visible = false
-	add_child(dummy_label)
-
-	scroll_container = ScrollContainer.new()
-	scroll_container.name = "ScrollContainer"
-	scroll_container.set_anchors_preset(Control.PRESET_FULL_RECT)
-	scroll_container.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	add_child(scroll_container)
-
-	var center := CenterContainer.new()
-	center.name = "CenterContainer"
-	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll_container.add_child(center)
-
-	panel = PanelContainer.new()
-	panel.name = "Panel"
-	panel.custom_minimum_size = Vector2(640, 0)
-	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	center.add_child(panel)
-
-	var margin := MarginContainer.new()
-	margin.name = "MarginContainer"
-	margin.add_theme_constant_override("margin_left", 40)
-	margin.add_theme_constant_override("margin_top", 32)
-	margin.add_theme_constant_override("margin_right", 40)
-	margin.add_theme_constant_override("margin_bottom", 32)
-	panel.add_child(margin)
-
-	var content := VBoxContainer.new()
-	content.name = "ContentBox"
-	content.custom_minimum_size = Vector2(560, 0)
-	content.add_theme_constant_override("separation", 16)
-	margin.add_child(content)
-
-	title_label = Label.new()
-	title_label.name = "TitleLabel"
-	title_label.add_theme_font_size_override("font_size", 28)
-	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.text = "IMMUNE RESPONSE WINS"
-	content.add_child(title_label)
-
-	reason_label = Label.new()
-	reason_label.name = "ReasonLabel"
-	reason_label.add_theme_font_size_override("font_size", 18)
-	reason_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	reason_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	content.add_child(reason_label)
-
-	score_label = Label.new()
-	score_label.name = "ScoreLabel"
-	score_label.add_theme_font_size_override("font_size", 22)
-	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	score_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	score_label.visible = false
-	content.add_child(score_label)
-
-	memory_label = Label.new()
-	memory_label.name = "MemoryLabel"
-	memory_label.add_theme_font_size_override("font_size", 16)
-	memory_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	memory_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	memory_label.visible = false
-	content.add_child(memory_label)
-
-	outbreak_label = Label.new()
-	outbreak_label.name = "OutbreakLabel"
-	outbreak_label.add_theme_font_size_override("font_size", 20)
-	outbreak_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	outbreak_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	outbreak_label.visible = false
-	content.add_child(outbreak_label)
-
-	content.add_child(HSeparator.new())
-
-	stats_container = VBoxContainer.new()
-	stats_container.name = "StatsContainer"
-	stats_container.add_theme_constant_override("separation", 8)
-	content.add_child(stats_container)
-
-	val_battle_time = _add_stat_row(stats_container, "Battle time", "0:00", "ValBattleTime")
-	val_nucleus_hp = _add_stat_row(stats_container, "Nucleus HP remaining", "0 / 2000", "ValNucleusHp")
-	val_structures_destroyed = _add_stat_row(stats_container, "Structures destroyed", "0 / 0", "ValStructuresDestroyed")
-	val_pathogens_lost = _add_stat_row(stats_container, "Pathogens lost", "0 / 0", "ValPathogensLost")
-	val_first_structure = _add_stat_row(stats_container, "First structure to fall", "none", "ValFirstStructure")
-	val_first_contact = _add_stat_row(stats_container, "Time to first contact", "never", "ValFirstContact")
-
-	val_prediction = Label.new()
-	val_prediction.name = "ValPrediction"
-	val_prediction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	val_prediction.visible = false
-	stats_container.add_child(val_prediction)
-
-	content.add_child(HSeparator.new())
-
-	var atp_section := VBoxContainer.new()
-	atp_section.name = "AtpSection"
-	atp_section.add_theme_constant_override("separation", 8)
-	content.add_child(atp_section)
-
-	atp_bar = HBoxContainer.new()
-	atp_bar.name = "AtpBar"
-	atp_bar.custom_minimum_size = Vector2(560, 24)
-	atp_bar.add_theme_constant_override("separation", 0)
-	atp_bar.alignment = BoxContainer.ALIGNMENT_CENTER
-	atp_section.add_child(atp_bar)
-
-	bar_base = ColorRect.new()
-	bar_base.name = "BarBase"
-	bar_base.custom_minimum_size = Vector2(0, 24)
-	bar_base.color = Color("#1e5aa8")
-	atp_bar.add_child(bar_base)
-
-	bar_army = ColorRect.new()
-	bar_army.name = "BarArmy"
-	bar_army.custom_minimum_size = Vector2(0, 24)
-	bar_army.color = Color("#c0392b")
-	atp_bar.add_child(bar_army)
-
-	bar_unspent = ColorRect.new()
-	bar_unspent.name = "BarUnspent"
-	bar_unspent.custom_minimum_size = Vector2(0, 24)
-	bar_unspent.color = Color("#7f8c8d")
-	atp_bar.add_child(bar_unspent)
-
-	legend_label = Label.new()
-	legend_label.name = "LegendLabel"
-	legend_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	legend_label.text = "Base 0 · Army 0 · Unspent 0"
-	atp_section.add_child(legend_label)
-
-	survey_slot = VBoxContainer.new()
-	survey_slot.name = "SurveySlot"
-	content.add_child(survey_slot)
-
-	export_slot = VBoxContainer.new()
-	export_slot.name = "ExportSlot"
-	content.add_child(export_slot)
-
-	content.add_child(HSeparator.new())
-
-	var btns_box := VBoxContainer.new()
-	btns_box.name = "ButtonsContainer"
-	btns_box.add_theme_constant_override("separation", 12)
-	content.add_child(btns_box)
-
-	btn_re_raid = Button.new()
-	btn_re_raid.name = "BtnReRaid"
-	btn_re_raid.custom_minimum_size = Vector2(0, 48)
-	btn_re_raid.text = "Raid the same base again"
-	btns_box.add_child(btn_re_raid)
-
-	btn_edit_base = Button.new()
-	btn_edit_base.name = "BtnEditBase"
-	btn_edit_base.custom_minimum_size = Vector2(0, 48)
-	btn_edit_base.text = "Go back and change your defenses"
-	btns_box.add_child(btn_edit_base)
-
-	btn_new_base = Button.new()
-	btn_new_base.name = "BtnNewBase"
-	btn_new_base.custom_minimum_size = Vector2(0, 48)
-	btn_new_base.text = "Start over with 1000 ATP"
-	btns_box.add_child(btn_new_base)
-
-	btn_new_outbreak = Button.new()
-	btn_new_outbreak.name = "BtnNewOutbreak"
-	btn_new_outbreak.custom_minimum_size = Vector2(0, 48)
-	btn_new_outbreak.text = "New outbreak"
-	btn_new_outbreak.visible = false
-	btns_box.add_child(btn_new_outbreak)
-
-	btn_retry_base = Button.new()
-	btn_retry_base.name = "BtnRetryBase"
-	btn_retry_base.custom_minimum_size = Vector2(0, 48)
-	btn_retry_base.text = "Retry this base"
-	btn_retry_base.visible = false
-	btns_box.add_child(btn_retry_base)
-
-
-func _add_stat_row(parent_box: VBoxContainer, label_text: String, default_val: String, val_node_name: String) -> Label:
-	var row := HBoxContainer.new()
-	var lbl := Label.new()
-	lbl.text = label_text
-	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(lbl)
-
-	var val := Label.new()
-	val.name = val_node_name
-	val.text = default_val
-	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	row.add_child(val)
-
-	parent_box.add_child(row)
-	return val
-
-
-func _wire_buttons() -> void:
-	if btn_re_raid != null and not btn_re_raid.pressed.is_connected(_on_re_raid_pressed):
-		btn_re_raid.pressed.connect(_on_re_raid_pressed)
-	if btn_edit_base != null and not btn_edit_base.pressed.is_connected(_on_edit_base_pressed):
-		btn_edit_base.pressed.connect(_on_edit_base_pressed)
-	if btn_new_base != null and not btn_new_base.pressed.is_connected(_on_new_base_pressed):
-		btn_new_base.pressed.connect(_on_new_base_pressed)
-	if btn_new_outbreak != null and not btn_new_outbreak.pressed.is_connected(_on_new_outbreak_pressed):
-		btn_new_outbreak.pressed.connect(_on_new_outbreak_pressed)
-	if btn_retry_base != null and not btn_retry_base.pressed.is_connected(_on_retry_base_pressed):
-		btn_retry_base.pressed.connect(_on_retry_base_pressed)
+func _init() -> void:
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_PASS
+	_build()
 
 
 func setup(p_session: Session, p_fsm: GameStateMachine = null) -> void:
 	session = p_session
 	fsm = p_fsm
-	_resolve_nodes()
-	_wire_buttons()
 	_populate()
+
+
+# --- build -------------------------------------------------------------------------------
+
+func _build() -> void:
+	background = AmbientBackground.new()
+	background.name = "Background"
+	background.night = true
+	background.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(background)
+
+	_build_left_column()
+	_build_right_column()
+
+
+func _build_left_column() -> void:
+	var col := HudParts.vbox(14)
+	col.name = "LeftColumn"
+	col.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	col.offset_left = MARGIN
+	col.offset_top = TOP
+	col.offset_right = MARGIN + LEFT_WIDTH
+	col.custom_minimum_size = Vector2(LEFT_WIDTH, 0.0)
+	add_child(col)
+
+	var head := HudParts.vbox(0)
+	col.add_child(head)
+
+	var kicker_row := HudParts.hbox(14)
+	head.add_child(kicker_row)
+	kicker_label = HudParts.kicker(KICKER_TEXT, KICKER_ATTACKER)
+	kicker_label.name = "KickerLabel"
+	kicker_label.add_theme_font_size_override("font_size", 13)
+	kicker_row.add_child(kicker_label)
+	badge = PanelContainer.new()
+	badge.name = "TimeoutBadge"
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var badge_box: StyleBoxFlat = KitDraw.make_box(BADGE_FILL, 999.0)
+	badge_box.content_margin_left = 14.0
+	badge_box.content_margin_right = 14.0
+	badge_box.content_margin_top = 4.0
+	badge_box.content_margin_bottom = 4.0
+	badge.add_theme_stylebox_override("panel", badge_box)
+	badge.add_child(HudParts.label(BADGE_TEXT, 13, 700, Color.WHITE))
+	badge.visible = false
+	kicker_row.add_child(badge)
+
+	title_label = HudParts.label(TITLE_ATTACKER, 64, 800, _ink)
+	title_label.name = "TitleLabel"
+	head.add_child(title_label)
+
+	reason_label = HudParts.wrapping(HudParts.label("", 18, 400, _muted))
+	reason_label.name = "ReasonLabel"
+	head.add_child(reason_label)
+
+	# Lines for the optional flags (raid score, immune memory, outbreak run). Hidden in Lab mode.
+	var extras := HudParts.vbox(4)
+	extras.name = "FlagLines"
+	head.add_child(extras)
+	outbreak_label = HudParts.wrapping(HudParts.label("", 16, 700, _ink))
+	outbreak_label.name = "OutbreakLabel"
+	outbreak_label.visible = false
+	extras.add_child(outbreak_label)
+	score_label = HudParts.wrapping(HudParts.label("", 14, 700, _ink))
+	score_label.name = "ScoreLabel"
+	score_label.visible = false
+	extras.add_child(score_label)
+	memory_label = HudParts.wrapping(HudParts.label("", 14, 400, _muted))
+	memory_label.name = "MemoryLabel"
+	memory_label.visible = false
+	extras.add_child(memory_label)
+
+	var tiles := HudParts.hbox(12)
+	tiles.name = "StatTiles"
+	col.add_child(tiles)
+	tile_battle_time = _make_tile(tiles, "Battle time", "TileBattleTime")
+	tile_nucleus_hp = _make_tile(tiles, "Nucleus HP left", "TileNucleusHp")
+	tile_pathogens_alive = _make_tile(tiles, "Pathogens alive", "TilePathogensAlive")
+	tile_structures_lost = _make_tile(tiles, "Structures lost", "TileStructuresLost")
+
+	col.add_child(_build_atp_card())
+
+	var buttons := HudParts.hbox(12)
+	buttons.name = "ChoiceButtons"
+	col.add_child(buttons)
+	btn_re_raid = _make_choice_button(buttons, "BtnReRaid", "Re-raid", "Same base, new army",
+			PillButton.Variant.PRIMARY, RE_RAID_WIDTH, "re_raid")
+	btn_edit_base = _make_choice_button(buttons, "BtnEditBase", "Edit base", "Back to Synthesis",
+			PillButton.Variant.SECONDARY, EDIT_WIDTH, "edit_base")
+	btn_new_base = _make_choice_button(buttons, "BtnNewBase", "New base", "Reset to 1000 ATP",
+			PillButton.Variant.SECONDARY, NEW_BASE_WIDTH, "new_base")
+	btn_new_outbreak = _make_choice_button(buttons, "BtnNewOutbreak", "New outbreak", "Fresh run, new base",
+			PillButton.Variant.PRIMARY, RE_RAID_WIDTH, "new_outbreak")
+	btn_new_outbreak.visible = false
+	btn_retry_base = _make_choice_button(buttons, "BtnRetryBase", "Retry this base", "Same base, run restarts",
+			PillButton.Variant.SECONDARY, EDIT_WIDTH, "retry_base")
+	btn_retry_base.visible = false
+
+
+func _make_tile(parent: Control, label: String, node_name: String) -> StatTile:
+	var tile := StatTile.new(label, "", "")
+	tile.name = node_name
+	tile.night = true
+	tile.label_px = 14
+	tile.value_px = 28
+	tile.custom_minimum_size = TILE_SIZE
+	tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	parent.add_child(tile)
+	return tile
+
+
+func _make_choice_button(parent: Control, node_name: String, title: String, sub: String,
+		variant: PillButton.Variant, width: float, choice: String) -> PillButton:
+	var b := PillButton.new(title, variant)
+	b.name = node_name
+	b.night = true
+	b.pressed.connect(make_choice.bind(choice))
+	parent.add_child(b)
+	_set_button(b, title, sub, width)
+	return b
+
+
+## Sets a choice button's two lines and its fixed size. PillButton resets its minimum size whenever the
+## subtitle changes, so the size is applied last.
+func _set_button(b: PillButton, title: String, sub: String, width: float) -> void:
+	b.text = title
+	b.subtitle = sub
+	b.custom_minimum_size = Vector2(width, BUTTON_HEIGHT)
+
+
+func _build_atp_card() -> FloatingCard:
+	var card := FloatingCard.new()
+	card.name = "AtpCard"
+	card.night = true
+	card.custom_minimum_size = Vector2(LEFT_WIDTH, 0.0)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(margin)
+	var box := HudParts.vbox(14)
+	margin.add_child(box)
+
+	atp_title_label = HudParts.label("", 17, 700, _ink)
+	atp_title_label.name = "AtpTitleLabel"
+	box.add_child(atp_title_label)
+
+	atp_track = ProgressTrack.new()
+	atp_track.name = "AtpTrack"
+	atp_track.night = true
+	atp_track.track_height = SPLIT_BAR_HEIGHT
+	atp_track.segment_gap = SPLIT_GAP
+	box.add_child(atp_track)
+
+	var legend := HudParts.hbox(22)
+	legend.name = "AtpLegend"
+	box.add_child(legend)
+	_add_legend_entry(legend, "base", "Base", SPLIT_COLOR_BASE)
+	_add_legend_entry(legend, "army", "Army", SPLIT_COLOR_ARMY)
+	_add_legend_entry(legend, "unspent", "Unspent", SPLIT_COLOR_UNSPENT)
+	return card
+
+
+func _add_legend_entry(parent: Control, key: String, label: String, color: Color) -> void:
+	var entry := HudParts.hbox(8)
+	entry.add_child(LegendDot.new(color))
+	entry.add_child(HudParts.label(label, 14, 400, _muted))
+	var value: Label = HudParts.label("0", 14, 800, _ink)
+	value.name = "Legend%s" % label
+	entry.add_child(value)
+	legend_values[key] = value
+	parent.add_child(entry)
+
+
+func _build_right_column() -> void:
+	var col := HudParts.vbox(22)
+	col.name = "RightColumn"
+	col.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	col.offset_right = -MARGIN
+	col.offset_left = -MARGIN - RIGHT_WIDTH
+	col.offset_top = TOP
+	col.custom_minimum_size = Vector2(RIGHT_WIDTH, 0.0)
+	col.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	add_child(col)
+
+	final_card = FloatingCard.new()
+	final_card.name = "FinalStateCard"
+	final_card.night = true
+	final_card.custom_minimum_size = Vector2(RIGHT_WIDTH, 186.0)
+	col.add_child(final_card)
+	var row := HudParts.hbox(12)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	final_card.add_child(row)
+	island_holder = IslandHolder.new()
+	island_holder.name = "IslandHolder"
+	island_holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(island_holder)
+	var text_col := HudParts.vbox(4)
+	text_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text_col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(text_col)
+	final_title_label = HudParts.label("Final state", 17, 800, _ink)
+	final_title_label.name = "FinalTitleLabel"
+	text_col.add_child(final_title_label)
+	final_summary_label = HudParts.wrapping(HudParts.label("", 14, 400, _muted))
+	final_summary_label.name = "FinalSummaryLabel"
+	final_summary_label.custom_minimum_size = Vector2(96.0, 0.0)
+	text_col.add_child(final_summary_label)
+
+	survey_card = ResultsSurveyCard.new()
+	survey_card.name = "SurveyCard"
+	survey_card.answered.connect(_on_survey_answered)
+	survey_card.skipped.connect(_on_survey_skipped)
+	col.add_child(survey_card)
+	survey_card.setup(0)
+
+	btn_export_logs = ResultsSurveyCard.TextLink.new("Export playtest logs")
+	btn_export_logs.name = "BtnExportLogs"
+	btn_export_logs.font_px = 13
+	btn_export_logs.pressed.connect(_on_export_logs_pressed)
+	col.add_child(btn_export_logs)
+
+
+# --- populate ------------------------------------------------------------------------------
+
+## "1:48" from seconds.
+static func format_time(seconds: float) -> String:
+	var total: int = maxi(int(seconds), 0)
+	@warning_ignore("integer_division")
+	var minutes: int = total / 60
+	return "%d:%02d" % [minutes, total % 60]
 
 
 func _populate() -> void:
@@ -367,172 +366,161 @@ func _populate() -> void:
 	var end_reason: String = str(res.get("end_reason", ""))
 	var outcome: String = str(res.get("outcome", ""))
 	var battle_s: float = float(res.get("battle_s", 0.0))
-
-	var timeout_s: float = float(res.get("timeout_s", 0.0))
-	if timeout_s <= 0.0:
-		if session != null and session.config != null and session.config.tick_rate > 0 and session.config.battle_timeout_ticks > 0:
-			timeout_s = float(session.config.battle_timeout_ticks) / float(session.config.tick_rate)
-		else:
-			timeout_s = battle_s
-
-	var is_attacker_win: bool = (end_reason == "nucleus_destroyed" or outcome == "attacker")
-
-	# 1. Title
-	if title_label != null:
-		if is_attacker_win:
-			title_label.text = "INFECTION SUCCESSFUL"
-			title_label.add_theme_color_override("font_color", Color("#2ecc71"))
-		else:
-			title_label.text = "IMMUNE RESPONSE WINS"
-			title_label.add_theme_color_override("font_color", Color("#48dbfb"))
-
-	# 2. Reason line
-	if reason_label != null:
-		if end_reason == "nucleus_destroyed" or (is_attacker_win and end_reason.is_empty()):
-			reason_label.text = "The Nucleus was destroyed in %d:%02d." % [int(battle_s) / 60, int(battle_s) % 60]
-		elif end_reason == "timeout":
-			reason_label.text = "Time ran out (%d:%02d). The immune system held." % [int(timeout_s) / 60, int(timeout_s) % 60]
-		else:
-			reason_label.text = "Every pathogen was eliminated after %d:%02d." % [int(battle_s) / 60, int(battle_s) % 60]
-
-	# 3. Stat rows
 	var nucleus_hp: int = int(res.get("nucleus_hp", 0))
+	var is_attacker_win: bool = (end_reason == "nucleus_destroyed" or outcome == "attacker")
+	var is_timeout: bool = end_reason == "timeout"
+
+	# Header
+	kicker_label.add_theme_color_override("font_color", KICKER_ATTACKER if is_attacker_win else KICKER_DEFENDER)
+	badge.visible = is_timeout
+	title_label.text = TITLE_ATTACKER if is_attacker_win else TITLE_DEFENDER
+	if end_reason == "nucleus_destroyed" or (is_attacker_win and end_reason.is_empty()):
+		reason_label.text = "Your army broke through your own defense in %s." % format_time(battle_s)
+	elif is_timeout:
+		reason_label.text = "The %s timer ran out with the Nucleus at %d HP." % [format_time(_timeout_s(res, battle_s)), nucleus_hp]
+	else:
+		reason_label.text = "Every pathogen was eliminated after %s." % format_time(battle_s)
+
+	# Stat tiles
 	var nucleus_max_hp: int = int(res.get("nucleus_max_hp", 2000))
 	var structures_destroyed: int = int(res.get("structures_destroyed", 0))
 	var structures_total: int = int(res.get("structures_total", 0))
 	var pathogens_lost: int = int(res.get("pathogens_lost", res.get("pathogens_killed", 0)))
 	var pathogens_total: int = int(res.get("pathogens_total", 0))
+	var pathogens_alive: int = maxi(pathogens_total - pathogens_lost, 0)
 	var first_contact_s: float = float(res.get("first_contact_s", -1.0))
 
+	tile_battle_time.setup("Battle time", format_time(battle_s))
+	tile_nucleus_hp.setup("Nucleus HP left", str(nucleus_hp))
+	tile_pathogens_alive.setup("Pathogens alive", str(pathogens_alive), "of %d" % pathogens_total)
+	tile_structures_lost.setup("Structures lost", str(structures_destroyed), "of %d" % structures_total)
+
+	var first_type: String = str(res.get("first_destroyed_structure_type", ""))
+	var first_id: int = int(res.get("first_destroyed_structure_id", 0))
 	var first_structure: String = str(res.get("first_structure_to_fall", ""))
 	if first_structure.is_empty():
-		var f_id: int = int(res.get("first_destroyed_structure_id", 0))
-		var f_type: String = str(res.get("first_destroyed_structure_type", ""))
-		if f_id > 0 and not f_type.is_empty():
-			if session != null and session.config != null and session.config.structures.has(f_type):
-				first_structure = session.config.structures[f_type].display_name
-			else:
-				first_structure = f_type.capitalize()
-		else:
-			first_structure = "none"
-
-	var time_str: String = "%d:%02d" % [int(battle_s) / 60, int(battle_s) % 60]
-	var nucleus_hp_str: String = "%d / %d" % [nucleus_hp, nucleus_max_hp]
-	var structures_str: String = "%d / %d" % [structures_destroyed, structures_total]
-	var pathogens_str: String = "%d / %d" % [pathogens_lost, pathogens_total]
-	var contact_str: String = "never" if first_contact_s < 0.0 else ("%d:%02d" % [int(first_contact_s) / 60, int(first_contact_s) % 60])
-
-	if val_battle_time != null:
-		val_battle_time.text = time_str
-	if val_nucleus_hp != null:
-		val_nucleus_hp.text = nucleus_hp_str
-	if val_structures_destroyed != null:
-		val_structures_destroyed.text = structures_str
-	if val_pathogens_lost != null:
-		val_pathogens_lost.text = pathogens_str
-	if val_first_structure != null:
-		val_first_structure.text = first_structure
-	if val_first_contact != null:
-		val_first_contact.text = contact_str
-
-	var pred_id: int = int(res.get("prediction_structure_id", session.prediction_structure_id if session != null else 0))
-	if val_prediction != null:
-		if pred_id <= 0:
-			val_prediction.visible = false
-			val_prediction.text = ""
-		else:
-			val_prediction.visible = true
-			var first_id: int = int(res.get("first_destroyed_structure_id", 0))
-			var is_correct: bool = (first_id > 0 and pred_id == first_id)
-			if is_correct:
-				val_prediction.text = "Your prediction: ✓ correct"
-				val_prediction.add_theme_color_override("font_color", Color("#2ecc71"))
-			else:
-				var first_type: String = str(res.get("first_destroyed_structure_type", ""))
-				var display_name: String = ""
-				if not first_type.is_empty() and session != null and session.config != null and session.config.structures.has(first_type):
-					display_name = session.config.structures[first_type].display_name
-				elif not first_type.is_empty():
-					display_name = first_type.capitalize()
-				else:
-					display_name = "none"
-				val_prediction.text = "Your prediction: ✗ it was the %s" % display_name
-				val_prediction.add_theme_color_override("font_color", Color("#e74c3c"))
+		first_structure = _structure_name(first_type) if (first_id > 0 and not first_type.is_empty()) else "none"
 
 	stats = {
-		"Battle time": time_str,
-		"Nucleus HP remaining": nucleus_hp_str,
-		"Structures destroyed": structures_str,
-		"Pathogens lost": pathogens_str,
+		"Battle time": format_time(battle_s),
+		"Nucleus HP remaining": "%d / %d" % [nucleus_hp, nucleus_max_hp],
+		"Structures destroyed": "%d / %d" % [structures_destroyed, structures_total],
+		"Pathogens lost": "%d / %d" % [pathogens_lost, pathogens_total],
 		"First structure to fall": first_structure,
-		"Time to first contact": contact_str,
+		"Time to first contact": "never" if first_contact_s < 0.0 else format_time(first_contact_s),
 	}
-	if val_prediction != null and val_prediction.visible:
-		stats["Prediction"] = val_prediction.text
 
+	_populate_final_state(res, first_id, first_type)
 	_populate_score(res, is_attacker_win)
 	_populate_memory(res)
-
-	# 4. ATP split bar
-	base_atp = 0
-	army_atp = 0
-	unspent_atp = 0
-
-	if session != null:
-		if not session.last_launch.is_empty():
-			base_atp = int(session.last_launch.get("base_atp", 0))
-			army_atp = int(session.last_launch.get("army_atp", 0))
-			unspent_atp = int(session.last_launch.get("unspent_atp", 0))
-		else:
-			if session.grid != null:
-				base_atp = int(session.grid.total_cost().get("atp", 0))
-			if session.army != null:
-				army_atp = int(session.army.total_cost().get("atp", 0))
-			if session.wallet != null:
-				unspent_atp = session.wallet.get_amount("atp")
-
-	var total_atp: int = base_atp + army_atp + unspent_atp
-	var w_base: float = 0.0
-	var w_army: float = 0.0
-	var w_unspent: float = 0.0
-
-	if total_atp > 0:
-		w_base = roundf(560.0 * float(base_atp) / float(total_atp))
-		w_army = roundf(560.0 * float(army_atp) / float(total_atp))
-		w_unspent = maxf(0.0, 560.0 - w_base - w_army)
-
-	split_widths = {
-		"base": w_base,
-		"army": w_army,
-		"unspent": w_unspent,
-	}
-
-	if bar_base != null:
-		bar_base.custom_minimum_size = Vector2(w_base, 24.0)
-		bar_base.size = Vector2(w_base, 24.0)
-		bar_base.color = Color("#1e5aa8")
-	if bar_army != null:
-		bar_army.custom_minimum_size = Vector2(w_army, 24.0)
-		bar_army.size = Vector2(w_army, 24.0)
-		bar_army.color = Color("#c0392b")
-	if bar_unspent != null:
-		bar_unspent.custom_minimum_size = Vector2(w_unspent, 24.0)
-		bar_unspent.size = Vector2(w_unspent, 24.0)
-		bar_unspent.color = Color("#7f8c8d")
-
-	if legend_label != null:
-		legend_label.text = "Base %d · Army %d · Unspent %d" % [base_atp, army_atp, unspent_atp]
-
-	# 5. Buttons
-	if btn_re_raid != null:
-		btn_re_raid.text = "Raid the same base again"
-	if btn_edit_base != null:
-		btn_edit_base.text = "Go back and change your defenses"
-	_update_new_base_label()
+	_populate_atp_split()
 	_populate_outbreak(res)
-
+	_update_new_base_label()
 	_populate_survey()
-	_populate_export()
+
+
+func _timeout_s(res: Dictionary, battle_s: float) -> float:
+	if session != null and session.config != null and session.config.tick_rate > 0 and session.config.battle_timeout_ticks > 0:
+		return float(session.config.battle_timeout_ticks) / float(session.config.tick_rate)
+	var from_result: float = float(res.get("timeout_s", 0.0))
+	return from_result if from_result > 0.0 else battle_s
+
+
+func _structure_name(type_id: String) -> String:
+	if session != null and session.config != null and session.config.structures.has(type_id):
+		return (session.config.structures[type_id] as StructureDef).display_name
+	return type_id.capitalize()
+
+
+## One line under "Final state": what fell first, plus the player's prediction (#25) when one was made.
+func _populate_final_state(res: Dictionary, first_id: int, first_type: String) -> void:
+	var text: String = "No structure fell." if first_type.is_empty() else "The %s fell first." % _structure_name(first_type)
+	var pred_id: int = int(res.get("prediction_structure_id", session.prediction_structure_id if session != null else 0))
+	if pred_id > 0:
+		if first_id > 0 and pred_id == first_id:
+			text += " You predicted it ✓"
+			stats["Prediction"] = "Your prediction: ✓ correct"
+		else:
+			var predicted_type: String = _predicted_type(pred_id)
+			text += " You predicted the %s ✗" % (_structure_name(predicted_type) if not predicted_type.is_empty() else "wrong structure")
+			stats["Prediction"] = "Your prediction: ✗ it was the %s" % (_structure_name(first_type) if not first_type.is_empty() else "none")
+	final_summary_label.text = text
+	_build_island(res)
+
+
+func _predicted_type(pred_id: int) -> String:
+	if session == null:
+		return ""
+	if session.grid != null:
+		var placed: GridModel.PlacedStructure = session.grid.get_structure(pred_id)
+		if placed != null:
+			return placed.type_id
+	if session.battle_setup != null and pred_id >= 1 and pred_id <= session.battle_setup.structures.size():
+		return str(session.battle_setup.structures[pred_id - 1].get("type", ""))
+	return ""
+
+
+## Rebuilds the thumbnail from the sim's surviving structures. Without `alive_structure_ids` (an old
+## result) it shows the whole base.
+func _build_island(res: Dictionary) -> void:
+	if island_view == null:
+		island_view = (load("res://src/view/grid_view.tscn") as PackedScene).instantiate() as GridView
+		# GridView turns its input handling on at ready; the thumbnail is display-only.
+		island_view.set_process_unhandled_input(false)
+		island_holder.add_child(island_view)
+	var cfg: GameConfig = session.config if session != null else null
+	if cfg == null:
+		island_grid = null
+		return
+	var alive_ids: Variant = res.get("alive_structure_ids", null)
+	island_grid = build_final_grid(cfg, _final_layout(), alive_ids as Array if alive_ids is Array else [], alive_ids is Array)
+	island_view.setup(island_grid, cfg)
+	island_view.set_night(true)
+	island_view.fit_to_rect(Rect2(Vector2.ZERO, ISLAND_SIZE))
+
+
+func _final_layout() -> Array:
+	if session == null:
+		return []
+	if session.battle_setup != null:
+		return session.battle_setup.structures
+	if session.grid != null:
+		return session.grid.to_layout()
+	return []
+
+
+## A display-only GridModel holding the structures still alive at the end of the raid. Sim structure ids
+## are 1-based positions in the battle setup, so `alive_ids` index into `layout`. With `filter` off the
+## whole layout is shown.
+static func build_final_grid(cfg: GameConfig, layout: Array, alive_ids: Array, filter: bool = true) -> GridModel:
+	var grid := GridModel.new(cfg)
+	# Display only: the wallet just has to afford every structure so place() accepts them.
+	var rich: Dictionary = {}
+	for cur: Variant in cfg.start_wallet.keys():
+		rich[str(cur)] = 1000000000
+	var wallet := Wallet.new(rich)
+	var entries: Array[Dictionary] = []
+	for i: int in range(layout.size()):
+		if filter and not alive_ids.has(i + 1):
+			continue
+		var entry: Dictionary = layout[i]
+		entries.append({"type": str(entry.get("type", "")), "origin": entry.get("origin", Vector2i.ZERO)})
+	var core_entry: Dictionary = {}
+	for e: Dictionary in entries:
+		var sdef: StructureDef = cfg.structures.get(str(e["type"]))
+		if sdef != null and sdef.has_tag("core") or str(e["type"]) == "nucleus":
+			core_entry = e
+			break
+	if not core_entry.is_empty():
+		grid.reset_with_nucleus()
+		var core: GridModel.PlacedStructure = grid.find_core()
+		if core != null:
+			grid.move_structure(core.id, core_entry["origin"] as Vector2i)
+	for e: Dictionary in entries:
+		if e == core_entry:
+			continue
+		grid.place(str(e["type"]), e["origin"] as Vector2i, wallet)
+	return grid
 
 
 ## Immune-memory line (immune_memory flag). Hidden and absent from stats when there are no changes.
@@ -540,9 +528,8 @@ func _populate_memory(res: Dictionary) -> void:
 	var text: String = ""
 	if session != null and session.config != null and session.config.memory_enabled() and res.has("memory_changes"):
 		text = memory_changes_text(res.get("memory_changes", []), session.config)
-	if memory_label != null:
-		memory_label.text = text
-		memory_label.visible = not text.is_empty()
+	memory_label.text = text
+	memory_label.visible = not text.is_empty()
 	if not text.is_empty():
 		stats["memory"] = text
 
@@ -573,24 +560,60 @@ static func memory_changes_text(changes: Array, config: GameConfig) -> String:
 func _populate_score(res: Dictionary, is_attacker_win: bool) -> void:
 	var enabled: bool = session != null and session.config != null and session.config.flag("raid_score") and res.has("score")
 	if not enabled:
-		if score_label != null:
-			score_label.visible = false
-			score_label.text = ""
+		score_label.visible = false
+		score_label.text = ""
 		return
 	var score: int = int(res.get("score", 0))
 	var base_value: int = int(res.get("base_value", 0))
 	var best: int = int(res.get("best_score", session.best_score))
 	stats["score"] = str(score)
 	stats["best_score"] = str(best)
-	if score_label != null:
-		var line: String
-		if is_attacker_win:
-			line = "Score %d: you broke a %d ATP base" % [score, base_value]
+	var line: String
+	if is_attacker_win:
+		line = "Score %d: you broke a %d ATP base" % [score, base_value]
+	else:
+		line = "Score %d: the %d ATP base held" % [score, base_value]
+	score_label.text = "%s\nBest this session: %d" % [line, best]
+	score_label.visible = true
+
+
+func _populate_atp_split() -> void:
+	base_atp = 0
+	army_atp = 0
+	unspent_atp = 0
+	if session != null:
+		if not session.last_launch.is_empty():
+			base_atp = int(session.last_launch.get("base_atp", 0))
+			army_atp = int(session.last_launch.get("army_atp", 0))
+			unspent_atp = int(session.last_launch.get("unspent_atp", 0))
 		else:
-			line = "Score %d: the %d ATP base held" % [score, base_value]
-		score_label.text = "%s
-Best this session: %d" % [line, best]
-		score_label.visible = true
+			if session.grid != null:
+				base_atp = int(session.grid.total_cost().get("atp", 0))
+			if session.army != null:
+				army_atp = int(session.army.total_cost().get("atp", 0))
+			if session.wallet != null:
+				unspent_atp = session.wallet.get_amount("atp")
+
+	var total_atp: int = base_atp + army_atp + unspent_atp
+	var w_base: float = 0.0
+	var w_army: float = 0.0
+	var w_unspent: float = 0.0
+	if total_atp > 0:
+		w_base = roundf(SPLIT_BAR_WIDTH * float(base_atp) / float(total_atp))
+		w_army = roundf(SPLIT_BAR_WIDTH * float(army_atp) / float(total_atp))
+		w_unspent = maxf(0.0, SPLIT_BAR_WIDTH - w_base - w_army)
+	split_widths = {"base": w_base, "army": w_army, "unspent": w_unspent}
+
+	var segs: Array[Dictionary] = []
+	segs.append({"frac": w_base / SPLIT_BAR_WIDTH, "color": SPLIT_COLOR_BASE})
+	segs.append({"frac": w_army / SPLIT_BAR_WIDTH, "color": SPLIT_COLOR_ARMY})
+	segs.append({"frac": w_unspent / SPLIT_BAR_WIDTH, "color": SPLIT_COLOR_UNSPENT})
+	atp_track.segments = segs
+
+	atp_title_label.text = "Where your %d ATP went" % total_atp
+	(legend_values["base"] as Label).text = str(base_atp)
+	(legend_values["army"] as Label).text = str(army_atp)
+	(legend_values["unspent"] as Label).text = str(unspent_atp)
 
 
 ## Outbreak header line and button set (outbreak_mode flag). Identical to Lab mode when there is no run.
@@ -600,17 +623,14 @@ func _populate_outbreak(res: Dictionary) -> void:
 		run = res["outbreak"]
 	var active: bool = not run.is_empty()
 	var ended: bool = active and bool(run.get("ended", false))
-	if outbreak_label != null:
-		outbreak_label.visible = active
-		outbreak_label.text = ""
-	if btn_new_outbreak != null:
-		btn_new_outbreak.visible = ended
-	if btn_retry_base != null:
-		btn_retry_base.visible = ended
-	if btn_re_raid != null:
-		btn_re_raid.visible = true
-	if btn_edit_base != null:
-		btn_edit_base.visible = true
+	outbreak_label.visible = active
+	outbreak_label.text = ""
+	btn_new_outbreak.visible = ended
+	btn_retry_base.visible = ended
+	btn_re_raid.visible = true
+	btn_edit_base.visible = true
+	_set_button(btn_re_raid, "Re-raid", "Same base, new army", RE_RAID_WIDTH)
+	_set_button(btn_edit_base, "Edit base", "Back to Synthesis", EDIT_WIDTH)
 	if not active:
 		return
 
@@ -621,26 +641,15 @@ func _populate_outbreak(res: Dictionary) -> void:
 		var best: int = int(res.get("outbreak_best", total))
 		text = "Outbreak contained after %d %s · Run score %s · Best %s" % [
 			cleared, "generation" if cleared == 1 else "generations", _group(total), _group(best)]
-		if btn_re_raid != null:
-			btn_re_raid.visible = false
-		if btn_edit_base != null:
-			btn_edit_base.visible = false
-		if btn_new_base != null:
-			btn_new_base.text = "Abandon outbreak"
+		btn_re_raid.visible = false
+		btn_edit_base.visible = false
 	else:
 		var scores: Array = run.get("generation_scores", [])
 		var last_score: int = int(scores[scores.size() - 1]) if not scores.is_empty() else 0
 		text = "Generation %d cleared · +%s · Run total %s" % [int(run.get("generation", 1)) - 1, _group(last_score), _group(total)]
-		if btn_re_raid != null:
-			btn_re_raid.visible = true
-			btn_re_raid.text = "Next generation: raid again"
-		if btn_edit_base != null:
-			btn_edit_base.visible = true
-			btn_edit_base.text = "Next generation: edit base first"
-		if btn_new_base != null:
-			btn_new_base.text = "Abandon outbreak"
-	if outbreak_label != null:
-		outbreak_label.text = text
+		_set_button(btn_re_raid, "Next generation", "Raid again", RE_RAID_WIDTH)
+		_set_button(btn_edit_base, "Next generation", "Edit base first", EDIT_WIDTH)
+	outbreak_label.text = text
 	stats["outbreak_generation"] = str(int(run.get("generation", 1)))
 	stats["outbreak_total"] = str(total)
 	stats["outbreak_ended"] = str(ended)
@@ -660,9 +669,8 @@ func _update_new_base_label() -> void:
 	var start_atp: int = 1000
 	if session != null and session.config != null:
 		start_atp = int(session.config.start_wallet.get("atp", 1000))
-	var in_run: bool = outbreak_label != null and outbreak_label.visible
-	if btn_new_base != null and not in_run:
-		btn_new_base.text = "Start over with %d ATP" % start_atp
+	var in_run: bool = outbreak_label.visible
+	_set_button(btn_new_base, "Abandon outbreak" if in_run else "New base", "Reset to %d ATP" % start_atp, NEW_BASE_WIDTH)
 
 
 ## Called by GameStateMachine after a config hot reload was applied (#27).
@@ -679,196 +687,29 @@ func get_atp_split_widths() -> Dictionary:
 
 
 func make_choice(choice: String) -> void:
-	if SessionLogger != null and SessionLogger.has_method("log_event"):
-		SessionLogger.log_event("results_choice", {"choice": choice})
+	_log("results_choice", {"choice": choice})
 	choice_made.emit(choice)
 	apply_choice(choice, session, fsm)
 
 
+# --- survey and export ---------------------------------------------------------------------
+
 func _populate_survey() -> void:
-	if survey_slot == null:
-		return
-	for c in survey_slot.get_children():
-		c.queue_free()
-
-	survey_submitted = false
-	survey_pivot = 3
-	survey_predictability = 3
-	survey_economy = 3
-	survey_map_feel = "right"
-
-	btn_toggle_survey = Button.new()
-	btn_toggle_survey.name = "BtnToggleSurvey"
-	btn_toggle_survey.text = "Quick feedback (optional) ▼"
-	btn_toggle_survey.custom_minimum_size = Vector2(0, 48.0)
-	survey_slot.add_child(btn_toggle_survey)
-
-	survey_body = VBoxContainer.new()
-	survey_body.name = "SurveyBody"
-	survey_body.visible = false
-	survey_body.add_theme_constant_override("separation", 12)
-	survey_slot.add_child(survey_body)
-
-	btn_toggle_survey.pressed.connect(func():
-		survey_body.visible = not survey_body.visible
-		btn_toggle_survey.text = "Quick feedback (optional) ▲" if survey_body.visible else "Quick feedback (optional) ▼"
-	)
-
-	# Row 1: "How did switching from builder to attacker feel?" (1..5: "Jarring" .. "Rewarding")
-	var row1 := VBoxContainer.new()
-	row1.name = "SurveyRow1"
-	var q1_lbl := Label.new()
-	q1_lbl.text = "How did switching from builder to attacker feel?"
-	row1.add_child(q1_lbl)
-	var r1_box := HBoxContainer.new()
-	r1_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	var lbl_j := Label.new()
-	lbl_j.text = "Jarring "
-	r1_box.add_child(lbl_j)
-	var bg1 := ButtonGroup.new()
-	for i in range(1, 6):
-		var b := Button.new()
-		b.text = str(i)
-		b.custom_minimum_size = Vector2(48.0, 48.0)
-		b.toggle_mode = true
-		b.button_group = bg1
-		if i == 3:
-			b.button_pressed = true
-		var val: int = i
-		b.pressed.connect(func(): survey_pivot = val)
-		r1_box.add_child(b)
-	var lbl_r := Label.new()
-	lbl_r.text = " Rewarding"
-	r1_box.add_child(lbl_r)
-	row1.add_child(r1_box)
-	survey_body.add_child(row1)
-
-	# Row 2: "Could you predict where pathogens would go?" (1..5)
-	var row2 := VBoxContainer.new()
-	row2.name = "SurveyRow2"
-	var q2_lbl := Label.new()
-	q2_lbl.text = "Could you predict where pathogens would go?"
-	row2.add_child(q2_lbl)
-	var r2_box := HBoxContainer.new()
-	r2_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	var bg2 := ButtonGroup.new()
-	for i in range(1, 6):
-		var b := Button.new()
-		b.text = str(i)
-		b.custom_minimum_size = Vector2(48.0, 48.0)
-		b.toggle_mode = true
-		b.button_group = bg2
-		if i == 3:
-			b.button_pressed = true
-		var val: int = i
-		b.pressed.connect(func(): survey_predictability = val)
-		r2_box.add_child(b)
-	row2.add_child(r2_box)
-	survey_body.add_child(row2)
-
-	# Row 3: "Did sharing ATP between base and army force interesting choices?" (1..5)
-	var row3 := VBoxContainer.new()
-	row3.name = "SurveyRow3"
-	var q3_lbl := Label.new()
-	q3_lbl.text = "Did sharing ATP between base and army force interesting choices?"
-	row3.add_child(q3_lbl)
-	var r3_box := HBoxContainer.new()
-	r3_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	var bg3 := ButtonGroup.new()
-	for i in range(1, 6):
-		var b := Button.new()
-		b.text = str(i)
-		b.custom_minimum_size = Vector2(48.0, 48.0)
-		b.toggle_mode = true
-		b.button_group = bg3
-		if i == 3:
-			b.button_pressed = true
-		var val: int = i
-		b.pressed.connect(func(): survey_economy = val)
-		r3_box.add_child(b)
-	row3.add_child(r3_box)
-	survey_body.add_child(row3)
-
-	# Row 4: "The map felt:" [Too small] [About right] [Too big]
-	var row4 := VBoxContainer.new()
-	row4.name = "SurveyRow4"
-	var q4_lbl := Label.new()
-	q4_lbl.text = "The map felt:"
-	row4.add_child(q4_lbl)
-	var r4_box := HBoxContainer.new()
-	r4_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	r4_box.add_theme_constant_override("separation", 8)
-	var bg4 := ButtonGroup.new()
-	var opts: Array[Dictionary] = [
-		{"label": "Too small", "val": "too_small"},
-		{"label": "About right", "val": "right"},
-		{"label": "Too big", "val": "too_big"}
-	]
-	for opt in opts:
-		var b := Button.new()
-		b.text = str(opt["label"])
-		b.custom_minimum_size = Vector2(100.0, 48.0)
-		b.toggle_mode = true
-		b.button_group = bg4
-		if str(opt["val"]) == "right":
-			b.button_pressed = true
-		var val_str: String = str(opt["val"])
-		b.pressed.connect(func(): survey_map_feel = val_str)
-		r4_box.add_child(b)
-	row4.add_child(r4_box)
-	survey_body.add_child(row4)
-
-	# Submit button
-	btn_submit_survey = Button.new()
-	btn_submit_survey.name = "BtnSubmitSurvey"
-	btn_submit_survey.text = "Submit feedback"
-	btn_submit_survey.custom_minimum_size = Vector2(0, 48.0)
-	btn_submit_survey.pressed.connect(_on_submit_survey_pressed)
-	survey_body.add_child(btn_submit_survey)
+	survey_card.setup(session.battle_count if session != null else 0)
 
 
-func _on_submit_survey_pressed() -> void:
-	if survey_submitted:
-		return
-	survey_submitted = true
-	if SessionLogger != null and SessionLogger.has_method("log_event"):
-		SessionLogger.log_event("survey", {
-			"pivot": survey_pivot,
-			"predictability": survey_predictability,
-			"economy": survey_economy,
-			"map_feel": survey_map_feel
-		})
-	if btn_submit_survey != null:
-		btn_submit_survey.disabled = true
-		btn_submit_survey.text = "Feedback submitted — thank you!"
-	_disable_survey_inputs()
+func _on_survey_answered(key: String, value: Variant) -> void:
+	_log("survey", {key: value, "question": key})
 
 
-func _disable_survey_inputs() -> void:
-	if survey_body == null:
-		return
-	_disable_buttons_recursive(survey_body)
+func _on_survey_skipped(key: String) -> void:
+	_log("survey_skipped", {"question": key})
 
 
-func _disable_buttons_recursive(node: Node) -> void:
-	for child in node.get_children():
-		if child is Button and child != btn_toggle_survey:
-			(child as Button).disabled = true
-		_disable_buttons_recursive(child)
-
-
-func _populate_export() -> void:
-	if export_slot == null:
-		return
-	for c in export_slot.get_children():
-		c.queue_free()
-
-	btn_export_logs = Button.new()
-	btn_export_logs.name = "BtnExportLogs"
-	btn_export_logs.text = "Export playtest logs"
-	btn_export_logs.custom_minimum_size = Vector2(0, 48.0)
-	btn_export_logs.pressed.connect(_on_export_logs_pressed)
-	export_slot.add_child(btn_export_logs)
+func _log(event: String, data: Dictionary) -> void:
+	var target: Node = logger if logger != null else SessionLogger
+	if target != null and target.has_method("log_event"):
+		target.call("log_event", event, data)
 
 
 func _on_export_logs_pressed() -> void:
@@ -882,26 +723,6 @@ static func export_playtest_logs() -> void:
 		OS.shell_open(ProjectSettings.globalize_path("user://telemetry"))
 	if SessionLogger != null and SessionLogger.has_method("log_event"):
 		SessionLogger.log_event("logs_exported", {})
-
-
-func _on_re_raid_pressed() -> void:
-	make_choice("re_raid")
-
-
-func _on_edit_base_pressed() -> void:
-	make_choice("edit_base")
-
-
-func _on_new_base_pressed() -> void:
-	make_choice("new_base")
-
-
-func _on_new_outbreak_pressed() -> void:
-	make_choice("new_outbreak")
-
-
-func _on_retry_base_pressed() -> void:
-	make_choice("retry_base")
 
 
 static func apply_choice(choice: String, session: Session, fsm: GameStateMachine = null) -> void:

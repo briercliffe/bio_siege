@@ -12,7 +12,7 @@ import json
 import os
 import sys
 import statistics
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def parse_telemetry_files(file_paths: List[str]) -> List[Dict[str, Any]]:
@@ -266,26 +266,23 @@ def generate_report(events: List[Dict[str, Any]], out_dir: str) -> None:
     ]
     correct_preds = sum(1 for p in predictions if p is True or str(p).lower() == "true")
 
+    # A survey event carries one question's answer (pivot, predictability, economy or map_feel), but older
+    # logs put all four keys in one event. Averages run over the events that actually carry each key.
     surveys = [e for e in events if e.get("event") == "survey"]
-    avg_pivot = (
-        sum(float(s.get("pivot", 0)) for s in surveys) / len(surveys)
-        if surveys
-        else 0.0
-    )
-    avg_pred = (
-        sum(float(s.get("predictability", 0)) for s in surveys) / len(surveys)
-        if surveys
-        else 0.0
-    )
-    avg_econ = (
-        sum(float(s.get("economy", 0)) for s in surveys) / len(surveys)
-        if surveys
-        else 0.0
-    )
+    skipped_surveys = [e for e in events if e.get("event") == "survey_skipped"]
+
+    def avg_of(key: str) -> Tuple[float, int]:
+        values = [float(s[key]) for s in surveys if key in s]
+        return (sum(values) / len(values) if values else 0.0), len(values)
+
+    avg_pivot, n_pivot = avg_of("pivot")
+    avg_pred, n_pred = avg_of("predictability")
+    avg_econ, n_econ = avg_of("economy")
     map_feels: Dict[str, int] = {}
     for s in surveys:
-        mf = str(s.get("map_feel", "unknown"))
-        map_feels[mf] = map_feels.get(mf, 0) + 1
+        if "map_feel" in s:
+            mf = str(s["map_feel"])
+            map_feels[mf] = map_feels.get(mf, 0) + 1
 
     lines = [
         "=== Bio Siege Telemetry Summary ===",
@@ -309,12 +306,13 @@ def generate_report(events: List[Dict[str, Any]], out_dir: str) -> None:
         f"Predictions Correct: {correct_preds} ({correct_preds / len(predictions) * 100:.1f}%)" if predictions else "Predictions Correct: 0 (0.0%)",
         "",
         f"Surveys Submitted: {len(surveys)}",
+        f"Surveys Skipped: {len(skipped_surveys)}",
     ])
     if surveys:
         lines.extend([
-            f"  - Avg Pivot Rating: {avg_pivot:.2f} / 5",
-            f"  - Avg Predictability: {avg_pred:.2f} / 5",
-            f"  - Avg Economy Rating: {avg_econ:.2f} / 5",
+            f"  - Avg Pivot Rating: {avg_pivot:.2f} / 5 ({n_pivot} answers)",
+            f"  - Avg Predictability: {avg_pred:.2f} / 5 ({n_pred} answers)",
+            f"  - Avg Economy Rating: {avg_econ:.2f} / 5 ({n_econ} answers)",
             f"  - Map Feel Breakdown: {map_feels}",
         ])
 

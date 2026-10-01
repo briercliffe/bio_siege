@@ -84,123 +84,173 @@ func test_post_battle_choices_and_last_launch() -> void:
 	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
 
 
-func test_results_phase_ui_attacker_win() -> void:
-	var session := Session.new(_config)
-	session.last_result = {
-		"outcome": "attacker",
-		"end_reason": "nucleus_destroyed",
-		"battle_s": 75.0,
-		"nucleus_hp": 0,
-		"nucleus_max_hp": 2000,
-		"structures_destroyed": 4,
-		"structures_total": 17,
-		"pathogens_killed": 31,
-		"pathogens_total": 40,
-		"first_contact_s": 8.0,
-		"first_destroyed_structure_id": 2,
-		"first_destroyed_structure_type": "mucous_wall"
-	}
-	session.last_launch = {
-		"base_atp": 400,
-		"army_atp": 300,
-		"unspent_atp": 300,
-	}
+const LOG_PATH: String = "user://telemetry/test_results_flow_log.jsonl"
+const MISSING_SETTINGS_PATH: String = "user://test_results_flow_no_settings.cfg"
 
+
+func _new_ui(session: Session, fsm: GameStateMachine = null) -> ResultsPhase:
 	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
-	assert_not_null(scene)
 	var ui: ResultsPhase = scene.instantiate() as ResultsPhase
 	add_child_autoqfree(ui)
-	ui.setup(session)
+	ui.setup(session, fsm)
+	return ui
 
-	# Title & Reason
-	assert_eq(ui.title_label.text, "INFECTION SUCCESSFUL")
-	assert_eq(ui.title_label.get_theme_color("font_color"), Color("#2ecc71"))
-	assert_eq(ui.reason_label.text, "The Nucleus was destroyed in 1:15.")
 
-	# Stat rows
-	assert_eq(ui.get_stat("Battle time"), "1:15")
+## A ResultsPhase whose survey and choice events go to a throwaway log file, never the real telemetry.
+func _logged_ui(session: Session) -> ResultsPhase:
+	_logger = load("res://src/telemetry/session_logger.gd").new()
+	_logger.settings_path = MISSING_SETTINGS_PATH
+	add_child_autoqfree(_logger)
+	_logger.set_custom_file_path(LOG_PATH)
+	var ui: ResultsPhase = _new_ui(session)
+	ui.logger = _logger
+	return ui
+
+
+func _logged_events() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var f: FileAccess = FileAccess.open(LOG_PATH, FileAccess.READ)
+	if f == null:
+		return out
+	for line: String in f.get_as_text().split("
+", false):
+		var parsed: Variant = JSON.parse_string(line)
+		if parsed is Dictionary:
+			out.append(parsed)
+	return out
+
+
+var _logger: Node = null
+
+
+func after_each() -> void:
+	if FileAccess.file_exists(LOG_PATH):
+		DirAccess.remove_absolute(LOG_PATH)
+
+
+func _fixture_result(end_reason: String) -> Dictionary:
+	return {
+		"outcome": "attacker" if end_reason == "nucleus_destroyed" else "defender",
+		"end_reason": end_reason,
+		"battle_s": 108.0,
+		"nucleus_hp": 0 if end_reason == "nucleus_destroyed" else 1140,
+		"nucleus_max_hp": 2000,
+		"structures_destroyed": 10,
+		"structures_total": 56,
+		"pathogens_killed": 4,
+		"pathogens_total": 8,
+		"first_contact_s": 8.0,
+		"first_destroyed_structure_id": 2,
+		"first_destroyed_structure_type": "mucous_wall",
+	}
+
+
+func test_title_kicker_and_badge_per_end_reason() -> void:
+	var session := Session.new(_config)
+	session.last_result = _fixture_result("nucleus_destroyed")
+	var ui: ResultsPhase = _new_ui(session)
+	assert_eq(ui.title_label.text, "Nucleus destroyed")
+	assert_eq(ui.kicker_label.get_theme_color("font_color"), Color("#2ecc71"))
+	assert_false(ui.badge.visible)
+
+	session.last_result = _fixture_result("timeout")
+	ui = _new_ui(session)
+	assert_eq(ui.title_label.text, "Defense held")
+	assert_eq(ui.kicker_label.get_theme_color("font_color"), Color("#8fb8ff"))
+	assert_true(ui.badge.visible)
+	assert_eq((ui.badge.get_child(0) as Label).text, "Time limit reached")
+
+	session.last_result = _fixture_result("all_pathogens_dead")
+	ui = _new_ui(session)
+	assert_eq(ui.title_label.text, "Defense held")
+	assert_eq(ui.kicker_label.get_theme_color("font_color"), Color("#8fb8ff"))
+	assert_false(ui.badge.visible)
+
+
+func test_subtitle_uses_result_and_config() -> void:
+	var session := Session.new(_config)
+	session.last_result = _fixture_result("nucleus_destroyed")
+	var ui: ResultsPhase = _new_ui(session)
+	assert_eq(ui.reason_label.text, "Your army broke through your own defense in 1:48.")
+
+	session.last_result = _fixture_result("timeout")
+	ui = _new_ui(session)
+	var timeout_s: int = _config.battle_timeout_ticks / _config.tick_rate
+	assert_eq(ui.reason_label.text, "The %d:%02d timer ran out with the Nucleus at 1140 HP." % [timeout_s / 60, timeout_s % 60])
+
+	session.last_result = _fixture_result("all_pathogens_dead")
+	session.last_result["battle_s"] = 72.0
+	ui = _new_ui(session)
+	assert_eq(ui.reason_label.text, "Every pathogen was eliminated after 1:12.")
+
+
+func test_timeout_subtitle_follows_config_timeout() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	cfg.battle_timeout_ticks = cfg.tick_rate * 90
+	var session := Session.new(cfg)
+	session.last_result = _fixture_result("timeout")
+	session.last_result["timeout_s"] = 180.0
+	var ui: ResultsPhase = _new_ui(session)
+	assert_true(ui.reason_label.text.begins_with("The 1:30 timer"))
+
+
+func test_stat_tiles_show_fixture_values() -> void:
+	var session := Session.new(_config)
+	session.last_result = _fixture_result("nucleus_destroyed")
+	var ui: ResultsPhase = _new_ui(session)
+	assert_eq(ui.tile_battle_time.label_text(), "Battle time")
+	assert_eq(ui.tile_battle_time.value_text(), "1:48")
+	assert_eq(ui.tile_nucleus_hp.label_text(), "Nucleus HP left")
+	assert_eq(ui.tile_nucleus_hp.value_text(), "0")
+	assert_eq(ui.tile_pathogens_alive.value_text(), "4")
+	assert_eq(ui.tile_pathogens_alive.suffix_text(), "of 8")
+	assert_eq(ui.tile_structures_lost.value_text(), "10")
+	assert_eq(ui.tile_structures_lost.suffix_text(), "of 56")
+	assert_eq(ui.get_stat("Battle time"), "1:48")
 	assert_eq(ui.get_stat("Nucleus HP remaining"), "0 / 2000")
-	assert_eq(ui.get_stat("Structures destroyed"), "4 / 17")
-	assert_eq(ui.get_stat("Pathogens lost"), "31 / 40")
+	assert_eq(ui.get_stat("Structures destroyed"), "10 / 56")
+	assert_eq(ui.get_stat("Pathogens lost"), "4 / 8")
 	assert_eq(ui.get_stat("First structure to fall"), "Mucous Wall")
 	assert_eq(ui.get_stat("Time to first contact"), "0:08")
 
-	# ATP Split Bar calculations: 400 + 300 + 300 = 1000 total
+
+func test_no_first_structure_stat() -> void:
+	var session := Session.new(_config)
+	session.last_result = _fixture_result("all_pathogens_dead")
+	session.last_result["first_contact_s"] = -1.0
+	session.last_result["first_destroyed_structure_id"] = 0
+	session.last_result["first_destroyed_structure_type"] = ""
+	var ui: ResultsPhase = _new_ui(session)
+	assert_eq(ui.get_stat("First structure to fall"), "none")
+	assert_eq(ui.get_stat("Time to first contact"), "never")
+	assert_eq(ui.final_summary_label.text, "No structure fell.")
+
+
+func test_atp_split_segments_match_widths() -> void:
+	var session := Session.new(_config)
+	session.last_result = _fixture_result("nucleus_destroyed")
+	session.last_launch = {"base_atp": 400, "army_atp": 300, "unspent_atp": 300}
+	var ui: ResultsPhase = _new_ui(session)
+
 	# 560 * 400 / 1000 = 224, 560 * 300 / 1000 = 168, 560 - 224 - 168 = 168
 	var split: Dictionary = ui.get_atp_split_widths()
 	assert_eq(split.get("base"), 224.0)
 	assert_eq(split.get("army"), 168.0)
 	assert_eq(split.get("unspent"), 168.0)
-	assert_eq(ui.bar_base.custom_minimum_size.x, 224.0)
-	assert_eq(ui.bar_army.custom_minimum_size.x, 168.0)
-	assert_eq(ui.bar_unspent.custom_minimum_size.x, 168.0)
-	assert_eq(ui.bar_base.color, Color("#1e5aa8"))
-	assert_eq(ui.bar_army.color, Color("#c0392b"))
-	assert_eq(ui.bar_unspent.color, Color("#7f8c8d"))
-	assert_eq(ui.legend_label.text, "Base 400 · Army 300 · Unspent 300")
-
-
-func test_results_phase_ui_defender_win_all_pathogens_dead() -> void:
-	var session := Session.new(_config)
-	session.last_result = {
-		"outcome": "defender",
-		"end_reason": "all_pathogens_dead",
-		"battle_s": 65.0,
-		"nucleus_hp": 1800,
-		"nucleus_max_hp": 2000,
-		"structures_destroyed": 1,
-		"structures_total": 10,
-		"pathogens_killed": 20,
-		"pathogens_total": 20,
-		"first_contact_s": -1.0,
-		"first_destroyed_structure_id": 0,
-		"first_destroyed_structure_type": ""
-	}
-	session.last_launch = {
-		"base_atp": 500,
-		"army_atp": 200,
-		"unspent_atp": 300,
-	}
-
-	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
-	var ui: ResultsPhase = scene.instantiate() as ResultsPhase
-	add_child_autoqfree(ui)
-	ui.setup(session)
-
-	assert_eq(ui.title_label.text, "IMMUNE RESPONSE WINS")
-	assert_eq(ui.title_label.get_theme_color("font_color"), Color("#48dbfb"))
-	assert_eq(ui.reason_label.text, "Every pathogen was eliminated after 1:05.")
-	assert_eq(ui.get_stat("First structure to fall"), "none")
-	assert_eq(ui.get_stat("Time to first contact"), "never")
-	assert_eq(ui.legend_label.text, "Base 500 · Army 200 · Unspent 300")
-
-
-func test_results_phase_ui_defender_win_timeout() -> void:
-	var session := Session.new(_config)
-	session.last_result = {
-		"outcome": "defender",
-		"end_reason": "timeout",
-		"battle_s": 180.0,
-		"timeout_s": 180.0,
-		"nucleus_hp": 1500,
-		"nucleus_max_hp": 2000,
-		"structures_destroyed": 2,
-		"structures_total": 10,
-		"pathogens_killed": 5,
-		"pathogens_total": 20,
-		"first_contact_s": 15.0,
-		"first_destroyed_structure_id": 1,
-		"first_destroyed_structure_type": "mucous_wall"
-	}
-
-	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
-	var ui: ResultsPhase = scene.instantiate() as ResultsPhase
-	add_child_autoqfree(ui)
-	ui.setup(session)
-
-	assert_eq(ui.title_label.text, "IMMUNE RESPONSE WINS")
-	assert_eq(ui.title_label.get_theme_color("font_color"), Color("#48dbfb"))
-	assert_eq(ui.reason_label.text, "Time ran out (3:00). The immune system held.")
+	var segs: Array[Dictionary] = ui.atp_track.segments
+	assert_eq(segs.size(), 3)
+	assert_almost_eq(float(segs[0]["frac"]) * ResultsPhase.SPLIT_BAR_WIDTH, split["base"] as float, 0.001)
+	assert_almost_eq(float(segs[1]["frac"]) * ResultsPhase.SPLIT_BAR_WIDTH, split["army"] as float, 0.001)
+	assert_almost_eq(float(segs[2]["frac"]) * ResultsPhase.SPLIT_BAR_WIDTH, split["unspent"] as float, 0.001)
+	assert_eq(segs[0]["color"], Color("#2e86de"))
+	assert_eq(segs[1]["color"], Color("#2ecc71"))
+	assert_eq(segs[2]["color"], Color("#8a7a7e"))
+	assert_eq(ui.atp_track.track_height, 28.0)
+	assert_eq(ui.atp_track.segment_gap, 2.0)
+	assert_eq(ui.atp_title_label.text, "Where your 1000 ATP went")
+	assert_eq((ui.legend_values["base"] as Label).text, "400")
+	assert_eq((ui.legend_values["army"] as Label).text, "300")
+	assert_eq((ui.legend_values["unspent"] as Label).text, "300")
 
 
 func test_button_clicks_emit_choice_made() -> void:
@@ -216,10 +266,21 @@ func test_button_clicks_emit_choice_made() -> void:
 	ui.setup(session, fsm)
 	watch_signals(ui)
 
-	# Button dimensions >= 48 px tall
-	assert_true(ui.btn_re_raid.custom_minimum_size.y >= 48.0)
-	assert_true(ui.btn_edit_base.custom_minimum_size.y >= 48.0)
-	assert_true(ui.btn_new_base.custom_minimum_size.y >= 48.0)
+	# Every tappable control is at least 48 px, and Re-raid at least 52 px tall.
+	for b: Button in [ui.btn_re_raid, ui.btn_edit_base, ui.btn_new_base, ui.btn_new_outbreak, ui.btn_retry_base,
+			ui.btn_export_logs, ui.survey_card.skip_button]:
+		assert_gte(b.custom_minimum_size.y, 48.0, b.name)
+		assert_gte(b.get_combined_minimum_size().x, 48.0, b.name)
+	for ab: Button in ui.survey_card.answer_buttons:
+		assert_gte(ab.custom_minimum_size.y, 48.0)
+		assert_gte(ab.custom_minimum_size.x, 48.0)
+	assert_gte(ui.btn_re_raid.custom_minimum_size.y, 52.0)
+	assert_eq(ui.btn_re_raid.text, "Re-raid")
+	assert_eq(ui.btn_re_raid.subtitle, "Same base, new army")
+	assert_eq(ui.btn_edit_base.text, "Edit base")
+	assert_eq(ui.btn_edit_base.subtitle, "Back to Synthesis")
+	assert_eq(ui.btn_new_base.text, "New base")
+	assert_eq(ui.btn_new_base.subtitle, "Reset to %d ATP" % int(_config.start_wallet.get("atp", 0)))
 
 	# Re-raid
 	ui.btn_re_raid.pressed.emit()
@@ -237,21 +298,6 @@ func test_button_clicks_emit_choice_made() -> void:
 	ui.btn_new_base.pressed.emit()
 	assert_signal_emitted_with_parameters(ui, "choice_made", ["new_base"])
 	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
-
-
-func test_telemetry_slots_exist_and_empty() -> void:
-	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
-	var ui: ResultsPhase = scene.instantiate() as ResultsPhase
-	add_child_autoqfree(ui)
-	ui._resolve_nodes()
-
-	assert_not_null(ui.survey_slot)
-	assert_true(ui.survey_slot is VBoxContainer)
-	assert_eq(ui.survey_slot.get_child_count(), 0)
-
-	assert_not_null(ui.export_slot)
-	assert_true(ui.export_slot is VBoxContainer)
-	assert_eq(ui.export_slot.get_child_count(), 0)
 
 
 func test_loop_stability_5_cycles() -> void:
@@ -309,83 +355,182 @@ func test_loop_stability_5_cycles() -> void:
 		assert_true(fsm.session.wallet.get_amount("atp") >= 0)
 
 
-func test_prediction_display_in_results() -> void:
+func test_final_state_summary_names_first_structure_and_prediction() -> void:
 	var session := Session.new(_config)
-	var fsm := GameStateMachine.new()
-	add_child_autoqfree(fsm)
-
-	# 1. No prediction made -> val_prediction should be invisible
-	session.prediction_structure_id = 0
+	var wall_id: int = session.grid.place("mucous_wall", Vector2i(3, 3), session.wallet)
+	var mac_id: int = session.grid.place("macrophage", Vector2i(7, 3), session.wallet)
 	session.last_result = {
 		"outcome": "attacker",
 		"end_reason": "nucleus_destroyed",
 		"battle_s": 45.0,
-		"first_destroyed_structure_id": 2,
-		"first_destroyed_structure_type": "macrophage"
+		"first_destroyed_structure_id": mac_id,
+		"first_destroyed_structure_type": "macrophage",
 	}
-	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
-	var ui_none: ResultsPhase = scene.instantiate() as ResultsPhase
-	add_child_autoqfree(ui_none)
-	ui_none.setup(session, fsm)
-	assert_false(ui_none.val_prediction.visible)
 
-	# 2. Correct prediction
-	session.prediction_structure_id = 2
-	var ui_correct: ResultsPhase = scene.instantiate() as ResultsPhase
-	add_child_autoqfree(ui_correct)
-	ui_correct.setup(session, fsm)
-	assert_true(ui_correct.val_prediction.visible)
-	assert_true(ui_correct.val_prediction.text.contains("✓ correct"))
-	assert_eq(ui_correct.val_prediction.get_theme_color("font_color"), Color("#2ecc71"))
+	# No prediction: only what fell first.
+	session.prediction_structure_id = 0
+	var ui: ResultsPhase = _new_ui(session)
+	assert_eq(ui.final_summary_label.text, "The Macrophage fell first.")
+	assert_eq(ui.get_stat("Prediction"), "")
 
-	# 3. Incorrect prediction
-	session.prediction_structure_id = 1 # Predicted 1, but 2 fell first
-	var ui_wrong: ResultsPhase = scene.instantiate() as ResultsPhase
-	add_child_autoqfree(ui_wrong)
-	ui_wrong.setup(session, fsm)
-	assert_true(ui_wrong.val_prediction.visible)
-	assert_true(ui_wrong.val_prediction.text.contains("✗ it was the Macrophage"))
-	assert_eq(ui_wrong.val_prediction.get_theme_color("font_color"), Color("#e74c3c"))
+	# Correct prediction.
+	session.prediction_structure_id = mac_id
+	ui = _new_ui(session)
+	assert_eq(ui.final_summary_label.text, "The Macrophage fell first. You predicted it ✓")
+	assert_eq(ui.get_stat("Prediction"), "Your prediction: ✓ correct")
+
+	# Wrong prediction names the predicted structure.
+	session.prediction_structure_id = wall_id
+	ui = _new_ui(session)
+	assert_eq(ui.final_summary_label.text, "The Macrophage fell first. You predicted the Mucous Wall ✗")
+	assert_eq(ui.get_stat("Prediction"), "Your prediction: ✗ it was the Macrophage")
 
 
-func test_survey_slot_and_submission() -> void:
+func _session_with_count(count: int) -> Session:
 	var session := Session.new(_config)
-	var fsm := GameStateMachine.new()
-	add_child_autoqfree(fsm)
-
-	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
-	var ui: ResultsPhase = scene.instantiate() as ResultsPhase
-	add_child_autoqfree(ui)
-	ui.setup(session, fsm)
-
-	assert_not_null(ui.btn_toggle_survey)
-	assert_true(ui.btn_toggle_survey.custom_minimum_size.y >= 48.0)
-	assert_not_null(ui.survey_body)
-	assert_not_null(ui.btn_submit_survey)
-	assert_true(ui.btn_submit_survey.custom_minimum_size.y >= 48.0)
-	assert_false(ui.btn_submit_survey.disabled)
-
-	# Submit feedback
-	ui.btn_submit_survey.pressed.emit()
-	assert_true(ui.survey_submitted)
-	assert_true(ui.btn_submit_survey.disabled)
-	assert_true(ui.btn_submit_survey.text.contains("submitted"))
+	session.battle_count = count
+	return session
 
 
-func test_export_slot_button() -> void:
-	var session := Session.new(_config)
-	var fsm := GameStateMachine.new()
-	add_child_autoqfree(fsm)
+func test_survey_rotation_by_battle_count() -> void:
+	var keys: Array[String] = ["pivot", "map_feel", "predictability", "economy", "pivot"]
+	for count: int in range(keys.size()):
+		var ui: ResultsPhase = _new_ui(_session_with_count(count))
+		assert_eq(ui.survey_card.question_key, keys[count], "battle_count %d" % count)
+	var pivot_ui: ResultsPhase = _new_ui(_session_with_count(0))
+	assert_eq(pivot_ui.survey_card.answer_buttons.size(), 5)
+	assert_eq(pivot_ui.survey_card.low_label.text, "Jarring")
+	assert_eq(pivot_ui.survey_card.high_label.text, "Smooth")
+	assert_eq(pivot_ui.survey_card.answer_buttons[0].custom_minimum_size, Vector2(58.0, 50.0))
+	var map_ui: ResultsPhase = _new_ui(_session_with_count(1))
+	assert_eq(map_ui.survey_card.answer_buttons.size(), 3)
+	assert_eq(map_ui.survey_card.answer_buttons[0].text, "Empty")
+	assert_eq(map_ui.survey_card.answer_buttons[1].text, "Just right")
+	assert_eq(map_ui.survey_card.answer_buttons[2].text, "Cramped")
+	assert_eq(map_ui.survey_card.answer_buttons[0].custom_minimum_size, Vector2(110.0, 52.0))
 
-	var scene: PackedScene = load("res://src/game/phases/results_phase.tscn")
-	var ui: ResultsPhase = scene.instantiate() as ResultsPhase
-	add_child_autoqfree(ui)
-	ui.setup(session, fsm)
 
+func test_survey_answer_logs_one_key_and_shows_thanks() -> void:
+	var ui: ResultsPhase = _logged_ui(_session_with_count(0))
+	var card: ResultsSurveyCard = ui.survey_card
+	assert_eq(card.question_label.text, "How did switching from builder to attacker feel?")
+	card.answer_button(4).pressed.emit()
+
+	var surveys: Array[Dictionary] = []
+	for e: Dictionary in _logged_events():
+		if e.get("event") == "survey":
+			surveys.append(e)
+	assert_eq(surveys.size(), 1)
+	assert_eq(int(surveys[0].get("pivot", -1)), 4)
+	assert_eq(surveys[0].get("question"), "pivot")
+	assert_false(surveys[0].has("map_feel"))
+	assert_false(surveys[0].has("predictability"))
+	assert_false(surveys[0].has("economy"))
+
+	assert_eq(card.question_label.text, "Thanks!")
+	assert_true(card.answer_button(4).chosen)
+	assert_false(card.answer_button(2).chosen)
+	assert_false(card.skip_button.visible)
+
+	# A second tap does not log a second answer.
+	card.answer_button(2).pressed.emit()
+	var count: int = 0
+	for e: Dictionary in _logged_events():
+		if e.get("event") == "survey":
+			count += 1
+	assert_eq(count, 1)
+
+
+func test_survey_pill_answer_logs_map_feel_word() -> void:
+	var ui: ResultsPhase = _logged_ui(_session_with_count(1))
+	ui.survey_card.answer_button("just_right").pressed.emit()
+	var found: Dictionary = {}
+	for e: Dictionary in _logged_events():
+		if e.get("event") == "survey":
+			found = e
+	assert_eq(found.get("map_feel"), "just_right")
+	assert_eq(found.get("question"), "map_feel")
+
+
+func test_survey_skip_logs_skipped_and_hides_card() -> void:
+	var ui: ResultsPhase = _logged_ui(_session_with_count(1))
+	ui.survey_card.skip_button.pressed.emit()
+	assert_false(ui.survey_card.visible)
+	var skipped: Array[Dictionary] = []
+	var answered: int = 0
+	for e: Dictionary in _logged_events():
+		if e.get("event") == "survey_skipped":
+			skipped.append(e)
+		elif e.get("event") == "survey":
+			answered += 1
+	assert_eq(skipped.size(), 1)
+	assert_eq(skipped[0].get("question"), "map_feel")
+	assert_eq(answered, 0)
+
+
+func test_export_button() -> void:
+	var ui: ResultsPhase = _new_ui(Session.new(_config))
 	assert_not_null(ui.btn_export_logs)
-	assert_true(ui.btn_export_logs.custom_minimum_size.y >= 48.0)
+	assert_gte(ui.btn_export_logs.custom_minimum_size.y, 48.0)
 	assert_eq(ui.btn_export_logs.text, "Export playtest logs")
 
+
+func test_final_island_shows_only_alive_structures() -> void:
+	var session := Session.new(_config)
+	session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
+	session.grid.place("mucous_wall", Vector2i(7, 3), session.wallet)
+	var layout: Array[Dictionary] = session.grid.to_layout()
+	session.battle_setup = BattleSetup.create(layout, [], session.seed)
+	var nucleus_idx: int = -1
+	for i: int in range(layout.size()):
+		if layout[i]["type"] == "nucleus":
+			nucleus_idx = i
+	assert_gte(nucleus_idx, 0)
+
+	# Nucleus destroyed: only the surviving non-core structures remain.
+	var alive: Array = []
+	for i: int in range(layout.size()):
+		if layout[i]["type"] == "macrophage":
+			alive.append(i + 1)
+	var grid: GridModel = ResultsPhase.build_final_grid(_config, layout, alive)
+	assert_eq(grid.structures().size(), 1)
+	assert_eq(grid.structures()[0].type_id, "macrophage")
+	assert_null(grid.find_core())
+
+	# Nucleus alive: it is kept at its raid origin.
+	alive.append(nucleus_idx + 1)
+	grid = ResultsPhase.build_final_grid(_config, layout, alive)
+	assert_eq(grid.structures().size(), 2)
+	assert_not_null(grid.find_core())
+	assert_eq(grid.find_core().origin, layout[nucleus_idx]["origin"])
+
+	# The phase builds its thumbnail from last_result.alive_structure_ids.
+	session.last_result = _fixture_result("timeout")
+	session.last_result["alive_structure_ids"] = [nucleus_idx + 1]
+	var ui: ResultsPhase = _new_ui(session)
+	assert_not_null(ui.island_grid)
+	assert_eq(ui.island_grid.structures().size(), 1)
+	assert_not_null(ui.island_view)
+	assert_eq(ui.island_view.get_parent(), ui.island_holder)
+
+
+func test_infection_result_records_alive_structure_ids() -> void:
+	var session := Session.new(_config)
+	session.grid.place("macrophage", Vector2i(3, 3), session.wallet)
+	var layout: Array[Dictionary] = session.grid.to_layout()
+	session.battle_setup = BattleSetup.create(layout, [], session.seed)
+	var sim: BattleSim = SimFixtures.make_sim(layout, [], session.seed, _config)
+	sim.run_to_end()
+	var inf := InfectionPhase.new()
+	add_child_autoqfree(inf)
+	inf.session = session
+	inf._on_battle_finished(sim)
+	var ids: Array = session.last_result["alive_structure_ids"]
+	var expected: Array[int] = []
+	for st: StructureState in sim.structures:
+		if st.alive:
+			expected.append(st.id)
+	assert_eq(ids, expected)
 
 
 func _score_result(outcome: String) -> Dictionary:
@@ -407,7 +552,7 @@ func test_score_hidden_when_flag_off() -> void:
 	add_child_autoqfree(ui)
 	ui.setup(session)
 	assert_eq(ui.get_stat("score"), "")
-	assert_true(ui.score_label == null or not ui.score_label.visible)
+	assert_false(ui.score_label.visible)
 
 
 func test_score_shown_when_flag_on() -> void:
@@ -566,9 +711,10 @@ func test_outbreak_ui_absent_when_flag_off() -> void:
 	session.last_result = _score_result("attacker")
 	var ui: ResultsPhase = _results_ui(session)
 	assert_false(ui.outbreak_label.visible)
-	assert_eq(ui.btn_re_raid.text, "Raid the same base again")
-	assert_eq(ui.btn_edit_base.text, "Go back and change your defenses")
-	assert_eq(ui.btn_new_base.text, "Start over with %d ATP" % int(_config.start_wallet.get("atp", 0)))
+	assert_eq(ui.btn_re_raid.text, "Re-raid")
+	assert_eq(ui.btn_edit_base.text, "Edit base")
+	assert_eq(ui.btn_new_base.text, "New base")
+	assert_eq(ui.btn_new_base.subtitle, "Reset to %d ATP" % int(_config.start_wallet.get("atp", 0)))
 	assert_false(ui.btn_new_outbreak.visible)
 	assert_false(ui.btn_retry_base.visible)
 	assert_eq(ui.get_stat("outbreak_total"), "")
@@ -583,8 +729,10 @@ func test_outbreak_active_run_relabels_buttons() -> void:
 	var ui: ResultsPhase = _results_ui(session)
 	assert_true(ui.outbreak_label.visible)
 	assert_eq(ui.outbreak_label.text, "Generation 2 cleared · +760 · Run total 1,480")
-	assert_eq(ui.btn_re_raid.text, "Next generation: raid again")
-	assert_eq(ui.btn_edit_base.text, "Next generation: edit base first")
+	assert_eq(ui.btn_re_raid.text, "Next generation")
+	assert_eq(ui.btn_re_raid.subtitle, "Raid again")
+	assert_eq(ui.btn_edit_base.text, "Next generation")
+	assert_eq(ui.btn_edit_base.subtitle, "Edit base first")
 	assert_eq(ui.btn_new_base.text, "Abandon outbreak")
 	assert_true(ui.btn_re_raid.visible)
 	assert_true(ui.btn_edit_base.visible)

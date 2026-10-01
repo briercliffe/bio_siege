@@ -77,6 +77,32 @@ class TestTelemetryReport(unittest.TestCase):
             self.assertIn("Surveys Submitted: 1", text)
 
 
+class TestSurveyEvents(unittest.TestCase):
+    """The Results screen logs one question per survey event (and survey_skipped when skipped)."""
+
+    def test_one_key_per_event_and_skips(self):
+        events = [
+            {"t_ms": 1, "event": "survey", "pivot": 4, "question": "pivot"},
+            {"t_ms": 2, "event": "survey", "pivot": 2, "question": "pivot"},
+            {"t_ms": 3, "event": "survey", "map_feel": "just_right", "question": "map_feel"},
+            {"t_ms": 4, "event": "survey", "economy": 5, "question": "economy"},
+            {"t_ms": 5, "event": "survey_skipped", "question": "predictability"},
+        ]
+        out_dir = tempfile.mkdtemp()
+        try:
+            generate_report(events, out_dir)
+            with open(os.path.join(out_dir, "summary.txt"), "r", encoding="utf-8") as f:
+                text = f.read()
+        finally:
+            shutil.rmtree(out_dir, ignore_errors=True)
+        self.assertIn("Surveys Submitted: 4", text)
+        self.assertIn("Surveys Skipped: 1", text)
+        self.assertIn("Avg Pivot Rating: 3.00 / 5 (2 answers)", text)
+        self.assertIn("Avg Predictability: 0.00 / 5 (0 answers)", text)
+        self.assertIn("Avg Economy Rating: 5.00 / 5 (1 answers)", text)
+        self.assertIn("{'just_right': 1}", text)
+
+
 class TestIdentityMetrics(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
