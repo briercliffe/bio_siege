@@ -3,7 +3,8 @@ extends Node2D
 
 ## Every transient and screen-space battle effect (issue #71, docs/MODEL_PIPELINE_PLAN.md section 3.4):
 ## antibody shots, hit sparks, Macrophage vesicles, puffs, health bars and intent lines in screen space, and
-## the ground decals (scorch and splash rings) that UnitLayer paints under its sprites through draw_ground().
+## the ground decals that UnitLayer paints under its sprites: scorch through draw_scorch() before the tower
+## plates, splash rings through draw_splashes() after them.
 ## Effect data lives in an EffectModel. Read-only with respect to the sim.
 ##
 ## Each pass is one triangle-array or multiline command however many effects are on screen (every draw
@@ -274,6 +275,10 @@ var reduce_flashes: bool = false:
 var last_intent_dashes: int = 0
 ## Health bars drawn last frame.
 var last_bar_count: int = 0
+## Colours of the newest splash border and puff built, and the trail points built, last frame (for tests).
+var last_splash_border: Color = Color.TRANSPARENT
+var last_puff_color: Color = Color.TRANSPARENT
+var last_trail_points: int = 0
 
 var _fx: TriBatch = TriBatch.new()
 var _bars: TriBatch = TriBatch.new()
@@ -364,12 +369,28 @@ func _alpha() -> float:
 
 # --- ground pass (called by UnitLayer before its sprites) ---------------------
 
-func draw_ground(ci: CanvasItem) -> void:
-	if not build_ground() or (_scorch.ni == 0 and _splash.ni == 0):
+## Scorch goes down before the tower plates, so its 3.6 T disc never darkens a neighbouring live tower's plate.
+func draw_scorch(ci: CanvasItem) -> void:
+	if sim == null or projection == null or model == null:
+		return
+	if _scorch_version != model.scorch_version:
+		_rebuild_scorch()
+	_flush_ground(ci, _scorch)
+
+
+func draw_splashes(ci: CanvasItem) -> void:
+	if sim == null or projection == null or model == null:
+		return
+	_build_splashes()
+	_flush_ground(ci, _splash)
+
+
+## An empty batch is skipped with its transform commands; its index tail is already zero.
+func _flush_ground(ci: CanvasItem, batch: TriBatch) -> void:
+	if batch.ni == 0:
 		return
 	ci.draw_set_transform_matrix(projection.ground_transform())
-	_scorch.flush(ci)
-	_splash.flush(ci)
+	batch.flush(ci)
 	ci.draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
@@ -401,6 +422,7 @@ func _rebuild_scorch() -> void:
 ## Splash rings in ground tiles (the layer draws them under the ground transform).
 func _build_splashes() -> void:
 	_splash.begin()
+	last_splash_border = Color.TRANSPARENT
 	var now: float = _now()
 	var dim: float = REDUCED_ALPHA if reduce_flashes else 1.0
 	var border_t: float = SPLASH_BORDER_K / (K_PX * projection.scale)
@@ -414,7 +436,8 @@ func _build_splashes() -> void:
 		var c: Vector2 = model.pos_a[s]
 		if not reduce_flashes:
 			_splash.disc(c, r, r, Color(SPLASH_FILL, SPLASH_FILL.a * fade), _ground)
-		_splash.ring(c, maxf(r - border_t, 0.0), r, Color(SPLASH_BORDER, SPLASH_BORDER_ALPHA * fade), _ground)
+		last_splash_border = Color(SPLASH_BORDER, SPLASH_BORDER_ALPHA * fade)
+		_splash.ring(c, maxf(r - border_t, 0.0), r, last_splash_border, _ground)
 
 
 # --- screen pass --------------------------------------------------------------
@@ -451,6 +474,8 @@ func _build_fx() -> void:
 	var now: float = _now()
 	var alpha: float = _alpha()
 	var dim: float = REDUCED_ALPHA if reduce_flashes else 1.0
+	last_puff_color = Color.TRANSPARENT
+	last_trail_points = 0
 	for i: int in range(model.transient_count()):
 		var s: int = model.slot(i)
 		match model.kind[s]:
@@ -458,7 +483,8 @@ func _build_fx() -> void:
 				var u: float = model.progress(s, now)
 				var d: float = lerpf(PUFF_FROM_T, PUFF_TO_T, u) * t * 0.5
 				var c: Vector2 = projection.ground_to_screen(model.pos_a[s]) - Vector2(0.0, model.radius[s] * 0.5 * t)
-				_fx.disc(c, d, d * PUFF_SQUASH, Color(PUFF_COLOR, PUFF_COLOR.a * (1.0 - u) * dim), _disc)
+				last_puff_color = Color(PUFF_COLOR, PUFF_COLOR.a * (1.0 - u) * dim)
+				_fx.disc(c, d, d * PUFF_SQUASH, last_puff_color, _disc)
 			EffectModel.Kind.SPARK:
 				var u: float = model.progress(s, now)
 				var c: Vector2 = projection.ground_to_screen(model.pos_a[s]) - Vector2(0.0, model.radius[s] * 0.5 * t)
@@ -495,6 +521,7 @@ func _add_shot(s: int, now: float, alpha: float, t: float) -> void:
 			var f: float = float(i - 1) / float(TRAIL_POINTS - 1)
 			var tr: float = r * (1.0 - 0.15 * float(i))
 			_fx.disc(p, tr, tr, Color(SHOT_GLOW, lerpf(TRAIL_ALPHA_HI, TRAIL_ALPHA_LO, f)), _disc)
+			last_trail_points += 1
 	var head: Vector2 = projection.ground_to_screen(snapshots.projectile_ground(id, alpha)) + lift
 	for g: int in range(SHOT_GLOW_SCALES.size()):
 		var gr: float = r * SHOT_GLOW_SCALES[g]

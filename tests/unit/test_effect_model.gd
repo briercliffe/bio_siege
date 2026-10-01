@@ -221,3 +221,53 @@ func test_layer_builds_shots_bars_and_ground_decals() -> void:
 	layer.reduce_flashes = true
 	layer.build_ground()
 	assert_lt(layer.ground_triangles().y, tris.y, "no splash fill with Reduce flashes on")
+
+
+func _layer(model: EffectModel, snaps: BattleSnapshotBuffer, reduce: bool) -> EffectLayer:
+	var runner := BattleRunner.new()
+	autofree(runner)
+	runner.alpha = 0.5
+	var layer := EffectLayer.new()
+	add_child_autofree(layer)
+	layer.setup(model, sim, IsoProjection.new(14.0, Vector2.ZERO), snaps, runner, reduce)
+	return layer
+
+
+func test_reduce_flashes_halves_puff_and_splash_alpha() -> void:
+	var model := EffectModel.new()
+	model.on_event({"type": SimEvents.PATHOGEN_KILLED, "tick": sim.tick - 1, "unit_id": unit.id, "unit_type": "test_blob"}, sim)
+	model.on_event(_splash(sim.tick - 1, 2000), sim)
+	var layer: EffectLayer = _layer(model, null, false)
+	layer.build_frame()
+	layer.build_ground()
+	var puff: Color = layer.last_puff_color
+	var ring: Color = layer.last_splash_border
+	assert_gt(puff.a, 0.0)
+	assert_gt(ring.a, 0.0)
+	var full_tris: int = layer.ground_triangles().y
+
+	layer.reduce_flashes = true
+	layer.build_frame()
+	layer.build_ground()
+	assert_almost_eq(layer.last_puff_color.a, puff.a * EffectLayer.REDUCED_ALPHA, 0.0001, "puff at half alpha")
+	assert_almost_eq(layer.last_splash_border.a, ring.a * EffectLayer.REDUCED_ALPHA, 0.0001, "splash ring at half alpha")
+	assert_eq(EffectLayer.REDUCED_ALPHA, 0.5)
+	assert_lt(layer.ground_triangles().y, full_tris, "and no splash fill")
+
+
+func test_shot_trail_appears_once_the_shot_has_flown() -> void:
+	var snaps := BattleSnapshotBuffer.new()
+	var proj := ProjectileState.create(9, bcell.id, unit.id, bcell.center, 500, 0)
+	sim.projectiles.append(proj)
+	snaps.capture(sim)
+	var model := EffectModel.new()
+	model.on_event(_spawn(sim.tick - 1, 9), sim)
+	var layer: EffectLayer = _layer(model, snaps, false)
+	layer.build_frame()
+	assert_eq(layer.last_trail_points, 0, "no trail before the shot has a previous position")
+
+	proj.pos += Vector2i(500, 0)
+	snaps.capture(sim)
+	sim.tick += 2
+	layer.build_frame()
+	assert_eq(layer.last_trail_points, EffectLayer.TRAIL_POINTS, "a flown shot draws its full trail")

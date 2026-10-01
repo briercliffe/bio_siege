@@ -186,6 +186,8 @@ func _on_tower_fired(ev: Dictionary, sim: BattleSim, t: int) -> void:
 	var ring: int = find(Kind.SPLASH, sid)
 	if ring >= 0 and start[ring] == t:
 		to = pos_a[ring]
+		# The sim applies the splash damage on the fire tick, so hit flashes, bars and deaths lead the ring
+		# by VESICLE_TICKS.
 		start[ring] = t + VESICLE_TICKS
 	else:
 		var p: PathogenState = sim.pathogen(int(ev.get("target_unit_id", 0)))

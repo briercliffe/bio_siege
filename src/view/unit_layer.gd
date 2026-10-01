@@ -63,7 +63,8 @@ var _breached: Dictionary = {}
 var _expired: Array[int] = []
 
 var driver: AnimDriver = AnimDriver.new()
-## Its ground decals (scorch, splash rings) are painted in this layer's ground pass, under the sprites.
+## Its ground decals are painted in this layer's ground pass, under the sprites: scorch before the plates,
+## splash rings after them.
 var effects: EffectLayer = null
 ## Softer hit flashes and shake (Settings: Reduce screen flashes). Set by the phase; kept across setup().
 var reduce_flashes: bool = false:
@@ -342,6 +343,8 @@ func _wall_part_pose(s: StructureState) -> ModelPose:
 
 
 func _draw_ground_decals() -> void:
+	if effects != null:
+		effects.draw_scorch(self)
 	draw_set_transform_matrix(projection.ground_transform())
 	for s: StructureState in sim.structures:
 		if not s.alive or s.def == null or s.def.has_tag("wall"):
@@ -355,7 +358,7 @@ func _draw_ground_decals() -> void:
 			draw_circle(c, PLATE_TOWER_RADIUS, PLATE_FILL)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 	if effects != null:
-		effects.draw_ground(self)
+		effects.draw_splashes(self)
 	var goo_ticks: float = float(AnimDriver.death_ticks_for(WALL_TYPE_ID))
 	for sid: int in _goo:
 		var gs: StructureState = sim.structure(sid)
