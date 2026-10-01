@@ -38,6 +38,25 @@ static func buy(cfg: GameConfig, profile_upgrades: Dictionary, id: String, walle
 	return true
 
 
+## Receptor slots a player tower pool gets on top of the config's (receptor_slot upgrade).
+static func receptor_slot_bonus(cfg: GameConfig, profile_upgrades: Dictionary) -> int:
+	return _bonus(cfg, profile_upgrades, "receptor_slot")
+
+
+## Applies one level of the receptor_slot upgrade to the player's tower (structure-type) pools: each gets
+## `per_level` more receptor slots. A missing pool is created wild first. `pools` is type_id -> BreedPool.
+static func widen_receptor_pools(cfg: GameConfig, pools: Dictionary) -> void:
+	var per_level: int = int((cfg.upgrade_defs.get("receptor_slot", {}) as Dictionary).get("per_level", 0))
+	for type_id: String in cfg.coevo_types:
+		if not cfg.structures.has(type_id):
+			continue
+		var pool: BreedPool = pools.get(type_id, null) as BreedPool
+		if pool == null:
+			pool = BreedPool.wild_pool(type_id, cfg)
+			pools[type_id] = pool
+		pool.widen_receptors(per_level)
+
+
 ## Immune-memory slots for this base: the config value plus `per_level` for each memory_slot level.
 static func memory_slots(cfg: GameConfig, profile_upgrades: Dictionary) -> int:
 	return cfg.memory_slots + _bonus(cfg, profile_upgrades, "memory_slot")

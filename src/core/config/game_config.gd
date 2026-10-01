@@ -7,8 +7,8 @@ const KNOWN_TAGS: Array[String] = [
 const KNOWN_CURRENCIES: Array[String] = [
 	"atp", "amino_acids", "dna"
 ]
-## The upgrade ids the "upgrades" block may name (#169 adds receptor_slot).
-const KNOWN_UPGRADES: Array[String] = ["memory_slot", "analysis_speed", "memory_retention"]
+## The upgrade ids the "upgrades" block may name.
+const KNOWN_UPGRADES: Array[String] = ["memory_slot", "analysis_speed", "memory_retention", "receptor_slot"]
 const KNOWN_SHAPES: Array[String] = [
 	"square", "rounded_square", "circle", "triangle", "diamond", "lander", "cluster"
 ]
@@ -39,7 +39,7 @@ var loot_amino_structure_pct: int = 0
 var loot_amino_kill_pct: int = 0
 var loot_dna_per_win: int = 0
 var presenter_record_interval_ticks: int = 20 # Dendritic Cells record antigens once per second (#167)
-## Amino Acid base upgrades (#168): id -> {display_name, costs: Array[Dictionary], per_level}. #169 adds receptor_slot.
+## Amino Acid base upgrades (#168, #169): id -> {display_name, costs: Array[Dictionary], per_level}.
 var upgrade_defs: Dictionary = {}
 var ai_opponents_shown: int = 0 # AI base generator (#160)
 var ai_tower_weights: Dictionary = {} # structure id -> weight

@@ -38,9 +38,11 @@ func duplicate_genome() -> Genome:
 func to_dict() -> Dictionary:
 	return {"antigens": antigens.duplicate(), "receptors": receptors.duplicate()}
 
-## Builds a genome of the configured slot counts. Unknown ids, non-strings and extra entries are dropped.
-static func from_slots(antigens_in: Array, receptors_in: Array, cfg: GameConfig) -> Genome:
-	var g: Genome = Genome.wild(cfg.coevo_antigen_slots, cfg.coevo_receptor_slots)
+## Builds a genome of the configured slot counts, or of explicit ones (a widened pool, #169; -1 = config).
+## Unknown ids, non-strings and extra entries are dropped.
+static func from_slots(antigens_in: Array, receptors_in: Array, cfg: GameConfig, antigen_slots: int = -1, receptor_slots: int = -1) -> Genome:
+	var g: Genome = Genome.wild(antigen_slots if antigen_slots >= 0 else cfg.coevo_antigen_slots,
+			receptor_slots if receptor_slots >= 0 else cfg.coevo_receptor_slots)
 	for i: int in range(mini(antigens_in.size(), g.antigens.size())):
 		var v: Variant = antigens_in[i]
 		if typeof(v) == TYPE_STRING and cfg.coevo_antigen_name.has(v):

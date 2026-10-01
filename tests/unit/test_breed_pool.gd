@@ -195,3 +195,94 @@ func test_a_bias_uses_as_many_random_numbers_as_none() -> void:
 	# Antigen slots are not biased.
 	for i: int in range(a.genomes.size()):
 		assert_eq(a.genomes[i].antigens, b.genomes[i].antigens)
+
+
+# --- receptor slots (#169) ---
+
+func test_widen_receptors_adds_an_empty_slot_and_keeps_alleles() -> void:
+	var p: BreedPool = _two_parent_pool(0)
+	assert_eq(p.receptor_slots, 2)
+	p.widen_receptors(1)
+	assert_eq(p.receptor_slots, 3)
+	assert_eq(p.genomes[0].receptors, ["binder_a", "binder_b", ""] as Array[String])
+	assert_eq(p.genomes[1].receptors, ["clamp_a", "clamp_b", ""] as Array[String])
+	p.widen_receptors(0)
+	p.widen_receptors(-2)
+	assert_eq(p.receptor_slots, 3, "it never shrinks")
+
+
+func test_a_default_breed_is_ce01_exactly() -> void:
+	var a: BreedPool = _two_parent_pool(50)
+	var b: BreedPool = _two_parent_pool(50)
+	b.widen_receptors(0)
+	var rng_a := Rng.new(99)
+	var rng_b := Rng.new(99)
+	a.breed(rng_a, cfg)
+	b.breed(rng_b, cfg)
+	assert_eq(a.to_dict(), b.to_dict())
+	assert_eq(rng_a.randi(), rng_b.randi())
+
+
+func test_a_widened_pool_breeds_three_receptors_and_may_fill_the_third() -> void:
+	cfg.coevo_mutation_pct = 100
+	var filled_third: bool = false
+	for seed: int in range(1, 30):
+		var p: BreedPool = _pool()
+		p.widen_receptors(1)
+		p.fitness[0] = 1
+		p.breed(Rng.new(seed), cfg)
+		for g: Genome in p.genomes:
+			assert_eq(g.receptors.size(), 3)
+			assert_eq(g.antigens.size(), 2)
+			filled_third = filled_third or g.receptors[2] != ""
+	assert_true(filled_third, "a mutation can land in the third receptor slot")
+
+
+func test_to_dict_omits_default_slot_counts() -> void:
+	var p: BreedPool = _two_parent_pool(0)
+	assert_false(p.to_dict().has("receptor_slots"))
+	assert_false(p.to_dict().has("antigen_slots"))
+	p.widen_receptors(1)
+	assert_eq(p.to_dict()["receptor_slots"], 3)
+
+
+func test_a_widened_pool_round_trips_through_json() -> void:
+	var p: BreedPool = _two_parent_pool(0)
+	p.widen_receptors(1)
+	p.genomes[2] = Genome.from_slots(["wall_a", ""], ["hook_a", "", "latch_b"], cfg, 2, 3)
+	p.generation = 4
+	var json: Variant = JSON.parse_string(JSON.stringify(p.to_dict()))
+	var q: BreedPool = BreedPool.from_dict(json, "rhinovirus", cfg)
+	assert_eq(q.receptor_slots, 3)
+	assert_eq(q.generation, 4)
+	assert_eq(q.genomes[2].receptors, ["hook_a", "", "latch_b"] as Array[String])
+	assert_eq(q.to_dict(), p.to_dict())
+	# And through a setup's populations and the sim.
+	var setup := BattleSetup.create([{"type": "nucleus", "origin": Vector2i(18, 18)}], [], 1, {}, {"rhinovirus": p.to_dict()})
+	assert_eq(setup.validate(_load_coevo_cfg()).size(), 0)
+
+
+func _load_coevo_cfg() -> GameConfig:
+	cfg.feature_flags["coevolution"] = true
+	return cfg
+
+
+func test_loading_clamps_receptor_slots() -> void:
+	var too_many: BreedPool = BreedPool.from_dict({"receptor_slots": 99, "genomes": []}, "rhinovirus", cfg)
+	assert_eq(too_many.receptor_slots, cfg.coevo_receptor_slots + 4)
+	var too_few: BreedPool = BreedPool.from_dict({"receptor_slots": 0, "genomes": []}, "rhinovirus", cfg)
+	assert_eq(too_few.receptor_slots, cfg.coevo_receptor_slots)
+	var junk: BreedPool = BreedPool.from_dict({"receptor_slots": "x", "genomes": []}, "rhinovirus", cfg)
+	assert_eq(junk.receptor_slots, cfg.coevo_receptor_slots)
+
+
+func test_match_counts_only_filled_receptors_whatever_the_slot_count() -> void:
+	var p: BreedPool = _pool()
+	p.widen_receptors(2)
+	var wide: Genome = Genome.from_slots([], ["binder_a", "", "", ""], cfg, 2, 4)
+	var narrow: Genome = _g([], ["binder_a", ""] as Array)
+	var target: Genome = _g(["capsule_a", ""], [])
+	assert_eq(p.match_pct(wide, target, cfg), p.match_pct(narrow, target, cfg))
+	assert_eq(p.match_pct(wide, target, cfg), 125)
+	var empty_wide: Genome = Genome.wild(2, 4)
+	assert_eq(p.match_pct(empty_wide, target, cfg), 100)

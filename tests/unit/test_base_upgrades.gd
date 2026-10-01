@@ -23,7 +23,7 @@ func after_each() -> void:
 
 
 func test_config_block_loaded_and_there_is_no_flat_stat_upgrade() -> void:
-	assert_eq(_cfg.upgrade_defs.keys(), ["memory_slot", "analysis_speed", "memory_retention"])
+	assert_eq(_cfg.upgrade_defs.keys(), ["memory_slot", "analysis_speed", "memory_retention", "receptor_slot"])
 	assert_eq(_cfg.upgrade_defs["analysis_speed"]["per_level"], 90)
 	assert_eq(_cfg.upgrade_defs["memory_slot"]["costs"], [{"amino_acids": 150}, {"amino_acids": 400}])
 	for id: Variant in _cfg.upgrade_defs.keys():
@@ -218,7 +218,7 @@ func test_the_upgrades_screen_rows_buy_and_refresh() -> void:
 	var screen := UpgradesScreen.new()
 	add_child_autofree(screen)
 	screen.setup(session, null)
-	assert_eq(screen.rows.size(), 3)
+	assert_eq(screen.rows.size(), 4)
 	var buy: PillButton = screen.rows["memory_slot"]["buy"]
 	assert_gte(buy.custom_minimum_size.x, 48.0)
 	assert_gte(buy.custom_minimum_size.y, 48.0)
@@ -330,3 +330,47 @@ func test_block_required_only_when_the_flag_is_on() -> void:
 		d.erase("upgrades")
 		d["feature_flags"]["amino_upgrades"] = true)
 	assert_true(_has_error(r, "game_rules.json: upgrades: required when feature_flags.amino_upgrades is true"))
+
+
+func test_buying_receptor_slot_widens_the_player_tower_pools_only() -> void:
+	_cfg.feature_flags["coevolution"] = true
+	var store := LivingBaseStore.new()
+	store.path = DIR + "/living_base.json"
+	var session := Session.new(_cfg)
+	LivingBaseFlow.new(store).enter(session)
+	session.wallet.set_amount("amino_acids", 300)
+	var rhino_before: Dictionary = session.population("rhinovirus").to_dict()
+	assert_true(session.living_flow.buy_upgrade("receptor_slot"))
+	assert_eq(session.wallet.get_amount("amino_acids"), 0)
+	for type_id: String in ["macrophage", "b_cell"]:
+		var pool: BreedPool = session.populations[type_id] as BreedPool
+		assert_eq(pool.receptor_slots, _cfg.coevo_receptor_slots + 1)
+		assert_eq(pool.genomes[0].receptors.size(), _cfg.coevo_receptor_slots + 1)
+	assert_eq(session.population("rhinovirus").to_dict(), rhino_before, "the pathogen pool is untouched")
+	assert_false(session.populations.has("rhinovirus"))
+	# Saved and reloaded.
+	var again := Session.new(_cfg)
+	LivingBaseFlow.new(store).enter(again)
+	assert_eq((again.populations["b_cell"] as BreedPool).receptor_slots, _cfg.coevo_receptor_slots + 1)
+	assert_eq(again.profile.upgrades["receptor_slot"], 1)
+	assert_false(session.living_flow.buy_upgrade("receptor_slot"), "one level only")
+
+
+func test_widen_receptor_pools_keeps_existing_alleles() -> void:
+	_cfg.feature_flags["coevolution"] = true
+	var pools: Dictionary = {}
+	var existing: BreedPool = BreedPool.wild_pool("macrophage", _cfg)
+	existing.genomes[0] = Genome.from_slots([], ["binder_a", "hook_b"], _cfg)
+	pools["macrophage"] = existing
+	BaseUpgrades.widen_receptor_pools(_cfg, pools)
+	assert_eq((pools["macrophage"] as BreedPool).genomes[0].receptors, ["binder_a", "hook_b", ""] as Array[String])
+	assert_true(pools.has("b_cell"), "a missing tower pool is created wild first")
+	assert_eq((pools["b_cell"] as BreedPool).receptor_slots, 3)
+	assert_false(pools.has("rhinovirus"))
+
+
+func test_the_receptor_effect_text_and_bonus() -> void:
+	assert_eq(BaseUpgrades.receptor_slot_bonus(_cfg, {"receptor_slot": 1}), 1)
+	assert_eq(BaseUpgrades.receptor_slot_bonus(_cfg, {}), 0)
+	assert_eq(UpgradesScreen.effect_text(_cfg, {}, "receptor_slot"), "Macrophage and B-Cell carry 2 receptors")
+	assert_eq(UpgradesScreen.effect_text(_cfg, {"receptor_slot": 1}, "receptor_slot"), "Macrophage and B-Cell carry 3 receptors")

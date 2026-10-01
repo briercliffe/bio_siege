@@ -176,6 +176,8 @@ static func effect_text(cfg: GameConfig, upgrades: Dictionary, id: String) -> St
 			return "Analysis %d%% faster" % faster if faster > 0 else "Analysis at normal speed"
 		"memory_retention":
 			return "Memory lasts %d raids" % BaseUpgrades.memory_decay_raids(cfg, upgrades)
+		"receptor_slot":
+			return "Macrophage and B-Cell carry %d receptors" % (cfg.coevo_receptor_slots + BaseUpgrades.receptor_slot_bonus(cfg, upgrades))
 	return ""
 
 

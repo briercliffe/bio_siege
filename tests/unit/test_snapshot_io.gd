@@ -351,3 +351,27 @@ func test_battle_populations_round_trip() -> void:
 	var rhino: Dictionary = (parsed["setup"] as BattleSetup).populations["rhinovirus"]
 	assert_eq(int(rhino["generation"]), 3)
 	assert_false(SnapshotIO.battle_to_dict(cfg, base, BattleSim.new(cfg, base))["base"].has("populations"))
+
+
+func test_a_widened_pool_survives_base_and_battle_round_trips() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	cfg.feature_flags["coevolution"] = true
+	var pool: BreedPool = BreedPool.wild_pool("macrophage", cfg)
+	pool.widen_receptors(1)
+	pool.genomes[0] = Genome.from_slots(["", "wall_b"], ["binder_a", "", "hook_b"], cfg, 2, 3)
+	var pools: Dictionary = {"macrophage": pool.to_dict()}
+	assert_eq(pools["macrophage"]["receptor_slots"], 3)
+	var grid := GridModel.new(cfg)
+	grid.reset_with_nucleus()
+	var parsed_base: Dictionary = SnapshotIO.parse_base(SnapshotIO.to_json(SnapshotIO.base_to_dict(grid, null, pools)), cfg)
+	assert_true(parsed_base["ok"])
+	var back: BreedPool = BreedPool.from_dict(parsed_base["populations"]["macrophage"], "macrophage", cfg)
+	assert_eq(back.receptor_slots, 3)
+	assert_eq(back.genomes[0].receptors, ["binder_a", "", "hook_b"] as Array[String])
+	var base: BattleSetup = Scenarios.open_field(9)
+	var setup: BattleSetup = BattleSetup.create(base.structures, base.units, 9, {}, pools)
+	var sim := BattleSim.new(cfg, setup)
+	sim.run_to_end(40)
+	var parsed: Dictionary = SnapshotIO.parse_battle(SnapshotIO.to_json(SnapshotIO.battle_to_dict(cfg, setup, sim)), cfg)
+	assert_true(parsed["ok"])
+	assert_eq((parsed["setup"] as BattleSetup).populations["macrophage"]["receptor_slots"], 3)
