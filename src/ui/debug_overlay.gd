@@ -16,6 +16,21 @@ extends Control
 @onready var replay_status_label: Label = $Panel/VBoxContainer/ReplayStatusLabel
 @onready var btn_export_logs: Button = $Panel/VBoxContainer/BtnExportLogs
 
+# Playtest flags (#217): a FLAGS button next to DBG opens a panel of feature flag switches.
+const FLAGS_PANEL_WIDTH: float = 300.0
+const FLAG_ROW_HEIGHT: float = 48.0
+const FLAGS_NOTE: String = "Applies now. A battle in progress keeps its flags until it ends."
+
+## The config owner: GameData by default. Needs `config`, `flag_override_error` and set_flag_overrides().
+var data_source: Node = null
+var flags_button: Button = null
+var flags_panel: PanelContainer = null
+var flags_status_label: Label = null
+var btn_identity_on: Button = null
+var btn_reset_flags: Button = null
+## flag name -> CheckButton
+var flag_switches: Dictionary = {}
+
 var fsm: GameStateMachine = null:
 	set(val):
 		if fsm != null and fsm.phase_changed.is_connected(_on_phase_changed):
@@ -39,6 +54,7 @@ func _ready() -> void:
 	if not check_debug_build():
 		return
 	_ensure_nodes()
+	_build_flags_ui()
 	if dbg_button != null and not dbg_button.pressed.is_connected(toggle):
 		dbg_button.pressed.connect(toggle)
 	if btn_title != null and not btn_title.pressed.is_connected(_on_btn_title_pressed):
@@ -84,6 +100,159 @@ func toggle() -> void:
 	var p: Control = _get_panel()
 	if p != null:
 		p.visible = not p.visible
+		if p.visible and flags_panel != null:
+			flags_panel.visible = false
+
+
+# --- playtest flags (#217) ------------------------------------------------------
+
+func toggle_flags() -> void:
+	if flags_panel == null:
+		return
+	flags_panel.visible = not flags_panel.visible
+	if flags_panel.visible:
+		var p: Control = _get_panel()
+		if p != null:
+			p.visible = false
+		refresh_flags()
+
+
+func _source() -> Node:
+	if data_source == null:
+		data_source = get_node_or_null("/root/GameData")
+	return data_source
+
+
+func _source_config() -> GameConfig:
+	var src: Node = _source()
+	if src == null or not "config" in src:
+		return null
+	return src.config as GameConfig
+
+
+func _build_flags_ui() -> void:
+	if flags_button != null:
+		return
+	flags_button = Button.new()
+	flags_button.name = "FlagsButton"
+	flags_button.text = "FLAGS"
+	flags_button.custom_minimum_size = Vector2(72.0, 48.0)
+	flags_button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	flags_button.offset_left = 68.0
+	flags_button.offset_right = 140.0
+	flags_button.offset_top = -60.0
+	flags_button.offset_bottom = -12.0
+	flags_button.pressed.connect(toggle_flags)
+	add_child(flags_button)
+
+	flags_panel = PanelContainer.new()
+	flags_panel.name = "FlagsPanel"
+	flags_panel.visible = false
+	flags_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	flags_panel.offset_left = 12.0
+	flags_panel.offset_right = 12.0 + FLAGS_PANEL_WIDTH
+	flags_panel.offset_top = -708.0
+	flags_panel.offset_bottom = -68.0
+	add_child(flags_panel)
+	var scroll := ScrollContainer.new()
+	scroll.name = "Scroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	flags_panel.add_child(scroll)
+	var box := VBoxContainer.new()
+	box.name = "Rows"
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation", 4)
+	scroll.add_child(box)
+
+	var title := Label.new()
+	title.text = "Playtest flags"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	flags_status_label = Label.new()
+	flags_status_label.name = "FlagsStatus"
+	flags_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(flags_status_label)
+	btn_identity_on = _flag_action_button("BtnIdentityOn", "All identity on", _on_identity_on_pressed)
+	box.add_child(btn_identity_on)
+	btn_reset_flags = _flag_action_button("BtnResetFlags", "Reset to shipped", _on_reset_flags_pressed)
+	box.add_child(btn_reset_flags)
+
+	var cfg: GameConfig = _source_config()
+	for flag_name: String in FlagOverrides.listed_flags(cfg):
+		var sw := CheckButton.new()
+		sw.name = "Flag_" + flag_name
+		sw.text = flag_name
+		sw.custom_minimum_size = Vector2(0.0, FLAG_ROW_HEIGHT)
+		sw.toggled.connect(_on_flag_toggled.bind(flag_name))
+		box.add_child(sw)
+		flag_switches[flag_name] = sw
+
+	var note := Label.new()
+	note.text = FLAGS_NOTE
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(note)
+	refresh_flags()
+
+
+func _flag_action_button(node_name: String, label: String, handler: Callable) -> Button:
+	var b := Button.new()
+	b.name = node_name
+	b.text = label
+	b.custom_minimum_size = Vector2(48.0, 48.0)
+	b.pressed.connect(handler)
+	return b
+
+
+## Shows the live flag values, marks overridden ones with "*", and reports dropped overrides.
+func refresh_flags() -> void:
+	var cfg: GameConfig = _source_config()
+	if cfg == null:
+		return
+	for flag_name: Variant in flag_switches.keys():
+		var sw: CheckButton = flag_switches[flag_name]
+		sw.set_pressed_no_signal(cfg.flag(str(flag_name)))
+		sw.text = str(flag_name) + (" *" if cfg.flag_overrides.has(flag_name) else "")
+	if flags_status_label == null:
+		return
+	var src: Node = _source()
+	var err: String = str(src.get("flag_override_error")) if src != null and "flag_override_error" in src else ""
+	if err != "" and err != "<null>":
+		flags_status_label.text = "Overrides ignored (invalid):\n" + err
+	elif cfg.flag_overrides.is_empty():
+		flags_status_label.text = "Shipped flags (no overrides)"
+	else:
+		flags_status_label.text = "%d overridden (*)" % cfg.flag_overrides.size()
+
+
+## The overrides that turn the live flags into `wanted`, for every listed flag.
+func _apply_wanted(wanted: Dictionary) -> void:
+	var cfg: GameConfig = _source_config()
+	var src: Node = _source()
+	if cfg == null or src == null or not src.has_method("set_flag_overrides"):
+		return
+	var full: Dictionary = {}
+	for flag_name: String in FlagOverrides.listed_flags(cfg):
+		full[flag_name] = wanted.get(flag_name, cfg.flag(flag_name))
+	src.call("set_flag_overrides", FlagOverrides.diff(full, cfg.file_feature_flags))
+	refresh_flags()
+
+
+func _on_flag_toggled(on: bool, flag_name: String) -> void:
+	_apply_wanted({flag_name: on})
+
+
+func _on_identity_on_pressed() -> void:
+	var wanted: Dictionary = {}
+	for flag_name: String in FlagOverrides.IDENTITY_FLAGS:
+		wanted[flag_name] = true
+	_apply_wanted(wanted)
+
+
+func _on_reset_flags_pressed() -> void:
+	var src: Node = _source()
+	if src != null and src.has_method("set_flag_overrides"):
+		src.call("set_flag_overrides", {})
+	refresh_flags()
 
 func _unhandled_input(event: InputEvent) -> void:
 	_handle_input_event(event)

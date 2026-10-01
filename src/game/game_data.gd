@@ -10,6 +10,11 @@ const WATCH_INTERVAL_S: float = 1.0
 var config: GameConfig = null
 var load_errors: PackedStringArray = PackedStringArray()
 var hot_reload_enabled: bool = false
+## Debug flag overrides (#217). Tests can point these elsewhere or force them on in a release-like run.
+var flag_overrides_path: String = FlagOverrides.DEFAULT_PATH
+var flag_overrides_enabled: bool = FlagOverrides.is_supported()
+## Why the saved overrides were dropped on the last load ("" = they applied, or there were none).
+var flag_override_error: String = ""
 
 var _data_dir: String = DEFAULT_DATA_DIR
 var _mtimes: Dictionary = {}
@@ -29,7 +34,7 @@ static func is_hot_reload_supported(is_debug: bool = OS.is_debug_build(), is_tem
 func load_data(dir_path: String = DEFAULT_DATA_DIR) -> void:
 	_data_dir = dir_path
 	_mtimes = _read_mtimes()
-	var result: ConfigLoadResult = GameConfig.load_from_dir(dir_path)
+	var result: ConfigLoadResult = _load_with_overrides(dir_path)
 	config = result.config
 	load_errors = result.errors
 	if not load_errors.is_empty():
@@ -60,7 +65,7 @@ func check_for_changes() -> bool:
 ## Loads the data files into a temporary config. The active config is only
 ## replaced when the new one is valid.
 func reload_config() -> bool:
-	var result: ConfigLoadResult = GameConfig.load_from_dir(_data_dir)
+	var result: ConfigLoadResult = _load_with_overrides(_data_dir)
 	if result.is_err():
 		config_reload_failed.emit(result.errors)
 		return false
@@ -68,6 +73,30 @@ func reload_config() -> bool:
 	load_errors = PackedStringArray()
 	config_reloaded.emit(config)
 	return true
+
+## Saves new debug flag overrides and reloads the config through the normal reload path, so the state
+## machine applies it (queued until a running battle ends). Returns false when the reload failed.
+func set_flag_overrides(overrides: Dictionary) -> bool:
+	if not flag_overrides_enabled:
+		return false
+	FlagOverrides.write(overrides, flag_overrides_path)
+	return reload_config()
+
+
+## Loads with the saved overrides. If they make the config invalid (a flag whose data block is missing),
+## falls back to the shipped flags and records why, so a bad override never blocks the game.
+func _load_with_overrides(dir_path: String) -> ConfigLoadResult:
+	flag_override_error = ""
+	var overrides: Dictionary = FlagOverrides.read(flag_overrides_path) if flag_overrides_enabled else {}
+	var result: ConfigLoadResult = GameConfig.load_from_dir(dir_path, overrides)
+	if result.is_err() and not overrides.is_empty():
+		var plain: ConfigLoadResult = GameConfig.load_from_dir(dir_path)
+		if plain.is_ok():
+			flag_override_error = "\n".join(result.errors)
+			push_warning("GameData: flag overrides ignored:\n" + flag_override_error)
+			return plain
+	return result
+
 
 func _read_mtimes() -> Dictionary:
 	var times: Dictionary = {}
