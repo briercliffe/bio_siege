@@ -514,3 +514,27 @@ func test_launch_passes_populations() -> void:
 	var off_comps: Dictionary = _setup_components(off_session)
 	(off_comps["hud"] as HudSpawn).launch_requested.emit()
 	assert_true(off_session.battle_setup.populations.is_empty())
+
+
+func test_launch_with_attack_target_uses_target_layout_and_memory() -> void:
+	var cfg: GameConfig = _load_config()
+	cfg.feature_flags["immune_memory"] = true
+	cfg.feature_flags["bcell_analysis"] = true
+	var session: Session = _create_session(cfg)
+	var target: Array[Dictionary] = [
+		{"type": "nucleus", "origin": Vector2i(18, 18)},
+		{"type": "macrophage", "origin": Vector2i(5, 5)},
+	]
+	session.attack_layout = target
+	var theirs := ImmuneMemory.new()
+	theirs.entries["rhinovirus/wild"] = {"level": 3, "absent": 0, "since": 1}
+	session.attack_memory = theirs
+	session.memory.entries["rhinovirus/wild"] = {"level": 1, "absent": 0, "since": 1}
+	session.army.reserve["rhinovirus"] = 1
+	var own_layout: Array[Dictionary] = session.grid.to_layout()
+	var comps: Dictionary = _setup_components(session)
+	(comps["hud"] as HudSpawn).launch_requested.emit()
+	assert_eq(session.battle_setup.structures.size(), 2)
+	assert_eq(str(session.battle_setup.structures[1]["type"]), "macrophage")
+	assert_eq(session.battle_setup.memory_seed, {"rhinovirus/wild": 75})
+	assert_eq(session.grid.to_layout(), own_layout)

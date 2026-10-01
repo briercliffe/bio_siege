@@ -55,7 +55,7 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 	_resolve_nodes()
 
 	if grid_view != null and session != null:
-		grid_view.setup(session.grid, session.config, session.army)
+		grid_view.setup(session.attack_grid(), session.config, session.army)
 		grid_view.set_night(true)
 		grid_view.deploy_mode = true
 
@@ -95,7 +95,7 @@ func on_config_changed(_summary: Dictionary) -> void:
 	if session == null:
 		return
 	if grid_view != null:
-		grid_view.setup(session.grid, session.config, session.army)
+		grid_view.setup(session.attack_grid(), session.config, session.army)
 	_update_grid_layout()
 	if hud_spawn != null:
 		hud_spawn.refresh_config()

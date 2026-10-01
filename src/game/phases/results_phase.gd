@@ -443,8 +443,8 @@ func _populate_final_state(res: Dictionary, first_id: int, first_type: String) -
 func _predicted_type(pred_id: int) -> String:
 	if session == null:
 		return ""
-	if session.grid != null:
-		var placed: GridModel.PlacedStructure = session.grid.get_structure(pred_id)
+	if session.attack_grid() != null:
+		var placed: GridModel.PlacedStructure = session.attack_grid().get_structure(pred_id)
 		if placed != null:
 			return placed.type_id
 	if session.battle_setup != null and pred_id >= 1 and pred_id <= session.battle_setup.structures.size():
