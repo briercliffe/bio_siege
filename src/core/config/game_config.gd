@@ -341,6 +341,8 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 			p.hijack_target_tags = PackedStringArray()
 			for t_var: Variant in hj.get("target_tags", []):
 				p.hijack_target_tags.append(str(t_var))
+			p.hijack_turncoat_damage_pct = int(hj.get("turncoat_damage_pct", 0))
+			p.hijack_turncoat_max_damage = int(hj.get("turncoat_max_damage", 0))
 
 		var st_cfg: Variant = p_data.get("strains", null)
 		if st_cfg is Array:
@@ -399,7 +401,7 @@ static func _validate_hijack(id: String, hj_val: Variant, errors: PackedStringAr
 		errors.append("pathogens.json: %s.hijack: must be a JSON object (got %s)" % [id, _format_val(hj_val)])
 		return
 	var hj: Dictionary = hj_val
-	var hj_keys: Array[String] = ["channel_s", "disable_s", "target_tags"]
+	var hj_keys: Array[String] = ["channel_s", "disable_s", "target_tags", "turncoat_damage_pct", "turncoat_max_damage"]
 	for hk_var: Variant in hj.keys():
 		var hk: String = str(hk_var)
 		if not hj_keys.has(hk):
@@ -424,6 +426,21 @@ static func _validate_hijack(id: String, hj_val: Variant, errors: PackedStringAr
 				errors.append("pathogens.json: %s.hijack.target_tags: tag must be a string (got %s)" % [id, _format_val(t_var)])
 			elif not KNOWN_TAGS.has(str(t_var)):
 				errors.append("pathogens.json: %s.hijack.target_tags: unknown tag (got %s)" % [id, str(t_var)])
+	# Optional turncoat tuning (#150).
+	if hj.has("turncoat_damage_pct"):
+		var tp: Variant = hj["turncoat_damage_pct"]
+		if not _is_whole_number(tp):
+			errors.append("pathogens.json: %s.hijack.turncoat_damage_pct: must be an integer (got %s)" % [id, _format_val(tp)])
+		elif int(tp) < 0:
+			errors.append("pathogens.json: %s.hijack.turncoat_damage_pct: must be >= 0 (got %s)" % [id, _format_val(tp)])
+		elif int(tp) > 100:
+			errors.append("pathogens.json: %s.hijack.turncoat_damage_pct: must be <= 100 (got %s)" % [id, _format_val(tp)])
+	if hj.has("turncoat_max_damage"):
+		var tm: Variant = hj["turncoat_max_damage"]
+		if not _is_whole_number(tm):
+			errors.append("pathogens.json: %s.hijack.turncoat_max_damage: must be an integer (got %s)" % [id, _format_val(tm)])
+		elif int(tm) < 0:
+			errors.append("pathogens.json: %s.hijack.turncoat_max_damage: must be >= 0 (got %s)" % [id, _format_val(tm)])
 
 static func _validate_analysis(id: String, s_data: Dictionary, errors: PackedStringArray) -> void:
 	var an_val: Variant = s_data["analysis"]

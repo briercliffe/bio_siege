@@ -1,8 +1,8 @@
 class_name BattleOverlay
 extends Node2D
 
-## Screen-space marks drawn after every sprite: B-Cell analysis rings and badges, hijack timers, channel
-## arcs and strain dots. Projectiles, splash rings and health bars belong to EffectLayer. Read-only.
+## Screen-space marks drawn after every sprite: B-Cell analysis rings and badges, hijack timers, turncoat
+## beams, channel arcs and strain dots. Projectiles, splash rings and health bars belong to EffectLayer. Read-only.
 
 const ANALYSIS_COLOR: Color = Color("#48dbfb")
 const HIJACK_COLOR: Color = Color("#8e44ad")
@@ -10,6 +10,8 @@ const CHANNEL_COLOR: Color = Color("#e67e22")
 const ANALYSIS_TRACK: Color = Color(ANALYSIS_COLOR, 0.25)
 const HIJACK_RING: Color = Color(HIJACK_COLOR, 0.8)
 const STRAIN_DOT: Color = Color(1.0, 1.0, 1.0, 0.9)
+## How long a turncoat beam (#150) stays on screen after its shot.
+const TURNCOAT_BEAM_TICKS: int = 6
 
 var sim: BattleSim = null
 var config: GameConfig = null
@@ -19,6 +21,8 @@ var runner: BattleRunner = null
 
 var _hijack_until: Dictionary = {}
 var _badges: Dictionary = {}
+## Turncoat beams: {"from": structure id, "to": structure id, "until": tick}.
+var _beams: Array[Dictionary] = []
 ## Reused polyline for _ground_arc; draw_polyline copies the points into its command.
 var _arc: PackedVector2Array = PackedVector2Array()
 var _drawn_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
@@ -32,6 +36,7 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 	runner = p_runner
 	_hijack_until.clear()
 	_badges.clear()
+	_beams.clear()
 	queue_redraw()
 
 
@@ -60,6 +65,12 @@ func on_event(ev: Dictionary) -> void:
 	match str(ev.get("type", "")):
 		SimEvents.HIJACK_COMPLETE:
 			_hijack_until[int(ev.get("structure_id", 0))] = sim.tick + int(ev.get("duration_ticks", 0))
+		SimEvents.TURNCOAT_FIRED:
+			_beams.append({
+				"from": int(ev.get("structure_id", 0)),
+				"to": int(ev.get("target_structure_id", 0)),
+				"until": sim.tick + TURNCOAT_BEAM_TICKS,
+			})
 		SimEvents.ANALYSIS_COMPLETE:
 			var sid: int = int(ev.get("structure_id", 0))
 			var pdef: PathogenDef = config.pathogens.get(str(ev.get("unit_type", ""))) if config != null else null
@@ -87,7 +98,31 @@ func _draw() -> void:
 	_drawn_key = _projection_key()
 	var k: float = projection.tile_px / 14.0
 	_draw_structure_marks(k)
+	_draw_turncoat_beams(k)
 	_draw_pathogen_marks(k)
+
+
+func beam_count() -> int:
+	return _beams.size()
+
+
+## A hijacked tower shooting a friend: a short hijack-coloured beam from tower to target.
+func _draw_turncoat_beams(k: float) -> void:
+	var kept: Array[Dictionary] = []
+	for b: Dictionary in _beams:
+		if sim.tick >= int(b["until"]):
+			continue
+		kept.append(b)
+		var from_s: StructureState = sim.structure(int(b["from"]))
+		var to_s: StructureState = sim.structure(int(b["to"]))
+		if from_s == null or to_s == null:
+			continue
+		var a: Vector2 = projection.ground_to_screen(UnitLayer.structure_anchor(from_s))
+		var z: Vector2 = projection.ground_to_screen(UnitLayer.structure_anchor(to_s))
+		var lift: Vector2 = Vector2(0.0, -UnitLayer.structure_size_px(from_s, projection).y * 0.5)
+		draw_line(a + lift, z + lift, HIJACK_RING, 3.0 * k, true)
+		draw_circle(z + lift, 4.0 * k, HIJACK_COLOR)
+	_beams = kept
 
 
 func _draw_structure_marks(k: float) -> void:

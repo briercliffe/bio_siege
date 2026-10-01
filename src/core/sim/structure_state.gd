@@ -15,6 +15,10 @@ var target_id: int = 0        # pathogen id the tower is shooting, 0 = none
 var analysis_exposure: Dictionary = {}   # strain_key -> int, hundredths of a tick
 var analyzed: Dictionary = {}            # strain_key -> true
 var analysis_focus_key: String = ""      # strain key of the current target, for the view
+var turncoat_until_tick: int = -1         # phage_turncoat: tick the window ends, -1 = not a turncoat
+var turncoat_budget: int = 0              # friendly damage left in this window
+var turncoat_pct: int = 0                 # share of attack_damage dealt per friendly shot
+var turncoat_target_id: int = 0           # structure being shot, 0 = none
 
 static func create(p_id: int, p_type_id: String, p_def: StructureDef, p_origin: Vector2i) -> StructureState:
 	var state := StructureState.new()

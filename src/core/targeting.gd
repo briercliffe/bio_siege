@@ -85,6 +85,33 @@ static func pick_unit_target(tower: StructureState, pathogens: Array[PathogenSta
 	return best.id if best != null else 0
 
 
+## Hijack turncoat (#150): the nearest alive defense/support structure, never the tower
+## itself, walls or the core. Distance is between structure centers; ties go to the lowest id.
+static func pick_friendly_target(tower: StructureState, structures: Array[StructureState]) -> int:
+	if tower == null or tower.def == null or not tower.alive or tower.def.attack_range_mt <= 0:
+		return 0
+	var best: StructureState = null
+	var min_dist: int = -1
+	for s: StructureState in structures:
+		if not is_friendly_target(tower, s):
+			continue
+		var dist: int = FixedMath.dist_sq(tower.center, s.center)
+		if best == null or dist < min_dist or (dist == min_dist and s.id < best.id):
+			min_dist = dist
+			best = s
+	return best.id if best != null else 0
+
+
+static func is_friendly_target(tower: StructureState, s: StructureState) -> bool:
+	if s == null or s.def == null or not s.alive or s.id == tower.id:
+		return false
+	if s.def.has_tag("core") or s.def.has_tag("wall"):
+		return false
+	if not (s.def.has_tag("defense") or s.def.has_tag("support")):
+		return false
+	return FixedMath.within(tower.center, s.center, tower.def.attack_range_mt)
+
+
 static func tower_keeps_target(tower: StructureState, target: PathogenState) -> bool:
 	if tower == null or tower.def == null or not tower.alive:
 		return false

@@ -57,7 +57,7 @@
       "color": "#e67e22"
     },
     "levels": [],
-    "hijack": { "channel_s": 2.0, "disable_s": 8.0, "target_tags": ["defense"] },
+    "hijack": { "channel_s": 2.0, "disable_s": 8.0, "target_tags": ["defense"], "turncoat_damage_pct": 50, "turncoat_max_damage": 300 },
     "strains": [
       { "id": "capsid_hardening", "display_name": "Capsid Hardening", "modifiers": { "hp": 1.15, "speed": 0.9 } },
       { "id": "rapid_replication", "display_name": "Rapid Replication", "modifiers": { "cost": 0.8, "hp": 0.85 } },
