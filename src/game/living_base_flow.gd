@@ -316,6 +316,8 @@ func buy_upgrade(upgrade_id: String) -> bool:
 		return false
 	if not BaseUpgrades.buy(session.config, session.profile.upgrades, upgrade_id, session.wallet):
 		return false
+	if upgrade_id == "receptor_slot":
+		BaseUpgrades.widen_receptor_pools(session.config, session.populations)
 	sync_profile_from_session()
 	return true
 

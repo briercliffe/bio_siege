@@ -64,7 +64,8 @@
   "upgrades": {
     "memory_slot": { "display_name": "Memory slot", "costs": [ { "amino_acids": 150 }, { "amino_acids": 400 } ], "per_level": 1 },
     "analysis_speed": { "display_name": "Faster analysis", "costs": [ { "amino_acids": 100 }, { "amino_acids": 250 }, { "amino_acids": 500 } ], "per_level": 90 },
-    "memory_retention": { "display_name": "Longer memory", "costs": [ { "amino_acids": 200 } ], "per_level": 1 }
+    "memory_retention": { "display_name": "Longer memory", "costs": [ { "amino_acids": 200 } ], "per_level": 1 },
+    "receptor_slot": { "display_name": "Extra receptor", "costs": [ { "amino_acids": 300 } ], "per_level": 1 }
   },
   "immune_memory": { "max_level": 3, "seed_pct_per_level": 25, "decay_raids": 2, "slots": 3, "drift_pct": 50 },
   "coevolution": {
