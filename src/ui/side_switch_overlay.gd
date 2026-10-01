@@ -32,6 +32,10 @@ const SUBTITLE_TEXT: String = "You are now the Pathogen"
 const BODY_FORMAT: String = "Your base is locked in. Spend the %d ATP you kept on an army and deploy it from the outer ring."
 const BODY_MAX_WIDTH: float = 440.0
 const BUTTON_TEXT: String = "Begin Incubation"
+const DEFENDER_KICKER: String = "INCOMING INFECTION"
+const DEFENDER_SUBTITLE: String = "You are the Immune System"
+const DEFENDER_BODY: String = "An AI army is attacking your base. Watch your defense and see what it learns."
+const DEFENDER_BUTTON: String = "Watch the defense"
 const BUTTON_HEIGHT: float = 60.0
 const BUTTON_MARGIN_TOP: int = 12
 const COUNTDOWN_FORMAT: String = "Continues automatically in %d s"
@@ -222,6 +226,16 @@ func play(remaining_atp: int) -> void:
 
 	_active_tween = create_tween()
 	_active_tween.tween_property(self, "modulate:a", 1.0, FADE_S)
+
+
+## The defender version, shown before a live AI raid on the player's base.
+func play_defender() -> void:
+	play(0)
+	kicker_label.text = DEFENDER_KICKER
+	subtitle_label.text = DEFENDER_SUBTITLE
+	body_label.text = DEFENDER_BODY
+	btn_begin.text = DEFENDER_BUTTON
+	btn_begin.queue_redraw()
 
 
 func set_remaining_atp(remaining_atp: int) -> void:

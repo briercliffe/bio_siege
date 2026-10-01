@@ -162,6 +162,21 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 
 	_dispatch_events()
 	_update_grid_layout()
+	if session != null and session.live_defense:
+		_show_defender_intro()
+
+
+## A live AI raid starts with the "You are the Immune System" card; the battle waits until it is dismissed.
+func _show_defender_intro() -> void:
+	var overlay: SideSwitchOverlay = (load("res://src/ui/side_switch_overlay.tscn") as PackedScene).instantiate() as SideSwitchOverlay
+	overlay.name = "DefenderIntro"
+	add_child(overlay)
+	runner.paused = true
+	overlay.finished.connect(func(_duration_ms: int, _skipped: bool) -> void:
+		runner.paused = false
+		overlay.queue_free()
+	)
+	overlay.play_defender()
 
 
 ## Creates the layer nodes once, directly after GridView so they paint over the ground and under the HUD.
@@ -288,6 +303,20 @@ func _abandon(reason: String, to: GameStateMachine.Phase) -> void:
 	if runner != null:
 		runner.paused = true
 		runner.is_running = false
+	if session != null and session.live_defense:
+		# Abandoning a live AI raid applies nothing. Restart plays the same raid again.
+		var again: bool = to == GameStateMachine.Phase.INCUBATION
+		if not again and session.living_flow != null:
+			session.living_flow.end_live_defense()
+		var log_defense: Node = logger if logger != null else SessionLogger
+		if log_defense != null and log_defense.has_method("log_event"):
+			log_defense.call("log_event", "battle_abandoned", {"reason": reason, "tick": tick})
+		if fsm != null:
+			if again:
+				fsm.force_transition(GameStateMachine.Phase.INFECTION)
+			else:
+				fsm.request_transition(to)
+		return
 	if session != null and session.army != null:
 		if session.mode == Session.Mode.LIVING_BASE:
 			# Living Base: the army of a launched raid is spent, win, lose or abandon.
@@ -434,7 +463,9 @@ func _on_battle_finished(sim: BattleSim) -> void:
 		if session.config != null and session.config.flag("bcell_analysis"):
 			session.last_result["analyzed_strains"] = sim.analyzed_strain_keys()
 
-		if session.living_flow != null and session.living_flow.has_raid_target():
+		if session.live_defense and session.living_flow != null:
+			_finish_live_defense(sim)
+		elif session.living_flow != null and session.living_flow.has_raid_target():
 			_finish_living_base_raid(sim)
 		else:
 			if session.config != null and session.config.memory_enabled():
@@ -476,6 +507,33 @@ func _on_battle_finished(sim: BattleSim) -> void:
 
 	if fsm != null:
 		fsm.request_transition(GameStateMachine.Phase.RESULTS)
+
+
+## Live AI raid: the result is applied like an offline one and the defense log gets a `live` entry. The
+## Results screen reads the usual keys plus a slim copy of the entry (without its replay).
+func _finish_live_defense(sim: BattleSim) -> void:
+	var cfg: GameConfig = session.config
+	var entry: Dictionary = session.living_flow.finish_live_defense(sim)
+	var slim: Dictionary = entry.duplicate()
+	slim.erase("battle")
+	session.last_result["living_base"] = slim
+	if cfg.memory_enabled():
+		session.last_result["memory_changes"] = entry.get("memory_changes", [])
+		session.last_result["memory"] = session.memory.to_dict()
+	if cfg.coevolution_enabled():
+		session.last_result["evolution"] = entry.get("evolution", [])
+		var pools_out: Dictionary = {}
+		for type_id: String in cfg.coevo_types:
+			if session.populations.has(type_id):
+				pools_out[type_id] = (session.populations[type_id] as BreedPool).to_dict()
+		session.last_result["populations"] = pools_out
+	if SessionLogger != null and SessionLogger.has_method("log_event"):
+		SessionLogger.log_event("living_base_defense", {
+			"live": true,
+			"outcome": str(entry.get("outcome", "")),
+			"atp_lost": int(entry.get("atp_lost", 0)),
+			"amino": int(entry.get("amino_gained", 0)),
+		})
 
 
 ## Living Base: RaidResolver applies loot, the AI base's learning and its replacement; the Results screen

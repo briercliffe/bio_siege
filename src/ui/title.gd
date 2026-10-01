@@ -387,7 +387,7 @@ func choose_mode(mode: Session.Mode) -> void:
 	if mode == Session.Mode.LIVING_BASE:
 		var store := LivingBaseStore.new()
 		store.path = living_base_path
-		LivingBaseFlow.new(store).enter(session)
+		LivingBaseFlow.new(store).enter(session, true)
 	else:
 		LivingBaseFlow.reset_to_lab(session)
 	if fsm != null:
