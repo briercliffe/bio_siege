@@ -58,7 +58,7 @@ func test_query_methods() -> void:
 
 	# structure_ids alphabetical
 	var s_ids: Array[String] = cfg.structure_ids()
-	assert_eq(s_ids, ["b_cell", "macrophage", "mucous_wall", "nucleus"])
+	assert_eq(s_ids, ["b_cell", "macrophage", "mitochondria", "mucous_wall", "nucleus"])
 
 	# pathogen_ids alphabetical
 	var p_ids: Array[String] = cfg.pathogen_ids()
@@ -392,7 +392,7 @@ func test_game_data_autoload() -> void:
 	assert_not_null(GameData, "GameData autoload must exist")
 	assert_not_null(GameData.config, "GameData.config must be loaded")
 	assert_eq(GameData.load_errors.size(), 0, "GameData.load_errors should be empty")
-	assert_eq(GameData.config.structure_ids().size(), 4)
+	assert_eq(GameData.config.structure_ids().size(), 5)
 	assert_eq(GameData.config.pathogen_ids().size(), 3)
 
 # -----------------------------------------------------------------------------
@@ -834,3 +834,28 @@ func test_requires_flag_validation_errors() -> void:
 	assert_true(_contains_error(r2.errors, "structures.json: mucous_wall.requires_flag: must be a non-empty flag name (got Bad-Flag)"))
 	var r3: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mucous_wall"]["requires_flag"] = 5)
 	assert_true(r3.is_err())
+
+# -----------------------------------------------------------------------------
+# Mitochondria generator block (#155)
+# -----------------------------------------------------------------------------
+
+func test_mitochondria_default_data() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	var m: StructureDef = cfg.structures["mitochondria"]
+	assert_true(m.has_generator)
+	assert_eq(m.generator_atp_per_hour, 60)
+	assert_eq(m.generator_storage, 300)
+	assert_true(m.has_tag("resource"))
+	assert_false(cfg.flag("living_base"))
+	assert_false(cfg.is_structure_enabled("mitochondria"))
+	assert_false(cfg.buildable_structure_ids().has("mitochondria"))
+
+func test_generator_validation_errors() -> void:
+	var r1: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mitochondria"]["generator"]["storage"] = 0)
+	assert_true(_contains_error(r1.errors, "structures.json: mitochondria.generator.storage: must be > 0 (got 0)"))
+	var r2: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mitochondria"]["generator"]["bogus"] = 1)
+	assert_true(_contains_error(r2.errors, "structures.json: mitochondria.generator.bogus: unknown key"))
+	var r3: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mitochondria"]["generator"].erase("atp_per_hour"))
+	assert_true(_contains_error(r3.errors, "structures.json: mitochondria.generator.atp_per_hour: missing required field"))
+	var r4: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mitochondria"]["generator"]["atp_per_hour"] = 1.5)
+	assert_true(_contains_error(r4.errors, "structures.json: mitochondria.generator.atp_per_hour: must be an integer"))

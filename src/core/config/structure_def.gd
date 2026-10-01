@@ -27,6 +27,10 @@ var placeholder_color: Color = Color.WHITE
 var levels: Array = []
 ## Feature flag that must be on before this structure can be built; "" means always.
 var requires_flag: String = ""
+## Resource generator (Mitochondria): ATP per real-time hour and the stored-ATP cap.
+var has_generator: bool = false
+var generator_atp_per_hour: int = 0
+var generator_storage: int = 0
 
 func has_tag(t: String) -> bool:
 	return tags.has(t)
