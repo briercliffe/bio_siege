@@ -37,6 +37,7 @@
     "damage_multipliers": {},
     "levels": [],
     "slow_aura": { "speed_multiplier": 0.5, "adjacency": "orthogonal" },
+    "trap": { "root_s": 2.0, "target_tags": ["small"] },
     "placeholder": {
       "shape": "square",
       "color": "#c8b98a"

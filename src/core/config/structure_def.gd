@@ -32,6 +32,10 @@ var requires_flag: String = ""
 var has_slow_aura: bool = false
 var slow_aura_speed_pct: int = 100
 var slow_aura_chebyshev: bool = false
+## Trap (Mucous Wall, behind the mucous_trap flag): units with a target tag are rooted on contact.
+var has_trap: bool = false
+var trap_root_ticks: int = 0
+var trap_target_tags: PackedStringArray = PackedStringArray()
 var has_generator: bool = false
 var generator_atp_per_hour: int = 0
 var generator_storage: int = 0

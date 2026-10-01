@@ -448,6 +448,14 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 			s.slow_aura_speed_pct = roundi(float(aura.get("speed_multiplier", 1.0)) * 100.0)
 			s.slow_aura_chebyshev = str(aura.get("adjacency", "orthogonal")) == "chebyshev"
 
+		var trap_cfg: Variant = s_data.get("trap", null)
+		if trap_cfg is Dictionary:
+			var trap: Dictionary = trap_cfg
+			s.has_trap = true
+			s.trap_root_ticks = maxi(1, roundi(float(trap.get("root_s", 1.0)) * float(config.tick_rate)))
+			for tt: Variant in trap.get("target_tags", []):
+				s.trap_target_tags.append(str(tt))
+
 		var gen_cfg: Variant = s_data.get("generator", null)
 		if gen_cfg is Dictionary:
 			var gen: Dictionary = gen_cfg
@@ -651,6 +659,35 @@ static func _validate_slow_aura(id: String, s_data: Dictionary, errors: PackedSt
 		var adj: Variant = a["adjacency"]
 		if typeof(adj) != TYPE_STRING or (str(adj) != "orthogonal" and str(adj) != "chebyshev"):
 			errors.append("structures.json: %s.slow_aura.adjacency: must be \"orthogonal\" or \"chebyshev\" (got %s)" % [id, _format_val(adj)])
+
+static func _validate_trap(id: String, s_data: Dictionary, errors: PackedStringArray) -> void:
+	var t_val: Variant = s_data["trap"]
+	if typeof(t_val) != TYPE_DICTIONARY:
+		errors.append("structures.json: %s.trap: must be a JSON object (got %s)" % [id, _format_val(t_val)])
+		return
+	var t: Dictionary = t_val
+	var allowed: Array[String] = ["root_s", "target_tags"]
+	for tk_var: Variant in t.keys():
+		var tk: String = str(tk_var)
+		if not tk.begins_with("_") and not allowed.has(tk):
+			errors.append("structures.json: %s.trap.%s: unknown key (got %s)" % [id, tk, tk])
+	for req: String in allowed:
+		if not t.has(req):
+			errors.append("structures.json: %s.trap.%s: missing required field (got null)" % [id, req])
+	if t.has("root_s"):
+		var r: Variant = t["root_s"]
+		if typeof(r) != TYPE_INT and typeof(r) != TYPE_FLOAT:
+			errors.append("structures.json: %s.trap.root_s: must be a number (got %s)" % [id, _format_val(r)])
+		elif float(r) <= 0.0:
+			errors.append("structures.json: %s.trap.root_s: must be > 0 (got %s)" % [id, _format_val(r)])
+	if t.has("target_tags"):
+		var tags: Variant = t["target_tags"]
+		if typeof(tags) != TYPE_ARRAY or (tags as Array).is_empty():
+			errors.append("structures.json: %s.trap.target_tags: must be a non-empty array (got %s)" % [id, _format_val(tags)])
+		else:
+			for tag: Variant in tags:
+				if typeof(tag) != TYPE_STRING or not KNOWN_TAGS.has(str(tag)):
+					errors.append("structures.json: %s.trap.target_tags: unknown tag (got %s)" % [id, _format_val(tag)])
 
 static func _validate_generator(id: String, s_data: Dictionary, errors: PackedStringArray) -> void:
 	var g_val: Variant = s_data["generator"]
@@ -1236,7 +1273,7 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 		"is_targetable", "visible_to_attacker", "path_weight", "tags",
 		"attack", "damage_multipliers", "levels", "placeholder"
 	]
-	var optional_keys: Array[String] = ["analysis", "requires_flag", "generator", "slow_aura"]
+	var optional_keys: Array[String] = ["analysis", "requires_flag", "generator", "slow_aura", "trap"]
 
 	var core_count: int = 0
 
@@ -1269,6 +1306,9 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 
 		if s_data.has("slow_aura"):
 			_validate_slow_aura(id, s_data, errors)
+
+		if s_data.has("trap"):
+			_validate_trap(id, s_data, errors)
 
 		if s_data.has("requires_flag"):
 			var rf: Variant = s_data["requires_flag"]

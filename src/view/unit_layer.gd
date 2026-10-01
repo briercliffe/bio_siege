@@ -15,6 +15,8 @@ const WALL_CRACKS_BIAS: float = 0.002
 
 const PLATE_TOWER_RADIUS: float = 1.9
 const SLOW_BAND_COLOR: Color = Color(0.78, 0.72, 0.54, 0.22)
+const TRAP_FILL: Color = Color(0.78, 0.72, 0.54, 0.35)
+const TRAP_RING: Color = Color(0.62, 0.55, 0.32, 0.9)
 const PLATE_CORE_RADIUS: float = 2.8
 const STRUCTURE_WIDTH_SCALE: float = 1.4
 const CRACK_PULSE_PERIOD_S: float = 0.8
@@ -423,6 +425,16 @@ func _draw_ground_decals() -> void:
 	walls.paint_shadows(self)
 
 
+## A sticky ring on the ground under a unit a Mucous Wall has rooted. Read from the sim status, so it ends with the root.
+func _draw_trap_ring(foot: Vector2) -> void:
+	var r: float = projection.tile_px * projection.scale * 0.7
+	draw_set_transform(foot, 0.0, Vector2(1.0, 0.5))
+	draw_circle(Vector2.ZERO, r, TRAP_FILL)
+	draw_arc(Vector2.ZERO, r, 0.0, TAU, 24, TRAP_RING, 3.0)
+	draw_arc(Vector2.ZERO, r * 0.6, 0.0, TAU, 20, TRAP_RING, 2.0)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+
+
 ## Mucous slow (mucous_slow flag): a faint band on the cells next to a wall. The cell list is cached and rebuilt
 ## only when the sim rebuilds its slow cells (a wall was destroyed). Read-only.
 func _draw_slow_bands() -> void:
@@ -472,6 +484,8 @@ func _draw_pathogen(p: PathogenState) -> void:
 	var pose: ModelPose = driver.pose_for_pathogen(p, sim.tick, ground, target_ground, moved, view_time)
 	var painter: ModelPainter = ModelRegistry.painter_for(p.type_id)
 	var foot: Vector2 = projection.ground_to_screen(ground)
+	if p.alive and sim.status.has_flag(StatusEffects.key_pathogen(p.id), StatusEffects.Kind.ROOTED):
+		_draw_trap_ring(foot)
 	# A painter's ground decals (trail, shockwave) go down just before the unit, so they sort with it.
 	painter.paint_ground(self, foot, pose, projection.tile_px)
 	if USE_BAKED_SPRITES and baker != null and baker.draw(self, p.type_id, pose, foot):
