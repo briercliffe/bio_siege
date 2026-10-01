@@ -1,7 +1,7 @@
 class_name ModelRegistry
 extends RefCounted
 
-## type_id -> ModelPainter. Returns cached instances. Every config id has a real painter (#67 to #70); any
+## type_id -> ModelPainter. Returns cached instances. Every config id has a real painter (#67 to #70, #171); any
 ## other id gets a PlaceholderPainter, so UnitLayer and GridView never change when a model is added. Walls
 ## are the exception: UnitLayer and GridView draw them with WallRenderer, never through this registry.
 
@@ -14,6 +14,8 @@ const HEIGHT_T: Dictionary = {
 	"b_cell": 4.3,
 	"nucleus": 4.1,
 	"mucous_wall": 0.8,
+	"mitochondria": 2.0,
+	"dendritic_cell": 2.4,
 }
 const DEFAULT_HEIGHT_T: float = 3.0
 const PATHOGEN_WIDTH_T: Dictionary = {
@@ -56,6 +58,10 @@ static func _create(type_id: String) -> ModelPainter:
 			return BCellPainter.new()
 		"nucleus":
 			return NucleusPainter.new()
+		"mitochondria":
+			return MitochondriaPainter.new()
+		"dendritic_cell":
+			return DendriticPainter.new()
 		"mucous_wall":
 			# A lone cell, for the viewer and icons. Battles and the island draw connected runs with WallRenderer.
 			return WallPainter.new()

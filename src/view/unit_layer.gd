@@ -14,7 +14,11 @@ const WALL_POST_BIAS: float = 0.001
 const WALL_CRACKS_BIAS: float = 0.002
 
 const PLATE_TOWER_RADIUS: float = 1.9
-const SLOW_BAND_COLOR: Color = Color(0.78, 0.72, 0.54, 0.22)
+const SLOW_BAND_EDGE: Color = Color(0.78, 0.72, 0.54, 0.12)
+const SLOW_BAND_CORE: Color = Color(0.78, 0.72, 0.54, 0.14)
+## The trap ring wobbles by this share of its radius at this rate (not under Reduce flashes).
+const TRAP_WOBBLE: float = 0.1
+const TRAP_WOBBLE_HZ: float = 2.2
 const TRAP_FILL: Color = Color(0.78, 0.72, 0.54, 0.35)
 const TRAP_RING: Color = Color(0.62, 0.55, 0.32, 0.9)
 const PLATE_CORE_RADIUS: float = 2.8
@@ -411,7 +415,8 @@ func _draw_ground_decals() -> void:
 				draw_circle(c, PLATE_CORE_RADIUS * 1.3 * (1.0 - float(i) / float(GridView.BLOB_RINGS)), NUCLEUS_GLOW)
 			draw_circle(c, PLATE_CORE_RADIUS, NUCLEUS_PLATE)
 		else:
-			draw_circle(c, PLATE_TOWER_RADIUS, PLATE_FILL)
+			# The plate is sized for a 3x3 tower; a smaller footprint (the 2x2 Dendritic Cell) gets a smaller plate.
+			draw_circle(c, PLATE_TOWER_RADIUS * float(maxi(s.footprint.x, s.footprint.y)) / 3.0, PLATE_FILL)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 	if effects != null:
 		effects.draw_splashes(self)
@@ -425,9 +430,19 @@ func _draw_ground_decals() -> void:
 	walls.paint_shadows(self)
 
 
+## Radius in px of the trap ring under a unit: half its model width in tiles plus a little, wobbling by TRAP_WOBBLE
+## unless Reduce flashes is on.
+static func trap_ring_radius(type_id: String, tile_px: float, time_s: float, reduce: bool) -> float:
+	var width_t: float = float(ModelRegistry.PATHOGEN_WIDTH_T.get(type_id, ModelRegistry.DEFAULT_PATHOGEN_WIDTH_T))
+	var r: float = tile_px * (width_t * 0.5 + 0.2)
+	if not reduce:
+		r *= 1.0 + TRAP_WOBBLE * sin(TAU * TRAP_WOBBLE_HZ * time_s)
+	return r
+
+
 ## A sticky ring on the ground under a unit a Mucous Wall has rooted. Read from the sim status, so it ends with the root.
-func _draw_trap_ring(foot: Vector2) -> void:
-	var r: float = projection.tile_px * projection.scale * 0.7
+func _draw_trap_ring(foot: Vector2, type_id: String) -> void:
+	var r: float = trap_ring_radius(type_id, projection.tile_px * projection.scale, view_time, reduce_flashes)
 	draw_set_transform(foot, 0.0, Vector2(1.0, 0.5))
 	draw_circle(Vector2.ZERO, r, TRAP_FILL)
 	draw_arc(Vector2.ZERO, r, 0.0, TAU, 24, TRAP_RING, 3.0)
@@ -448,8 +463,10 @@ func _draw_slow_bands() -> void:
 	if _slow_cell_list.is_empty():
 		return
 	draw_set_transform_matrix(projection.ground_transform())
+	# A soft band: the whole cell faintly, then a stronger core, so the edge fades out. Static (no pulsing).
 	for cell: Vector2i in _slow_cell_list:
-		draw_rect(Rect2(Vector2(cell), Vector2.ONE), SLOW_BAND_COLOR)
+		draw_rect(Rect2(Vector2(cell), Vector2.ONE), SLOW_BAND_EDGE)
+		draw_rect(Rect2(Vector2(cell) + Vector2(0.18, 0.18), Vector2(0.64, 0.64)), SLOW_BAND_CORE)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
@@ -485,7 +502,7 @@ func _draw_pathogen(p: PathogenState) -> void:
 	var painter: ModelPainter = ModelRegistry.painter_for(p.type_id)
 	var foot: Vector2 = projection.ground_to_screen(ground)
 	if p.alive and sim.status.has_flag(StatusEffects.key_pathogen(p.id), StatusEffects.Kind.ROOTED):
-		_draw_trap_ring(foot)
+		_draw_trap_ring(foot, p.type_id)
 	# A painter's ground decals (trail, shockwave) go down just before the unit, so they sort with it.
 	painter.paint_ground(self, foot, pose, projection.tile_px)
 	if USE_BAKED_SPRITES and baker != null and baker.draw(self, p.type_id, pose, foot):

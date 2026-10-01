@@ -7,6 +7,7 @@ extends Control
 ##
 ## Command line, for a scripted run on the desktop (needs a renderer, so not --headless):
 ##   godot --path . tests/perf/rhino_bench.tscn -- --bench-seconds=15 --bench-out=<absolute path to a .txt>
+## Add --bench-organelles to put 4 Mitochondria and 2 Dendritic Cells on the base (#171).
 ## Add --bench-mix=rhinovirus,bacteriophage,staphylococcus to cycle the army through those types instead, or
 ## give counts, --bench-mix=rhinovirus:120,bacteriophage:50,staphylococcus:30, for an army of exactly those
 ## numbers (their sum replaces the 200), interleaved evenly around the ring.
@@ -20,6 +21,9 @@ const BENCH_SEED: int = 67
 const WINDOW_S: float = 5.0
 const WARMUP_S: float = 2.0
 const REFRESH_S: float = 0.25
+## With --bench-organelles: where the 4 Mitochondria (3x3) and 2 Dendritic Cells (2x2) go, clear of the walls.
+const ORGANELLE_MITOCHONDRIA: Array[Vector2i] = [Vector2i(8, 8), Vector2i(28, 8), Vector2i(8, 28), Vector2i(28, 28)]
+const ORGANELLE_DENDRITIC: Array[Vector2i] = [Vector2i(13, 13), Vector2i(25, 25)]
 
 @onready var infection_phase: InfectionPhase = $InfectionPhase
 @onready var stats_label: Label = $StatsOverlay/MarginContainer/StatsLabel
@@ -37,6 +41,7 @@ var _run_s: float = -1.0
 var _out_path: String = ""
 var _mix: Array[String] = ["rhinovirus"]
 var _unit_count: int = UNIT_COUNT
+var _organelles: bool = false
 var _summary: Dictionary = {}
 
 
@@ -88,8 +93,13 @@ static func mix_types(spec: String, default_count: int = UNIT_COUNT) -> Array[St
 
 
 ## Walled Nucleus with `count` Rhinoviruses spread evenly over `ring`. Pure: the same inputs give the same setup.
-static func build_setup(ring: Array[Vector2i], count: int, seed: int, types: Array[String] = ["rhinovirus"]) -> BattleSetup:
+static func build_setup(ring: Array[Vector2i], count: int, seed: int, types: Array[String] = ["rhinovirus"], organelles: bool = false) -> BattleSetup:
 	var base: BattleSetup = Scenarios.walled_nucleus(seed)
+	if organelles:
+		for cell: Vector2i in ORGANELLE_MITOCHONDRIA:
+			base.structures.append({"type": "mitochondria", "origin": cell})
+		for cell: Vector2i in ORGANELLE_DENDRITIC:
+			base.structures.append({"type": "dendritic_cell", "origin": cell})
 	var units: Array = []
 	if not ring.is_empty():
 		for i: int in range(count):
@@ -127,7 +137,7 @@ func _ready() -> void:
 
 
 func _start_battle() -> void:
-	session.battle_setup = build_setup(session.grid.ring_cells(), _unit_count, BENCH_SEED, _mix)
+	session.battle_setup = build_setup(session.grid.ring_cells(), _unit_count, BENCH_SEED, _mix, _organelles)
 	infection_phase.setup(session, null)
 
 
@@ -137,6 +147,8 @@ func _parse_cli() -> void:
 			_run_s = arg.get_slice("=", 1).to_float()
 		elif arg.begins_with("--bench-out="):
 			_out_path = arg.get_slice("=", 1)
+		elif arg == "--bench-organelles":
+			_organelles = true
 		elif arg.begins_with("--bench-mix="):
 			_mix = mix_types(arg.get_slice("=", 1))
 			_unit_count = _mix.size()
