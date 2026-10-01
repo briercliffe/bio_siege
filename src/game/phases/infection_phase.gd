@@ -18,6 +18,8 @@ var biofilm_view: BiofilmView = null
 var unit_layer: UnitLayer = null
 var overlay: BattleOverlay = null
 var effect_layer: EffectLayer = null
+## Debug rings at impact ticks, behind the "Show impact ticks" toggle (ImpactRings.enabled).
+var impact_rings: ImpactRings = null
 var effect_model: EffectModel = EffectModel.new()
 
 var _biofilm_changes: int = 0
@@ -152,6 +154,7 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 	effect_layer.session = session
 	effect_layer.setup(effect_model, sim, projection, snapshots, runner, reduce)
 	unit_layer.effects = effect_layer
+	impact_rings.setup(sim, projection, runner)
 	if biofilm_view != null:
 		biofilm_view.setup(session, runner, snapshots, projection)
 	if hud_combat != null:
@@ -199,6 +202,14 @@ func _init_layers() -> void:
 		_insert_after(effect_layer, after)
 	else:
 		move_child(effect_layer, after.get_index() + 1)
+	after = effect_layer
+
+	if impact_rings == null:
+		impact_rings = ImpactRings.new()
+		impact_rings.name = "ImpactRings"
+		_insert_after(impact_rings, after)
+	else:
+		move_child(impact_rings, after.get_index() + 1)
 
 
 ## SettingsApply.GROUP hook: the Settings screen (opened from Pause) saved a change.
@@ -367,6 +378,8 @@ func _route_event(ev: Dictionary) -> void:
 		overlay.on_event(ev)
 	if effect_layer != null:
 		effect_layer.on_event(ev)
+	if impact_rings != null:
+		impact_rings.on_event(ev)
 
 
 var settings_path: String = GameSettings.DEFAULT_PATH

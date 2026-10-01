@@ -18,7 +18,7 @@ const SHOT_GLOW: Color = Color("#48dbfb")
 const SHOT_DIAMETER_T: float = 0.6
 const SHOT_LIFT_T: float = 1.5
 const SHOT_GLOW_SCALES: Array[float] = [2.4, 1.6]
-const SHOT_GLOW_ALPHAS: Array[float] = [0.15, 0.35]
+const SHOT_GLOW_COLORS: Array[Color] = [Color(SHOT_GLOW, 0.15), Color(SHOT_GLOW, 0.35)]
 const TRAIL_POINTS: int = 4
 ## Spacing of the trail positions, in ticks of flight.
 const TRAIL_STEP_TICKS: float = 0.5
@@ -287,6 +287,8 @@ var _scorch: TriBatch = TriBatch.new()
 var _scorch_version: int = -1
 var _intent: PackedVector2Array = PackedVector2Array()
 var _intent_last: int = 0
+## Projection of the last pass, so a resize while paused still redraws once.
+var _drawn_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
 
 var _disc: PackedVector2Array = PaintKit.unit_circle_points(DISC_POINTS)
 var _ground: PackedVector2Array = PaintKit.unit_circle_points(GROUND_POINTS)
@@ -329,7 +331,20 @@ func _process(_delta: float) -> void:
 		return
 	if model != null:
 		model.advance(sim.tick)
-	queue_redraw()
+	if is_live():
+		queue_redraw()
+	elif projection != null and _projection_key() != _drawn_key:
+		queue_redraw()
+
+
+## True while the battle runs and is not paused: only then does the layer redraw every frame. Without a
+## runner (tests and tools) there is no battle clock, so it keeps redrawing.
+func is_live() -> bool:
+	return runner == null or (runner.is_running and not runner.paused)
+
+
+func _projection_key() -> Vector4:
+	return Vector4(projection.tile_px, projection.origin.x, projection.origin.y, projection.scale)
 
 
 ## Health bar fill: green above 50%, amber from 25% to 50%, red below 25%.
@@ -445,6 +460,7 @@ func _build_splashes() -> void:
 func _draw() -> void:
 	if not build_frame():
 		return
+	_drawn_key = _projection_key()
 	if _intent_last > 0:
 		draw_multiline(_intent, INTENT_COLOR, INTENT_WIDTH_K * projection.tile_px / K_PX)
 	_fx.flush(self)
@@ -525,7 +541,7 @@ func _add_shot(s: int, now: float, alpha: float, t: float) -> void:
 	var head: Vector2 = projection.ground_to_screen(snapshots.projectile_ground(id, alpha)) + lift
 	for g: int in range(SHOT_GLOW_SCALES.size()):
 		var gr: float = r * SHOT_GLOW_SCALES[g]
-		_fx.disc(head, gr, gr, Color(SHOT_GLOW, SHOT_GLOW_ALPHAS[g]), _disc)
+		_fx.disc(head, gr, gr, SHOT_GLOW_COLORS[g], _disc)
 	_fx.disc(head, r, r, SHOT_CORE, _disc)
 
 

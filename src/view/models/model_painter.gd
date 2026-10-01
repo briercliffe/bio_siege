@@ -28,6 +28,11 @@ func height_tiles() -> float:
 	return 1.0
 
 
+## Seconds in one idle loop. SpriteBaker (#72) bakes one loop and picks the frame from pose.time.
+func idle_period_s() -> float:
+	return 1.0
+
+
 ## Virtual. True when paint() draws its own death from pose.death_t; otherwise EffectLayer adds a generic
 ## puff where the entity died.
 func has_custom_death() -> bool:

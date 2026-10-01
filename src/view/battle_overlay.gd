@@ -7,6 +7,9 @@ extends Node2D
 const ANALYSIS_COLOR: Color = Color("#48dbfb")
 const HIJACK_COLOR: Color = Color("#8e44ad")
 const CHANNEL_COLOR: Color = Color("#e67e22")
+const ANALYSIS_TRACK: Color = Color(ANALYSIS_COLOR, 0.25)
+const HIJACK_RING: Color = Color(HIJACK_COLOR, 0.8)
+const STRAIN_DOT: Color = Color(1.0, 1.0, 1.0, 0.9)
 
 var sim: BattleSim = null
 var config: GameConfig = null
@@ -16,6 +19,9 @@ var runner: BattleRunner = null
 
 var _hijack_until: Dictionary = {}
 var _badges: Dictionary = {}
+## Reused polyline for _ground_arc; draw_polyline copies the points into its command.
+var _arc: PackedVector2Array = PackedVector2Array()
+var _drawn_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
 
 
 func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, p_snapshots: BattleSnapshotBuffer, p_runner: BattleRunner) -> void:
@@ -30,8 +36,22 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 
 
 func _process(_delta: float) -> void:
-	if sim != null:
+	if sim == null:
+		return
+	if is_live():
 		queue_redraw()
+	elif projection != null and _projection_key() != _drawn_key:
+		queue_redraw()
+
+
+## True while the battle runs and is not paused: only then does the overlay redraw every frame. Without a
+## runner (tests and tools) there is no battle clock, so it keeps redrawing.
+func is_live() -> bool:
+	return runner == null or (runner.is_running and not runner.paused)
+
+
+func _projection_key() -> Vector4:
+	return Vector4(projection.tile_px, projection.origin.x, projection.origin.y, projection.scale)
 
 
 func on_event(ev: Dictionary) -> void:
@@ -50,18 +70,21 @@ func on_event(ev: Dictionary) -> void:
 			_badges[sid] = cols
 
 
-## Screen polyline of an arc on a ground circle, so rings read as ellipses in the projection.
+## Screen polyline of an arc on a ground circle, so rings read as ellipses in the projection. Returns the
+## shared scratch array, valid until the next call.
 func _ground_arc(center_g: Vector2, radius: float, from: float, to: float, steps: int) -> PackedVector2Array:
-	var pts := PackedVector2Array()
+	if _arc.size() != steps + 1:
+		_arc.resize(steps + 1)
 	for i: int in range(steps + 1):
 		var a: float = lerpf(from, to, float(i) / float(steps))
-		pts.append(projection.ground_to_screen(center_g + Vector2(cos(a), sin(a)) * radius))
-	return pts
+		_arc[i] = projection.ground_to_screen(center_g + Vector2(cos(a), sin(a)) * radius)
+	return _arc
 
 
 func _draw() -> void:
 	if sim == null or projection == null:
 		return
+	_drawn_key = _projection_key()
 	var k: float = projection.tile_px / 14.0
 	_draw_structure_marks(k)
 	_draw_pathogen_marks(k)
@@ -82,7 +105,7 @@ func _draw_structure_marks(k: float) -> void:
 			if key != "" and not s.is_analyzed(key):
 				var pct: int = s.analysis_progress_pct(key)
 				var radius: float = 0.6 * float(maxi(s.footprint.x, s.footprint.y)) + 0.6
-				draw_polyline(_ground_arc(anchor_g, radius, 0.0, TAU, 48), Color(ANALYSIS_COLOR, 0.25), 3.0 * k, true)
+				draw_polyline(_ground_arc(anchor_g, radius, 0.0, TAU, 48), ANALYSIS_TRACK, 3.0 * k, true)
 				if pct > 0:
 					var sweep: float = TAU * float(pct) / 100.0
 					draw_polyline(_ground_arc(anchor_g, radius, -PI * 0.5, -PI * 0.5 + sweep, 48), ANALYSIS_COLOR, 3.0 * k, true)
@@ -95,7 +118,7 @@ func _draw_structure_marks(k: float) -> void:
 					draw_arc(c, badge_r, 0.0, TAU, 16, Color.WHITE, 1.0, true)
 
 		if _hijack_until.has(s.id) and sim.tick < int(_hijack_until[s.id]):
-			draw_polyline(_ground_arc(anchor_g, float(s.footprint.x) * 0.5, 0.0, TAU, 32), Color(HIJACK_COLOR, 0.8), 3.0 * k, true)
+			draw_polyline(_ground_arc(anchor_g, float(s.footprint.x) * 0.5, 0.0, TAU, 32), HIJACK_RING, 3.0 * k, true)
 			var seconds: int = ceili(float(int(_hijack_until[s.id]) - sim.tick) / float(maxi(_tick_rate(), 1)))
 			var fs: int = maxi(int(16.0 * k), 12)
 			var txt: String = "%d" % seconds
@@ -126,4 +149,4 @@ func _draw_pathogen_marks(k: float) -> void:
 				var spacing: float = 6.0 * k
 				var x0: float = -float(dots - 1) * spacing * 0.5
 				for i: int in range(dots):
-					draw_circle(top + Vector2(x0 + float(i) * spacing, 0.0), 2.0 * k, Color(1.0, 1.0, 1.0, 0.9))
+					draw_circle(top + Vector2(x0 + float(i) * spacing, 0.0), 2.0 * k, STRAIN_DOT)

@@ -197,6 +197,10 @@ func _release(seed_id: int) -> void:
 		_pool.append(tr)
 
 
+func idle_period_s() -> float:
+	return IDLE_PERIOD_S
+
+
 func paint(ci: CanvasItem, anchor: Vector2, pose: ModelPose, t: float) -> void:
 	var size_k: float = 1.0 + (ViewRng.hash01(pose.seed, 2) - 0.5) * SIZE_VARIANCE
 	_lum = 1.0 + (ViewRng.hash01(pose.seed, 3) - 0.5) * LIGHT_VARIANCE

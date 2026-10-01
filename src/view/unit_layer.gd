@@ -30,6 +30,9 @@ const PATHOGEN_SIZE_T: Dictionary = {
 const DEFAULT_PATHOGEN_SIZE_T: Vector2 = Vector2(1.2, 1.25)
 
 const WALL_TYPE_ID: String = "mucous_wall"
+## Draw pathogens from the baked atlas (SpriteBaker) instead of painting them every frame. On because the
+## measurements in docs/PERF_BASELINE.md ("After M6") show the live painters miss the frame budget.
+const USE_BAKED_SPRITES: bool = true
 const CRACK_PULSE_LO: float = 0.6
 const CRACK_PULSE_HI: float = 1.0
 
@@ -63,6 +66,8 @@ var _breached: Dictionary = {}
 var _expired: Array[int] = []
 
 var driver: AnimDriver = AnimDriver.new()
+var baker: SpriteBaker = null
+var _baked_key: Vector2 = Vector2(-1.0, -1.0)
 ## Its ground decals are painted in this layer's ground pass, under the sprites: scorch before the plates,
 ## splash rings after them.
 var effects: EffectLayer = null
@@ -81,6 +86,8 @@ var _walls_dirty: bool = true
 ## Destroyed walls, by structure id, whose goo decal stays on the ground for the rest of the battle.
 var _goo: Array[int] = []
 var _proj_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
+## Projection of the last pass, so a resize while paused still redraws once.
+var _drawn_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
 
 
 func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, p_snapshots: BattleSnapshotBuffer, p_runner: BattleRunner) -> void:
@@ -93,6 +100,7 @@ func setup(p_sim: BattleSim, p_config: GameConfig, p_projection: IsoProjection, 
 	view_time = 0.0
 	ModelRegistry.configure(config, projection.scale if projection != null else IsoProjection.DEFAULT_SCALE)
 	ModelRegistry.reset_painters()
+	_bake_sprites()
 	_dying_p.clear()
 	_dying_s.clear()
 	_goo.clear()
@@ -111,9 +119,23 @@ func set_reduce_flashes(value: bool) -> void:
 func _process(delta: float) -> void:
 	if sim == null:
 		return
-	if runner != null and runner.is_running and not runner.paused and not paused:
+	if baker != null and projection != null and _bake_key() != _baked_key:
+		_bake_sprites()
+	if is_live():
 		view_time += delta
-	queue_redraw()
+		queue_redraw()
+	elif projection != null and _projection_key() != _drawn_key:
+		queue_redraw()
+
+
+## True while the battle runs and is not paused: only then does the layer redraw every frame. Without a
+## runner (tests and tools) there is no battle clock, so it keeps redrawing.
+func is_live() -> bool:
+	return runner == null or (runner.is_running and not runner.paused and not paused)
+
+
+func _projection_key() -> Vector4:
+	return Vector4(projection.tile_px, projection.origin.x, projection.origin.y, projection.scale)
 
 
 # --- sizing, shared with the overlay ---------------------------------------
@@ -204,14 +226,13 @@ func _take_item(kind: int, id: int, key: float, age: float) -> void:
 	item.id = id
 	item.key = key
 	item.age = age
-	_sorted.append(item)
 
 
 func _collect() -> void:
 	_pool_used = 0
-	_sorted.clear()
 	_breached.clear()
 	if sim == null or projection == null:
+		_sorted.resize(0)
 		return
 	# A wall that died without an event reaching the view still leaves its gap, before any post is read.
 	if not _wall_cache_matches_sim():
@@ -259,6 +280,11 @@ func _collect() -> void:
 		_dying_p.erase(uid)
 	_expired.clear()
 
+	# The sort array keeps its size from frame to frame, so it is refilled in place rather than regrown.
+	if _sorted.size() != _pool_used:
+		_sorted.resize(_pool_used)
+	for i: int in range(_pool_used):
+		_sorted[i] = _pool[i]
 	_sorted.sort_custom(_sort_cmp)
 
 
@@ -278,6 +304,7 @@ func _draw() -> void:
 	last_item_count = _sorted.size()
 	if sim == null or projection == null:
 		return
+	_drawn_key = _projection_key()
 	_draw_ground_decals()
 	var n: int = _sorted.size()
 	var i: int = 0
@@ -330,6 +357,29 @@ func _refresh_wall_cache() -> void:
 		if s.alive and s.def != null and s.def.has_tag("wall"):
 			_wall_cells[s.origin] = true
 	walls.rebuild(_wall_cells, projection)
+
+
+## Bakes (or rebakes, when T or the screen scale changed) the pathogen atlas. Until it is ready the
+## pathogens are painted live.
+func _bake_sprites() -> void:
+	if not USE_BAKED_SPRITES or config == null or projection == null or not is_inside_tree():
+		return
+	_baked_key = _bake_key()
+	if baker == null:
+		baker = SpriteBaker.new()
+		baker.name = "SpriteBaker"
+		add_child(baker, false, Node.INTERNAL_MODE_FRONT)
+	var ids: Array[String] = []
+	for id_var: Variant in config.pathogens:
+		ids.append(str(id_var))
+	ids.sort()
+	baker.bake(ids, projection.tile_px, _bake_key().y)
+
+
+## (tile px, screen scale): what an atlas depends on besides the types.
+func _bake_key() -> Vector2:
+	var xf: Transform2D = get_viewport().get_final_transform() * get_global_transform_with_canvas()
+	return Vector2(projection.tile_px, xf.get_scale().x)
 
 
 func _wall_pose(s: StructureState) -> ModelPose:
@@ -402,4 +452,6 @@ func _draw_pathogen(p: PathogenState) -> void:
 	var foot: Vector2 = projection.ground_to_screen(ground)
 	# A painter's ground decals (trail, shockwave) go down just before the unit, so they sort with it.
 	painter.paint_ground(self, foot, pose, projection.tile_px)
+	if USE_BAKED_SPRITES and baker != null and baker.draw(self, p.type_id, pose, foot):
+		return
 	painter.paint(self, foot, pose, projection.tile_px)

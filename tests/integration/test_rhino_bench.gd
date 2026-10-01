@@ -32,6 +32,40 @@ func test_build_setup_mix_cycles_the_types() -> void:
 		assert_between(int(counts[id]), 66, 67)
 
 
+func test_mix_types_with_counts_builds_that_exact_army_interleaved() -> void:
+	var types: Array[String] = RhinoBench.mix_types("rhinovirus:120,bacteriophage:50,staphylococcus:30")
+	assert_eq(types.size(), 200)
+	var counts: Dictionary = {}
+	for id: String in types:
+		counts[id] = int(counts.get(id, 0)) + 1
+	assert_eq(counts, {"rhinovirus": 120, "bacteriophage": 50, "staphylococcus": 30})
+	# Interleaved: every run of 20 units has each type in proportion, within one unit.
+	for start: int in range(0, 200, 20):
+		var window: Dictionary = {}
+		for i: int in range(start, start + 20):
+			window[types[i]] = int(window.get(types[i], 0)) + 1
+		assert_between(int(window.get("rhinovirus", 0)), 11, 13)
+		assert_between(int(window.get("bacteriophage", 0)), 4, 6)
+		assert_between(int(window.get("staphylococcus", 0)), 2, 4)
+	assert_eq(RhinoBench.mix_types("rhinovirus:120,bacteriophage:50,staphylococcus:30"), types, "deterministic")
+
+	var grid: GridModel = GridModel.new(GameConfig.load_from_dir("res://data").config)
+	var setup: BattleSetup = RhinoBench.build_setup(grid.ring_cells(), types.size(), RhinoBench.BENCH_SEED, types)
+	assert_eq(setup.units.size(), 200)
+	var seen: Dictionary = {}
+	for i: int in range(setup.units.size()):
+		assert_eq(setup.units[i]["type"], types[i])
+		seen[setup.units[i]["cell"]] = true
+	assert_eq(seen.size(), 200, "200 distinct ring cells")
+
+
+func test_mix_types_without_counts_cycles_and_falls_back() -> void:
+	var cycled: Array[String] = RhinoBench.mix_types("rhinovirus,bacteriophage", 4)
+	assert_eq(cycled, ["rhinovirus", "bacteriophage", "rhinovirus", "bacteriophage"] as Array[String])
+	assert_eq(RhinoBench.mix_types("", 3), ["rhinovirus", "rhinovirus", "rhinovirus"] as Array[String])
+	assert_eq(RhinoBench.mix_types("rhinovirus").size(), RhinoBench.UNIT_COUNT)
+
+
 func test_summarize() -> void:
 	var s: Dictionary = RhinoBench.summarize([10.0, 20.0, 30.0, 40.0])
 	assert_almost_eq(float(s["avg_ms"]), 25.0, 0.001)

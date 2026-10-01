@@ -171,6 +171,21 @@ func test_idle_time_is_desynchronised_per_entity() -> void:
 	assert_eq(a.seed, sim.pathogens[0].id)
 
 
+func test_fifty_idle_rhinoviruses_do_not_pulse_in_unison() -> void:
+	var units: Array = []
+	for i: int in range(50):
+		units.append({"type": "rhinovirus", "cell": Vector2i(2 + i % 10, 2 + i / 10)})
+	var sim: BattleSim = SimFixtures.make_sim([], units, 1, config)
+	var driver := AnimDriver.new()
+	var period: float = AnimDriver.IDLE_DESYNC_SECONDS
+	var buckets: Dictionary = {}
+	for p: PathogenState in sim.pathogens:
+		var pose: ModelPose = driver.pose_for_pathogen(p, 1, Vector2.ZERO, Vector2.ZERO, 0.0, 0.0)
+		buckets[int(floorf(fposmod(pose.time, period) / period * 10.0))] = true
+	assert_eq(sim.pathogens.size(), 50)
+	assert_gte(buckets.size(), 8, "idle phases spread over at least 8 of 10 buckets of the desync window")
+
+
 func _tower(sim: BattleSim, type_id: String) -> StructureState:
 	for s: StructureState in sim.structures:
 		if s.type_id == type_id:

@@ -111,6 +111,41 @@ func test_tower_ghost_is_the_real_model_in_the_ghost_group() -> void:
 	gv.clear_ghost()
 	assert_false(gv._ghost_group.visible)
 
+func test_static_island_is_cached_and_repainted_only_on_change() -> void:
+	var gv: GridView = _make_view()
+	await wait_process_frames(2)
+	assert_eq(gv.ground_renders, 1, "painted once")
+	var rect: Rect2 = gv.ground_rect()
+	var slab := Vector2(0.0, GridView.SLAB_T * gv.projection.tile_px)
+	var rim := Vector2(2.0, 2.0)
+	for p: Vector2 in gv._outline:
+		assert_true(rect.has_point(p - rim) and rect.has_point(p + rim), "covers the island and its rim")
+		assert_true(rect.has_point(p + slab + rim), "and the slab")
+	# Idle and pulse redraws of the live layers reuse the texture.
+	gv.deploy_mode = true
+	gv.set_night(true)
+	await wait_process_frames(2)
+	var after_phase: int = gv.ground_renders
+	assert_eq(after_phase, 2, "one repaint for the theme and phase change together")
+	for i: int in range(5):
+		gv._process(0.05)
+		await wait_process_frames(1)
+	assert_eq(gv.ground_renders, after_phase, "the band pulse is a live overlay")
+	gv.draw_structures = false
+	await wait_process_frames(2)
+	assert_eq(gv.ground_renders, after_phase + 1, "plates leave the island in Infection")
+	gv.fit_to_rect(Rect2(0, 0, 800, 600))
+	await wait_process_frames(2)
+	assert_eq(gv.ground_renders, after_phase + 2, "T and origin changes repaint it")
+	var wallet := Wallet.new({"atp": 100000})
+	gv.draw_structures = true
+	await wait_process_frames(2)
+	var before_place: int = gv.ground_renders
+	assert_gt(gv.grid.place("macrophage", Vector2i(6, 6), wallet), 0)
+	await wait_process_frames(2)
+	assert_eq(gv.ground_renders, before_place + 1, "a new structure brings its plate")
+	assert_eq(get_logger().get_errors().size(), 0)
+
 func test_night_switch_and_structure_cache_is_depth_sorted() -> void:
 	var gv: GridView = _make_view()
 	gv.set_night(true)

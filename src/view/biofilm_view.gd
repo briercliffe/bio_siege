@@ -6,11 +6,17 @@ const FILL_ALPHA: float = 0.15
 const LINE_ALPHA: float = 0.35
 const RADIUS_TILES: float = 0.8
 const LINE_WIDTH_PX: float = 6.0
+const FILL: Color = Color(BIOFILM_COLOR, FILL_ALPHA)
+const LINE: Color = Color(BIOFILM_COLOR, LINE_ALPHA)
 
 var session: Session = null
 var runner: BattleRunner = null
 var snapshots: BattleSnapshotBuffer = null
 var projection: IsoProjection = null
+## Live members of the group being drawn; only the first _member_count entries are current.
+var _members: Array[PathogenState] = []
+var _member_count: int = 0
+var _drawn_key: Vector4 = Vector4(-1.0, 0.0, 0.0, 0.0)
 
 
 func setup(p_session: Session, p_runner: BattleRunner, p_snapshots: BattleSnapshotBuffer, p_projection: IsoProjection) -> void:
@@ -21,7 +27,16 @@ func setup(p_session: Session, p_runner: BattleRunner, p_snapshots: BattleSnapsh
 
 
 func _process(_delta: float) -> void:
-	queue_redraw()
+	if runner == null or projection == null:
+		return
+	if runner.is_running and not runner.paused:
+		queue_redraw()
+	elif _projection_key() != _drawn_key:
+		queue_redraw()
+
+
+func _projection_key() -> Vector4:
+	return Vector4(projection.tile_px, projection.origin.x, projection.origin.y, projection.scale)
 
 
 func _unit_ground(p: PathogenState) -> Vector2:
@@ -35,24 +50,26 @@ func _draw() -> void:
 	if runner == null or runner.sim == null or projection == null:
 		return
 	var sim: BattleSim = runner.sim
-	var fill := Color(BIOFILM_COLOR.r, BIOFILM_COLOR.g, BIOFILM_COLOR.b, FILL_ALPHA)
-	var line := Color(BIOFILM_COLOR.r, BIOFILM_COLOR.g, BIOFILM_COLOR.b, LINE_ALPHA)
+	_drawn_key = _projection_key()
 	var k: float = projection.tile_px / 14.0
-	for root: Variant in sim.biofilm.groups.keys():
+	for root: Variant in sim.biofilm.groups:
 		var ids: Array = sim.biofilm.groups[root]
-		var members: Array[PathogenState] = []
+		if _members.size() < ids.size():
+			_members.resize(ids.size())
+		_member_count = 0
 		for id_var: Variant in ids:
 			var m: PathogenState = sim.pathogen(int(id_var))
 			if m != null and m.alive:
-				members.append(m)
+				_members[_member_count] = m
+				_member_count += 1
 		draw_set_transform_matrix(projection.ground_transform())
-		for m: PathogenState in members:
-			draw_circle(_unit_ground(m), RADIUS_TILES, fill)
+		for i: int in range(_member_count):
+			draw_circle(_unit_ground(_members[i]), RADIUS_TILES, FILL)
 		draw_set_transform_matrix(Transform2D.IDENTITY)
-		for i: int in range(members.size()):
-			var a: PathogenState = members[i]
-			for j: int in range(i + 1, members.size()):
-				var b: PathogenState = members[j]
+		for i: int in range(_member_count):
+			var a: PathogenState = _members[i]
+			for j: int in range(i + 1, _member_count):
+				var b: PathogenState = _members[j]
 				var brk: int = a.def.biofilm_break_mt
 				if FixedMath.dist_sq(a.pos, b.pos) < brk * brk:
-					draw_line(projection.ground_to_screen(_unit_ground(a)), projection.ground_to_screen(_unit_ground(b)), line, LINE_WIDTH_PX * k)
+					draw_line(projection.ground_to_screen(_unit_ground(a)), projection.ground_to_screen(_unit_ground(b)), LINE, LINE_WIDTH_PX * k)

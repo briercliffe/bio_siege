@@ -7,8 +7,13 @@ extends Control
 ##
 ## Command line, for a scripted run on the desktop (needs a renderer, so not --headless):
 ##   godot --path . tests/perf/rhino_bench.tscn -- --bench-seconds=15 --bench-out=<absolute path to a .txt>
-## Add --bench-mix=rhinovirus,bacteriophage,staphylococcus to cycle the army through those types instead.
+## Add --bench-mix=rhinovirus,bacteriophage,staphylococcus to cycle the army through those types instead, or
+## give counts, --bench-mix=rhinovirus:120,bacteriophage:50,staphylococcus:30, for an army of exactly those
+## numbers (their sum replaces the 200), interleaved evenly around the ring.
 ## After the warm-up and the requested seconds it writes the summary to the file and quits.
+##
+## Web export: the same user arguments can be passed through the exported page's engine config. There is no
+## file to write, so the summary goes to the browser console as one "BENCH ..." line (web builds only).
 
 const UNIT_COUNT: int = 200
 const BENCH_SEED: int = 67
@@ -31,7 +36,55 @@ var _clock: float = 0.0
 var _run_s: float = -1.0
 var _out_path: String = ""
 var _mix: Array[String] = ["rhinovirus"]
+var _unit_count: int = UNIT_COUNT
 var _summary: Dictionary = {}
+
+
+## The army of a --bench-mix spec: "a,b,c" cycles those types over `default_count` units; "a:120,b:50"
+## gives exactly those counts, spread so every type is interleaved evenly. Unknown or empty specs fall back
+## to Rhinoviruses only.
+static func mix_types(spec: String, default_count: int = UNIT_COUNT) -> Array[String]:
+	var ids: Array[String] = []
+	var counts: Array[int] = []
+	var counted: bool = false
+	for entry: String in spec.split(",", false):
+		var id: String = entry.get_slice(":", 0).strip_edges()
+		if id.is_empty():
+			continue
+		var n: int = 0
+		if entry.contains(":"):
+			counted = true
+			n = maxi(entry.get_slice(":", 1).to_int(), 0)
+		ids.append(id)
+		counts.append(n)
+	if ids.is_empty():
+		ids = ["rhinovirus"]
+		counts = [0]
+	var out: Array[String] = []
+	if not counted:
+		for i: int in range(default_count):
+			out.append(ids[i % ids.size()])
+		return out
+	var total: int = 0
+	for n: int in counts:
+		total += n
+	var placed: Array[int] = []
+	placed.resize(ids.size())
+	placed.fill(0)
+	# Largest deficit first: after i units, each type has as close to count * i / total as the integers allow.
+	for i: int in range(total):
+		var best: int = -1
+		var best_deficit: int = 0
+		for k: int in range(ids.size()):
+			if placed[k] >= counts[k]:
+				continue
+			var deficit: int = counts[k] * (i + 1) - placed[k] * total
+			if best < 0 or deficit > best_deficit:
+				best = k
+				best_deficit = deficit
+		out.append(ids[best])
+		placed[best] += 1
+	return out
 
 
 ## Walled Nucleus with `count` Rhinoviruses spread evenly over `ring`. Pure: the same inputs give the same setup.
@@ -74,7 +127,7 @@ func _ready() -> void:
 
 
 func _start_battle() -> void:
-	session.battle_setup = build_setup(session.grid.ring_cells(), UNIT_COUNT, BENCH_SEED, _mix)
+	session.battle_setup = build_setup(session.grid.ring_cells(), _unit_count, BENCH_SEED, _mix)
 	infection_phase.setup(session, null)
 
 
@@ -85,11 +138,8 @@ func _parse_cli() -> void:
 		elif arg.begins_with("--bench-out="):
 			_out_path = arg.get_slice("=", 1)
 		elif arg.begins_with("--bench-mix="):
-			_mix = []
-			for id: String in arg.get_slice("=", 1).split(",", false):
-				_mix.append(id)
-			if _mix.is_empty():
-				_mix = ["rhinovirus"]
+			_mix = mix_types(arg.get_slice("=", 1))
+			_unit_count = _mix.size()
 
 
 func _process(delta: float) -> void:
@@ -136,12 +186,17 @@ func _finish_cli_run() -> void:
 			kept.append(_frame_ms[i])
 	_refresh()
 	var s: Dictionary = summarize(kept)
+	var text: String = "avg_ms=%.3f\np95_ms=%.3f\nmin_fps=%.2f\nframes=%d\ndraw_calls=%d\nalive=%d\ntile_px=%.1f\nrenderer=%s\nadapter=%s\n" % [
+		s["avg_ms"], s["p95_ms"], s["min_fps"], s["frames"], _summary["draw_calls"], alive_units, _tile_px(),
+		RenderingServer.get_current_rendering_method(), RenderingServer.get_video_adapter_name()]
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("console.log(%s)" % JSON.stringify("BENCH " + text.replace("\n", " ")))
+		_run_s = -1.0
+		return
 	if _out_path != "":
 		var f: FileAccess = FileAccess.open(_out_path, FileAccess.WRITE)
 		if f != null:
-			f.store_string("avg_ms=%.3f\np95_ms=%.3f\nmin_fps=%.2f\nframes=%d\ndraw_calls=%d\nalive=%d\ntile_px=%.1f\nrenderer=%s\nadapter=%s\n" % [
-				s["avg_ms"], s["p95_ms"], s["min_fps"], s["frames"], _summary["draw_calls"], alive_units, _tile_px(),
-				RenderingServer.get_current_rendering_method(), RenderingServer.get_video_adapter_name()])
+			f.store_string(text)
 			f.close()
 	get_tree().quit()
 

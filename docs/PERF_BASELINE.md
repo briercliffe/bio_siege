@@ -145,3 +145,52 @@ Two decisions follow for #72, and they should be made before the other three pai
 2. **Budget the rest of the view separately.** About 12 ms desktop and 39 ms web with 200 units is spent outside the painters (intent lines, sim, grid and HUD). Baking will not fix that part, so #72 should measure it on its own and decide whether the intent lines need a cheaper path.
 
 The bench stays as the regression check: re-run it after each painter or bake change and update the tables above.
+
+## After M6 (issue #72)
+
+Budget from the section above: 60 fps on desktop, at most 20 ms average and under 25 ms p95 on the web with 200 units.
+
+**Machines.** The same one as the first section: Intel i9-12900K, GTX 1070, Windows 11. Desktop is the Godot 4.7.2 binary running the project (GL Compatibility), `--disable-vsync`, 15 s after the warm-up, the mean of two runs interleaved before, after (cheap wins), after (bake). The web rows are a release Web export (single-threaded) in a visible Chrome window of 1284x725 px, a fresh profile, two runs each; the bench scene was the main scene of those exports, and the page was visible and in front. The Infection HUD from #81 fits the island between its cards, so the bench runs at 14.3 px per tile on desktop and 18.1 on the web, not at the 23 px of the first sections: these numbers are not comparable to those.
+
+"Before" is #71 (`18d5537`) plus only the bench options of this branch (`--bench-seconds`, `--bench-out`, counts in `--bench-mix`). "Mixed" is `--bench-mix=rhinovirus:120,bacteriophage:50,staphylococcus:30`.
+
+### Desktop
+
+| Scene | Build | Avg ms | p95 ms | Draw calls |
+|---|---|---|---|---|
+| `rhino_bench`, 200 Rhinoviruses | before #72 | 33.58 | 34.72 | 2244 |
+| | cheap wins (cache, redraw policy, no allocation, background) | 33.54 | 35.11 | 1996 |
+| | + baked sprites | **5.59** | 6.06 | 213 |
+| `rhino_bench`, mixed 120/50/30 | before #72 | 37.61 | 39.65 | 2600 |
+| | cheap wins | 37.81 | 39.66 | 2354 |
+| | + baked sprites | **7.91** | 9.41 | 315 |
+| `stress_battle` | before #72 | 9.80 | 17.07 | 865 |
+| | cheap wins | 3.62 | 11.67 | 618 |
+| | + baked sprites | 2.12 | 5.27 | 305 |
+
+### Web (Chrome)
+
+| Scene | Build | Avg ms | p95 ms | Draw calls |
+|---|---|---|---|---|
+| 200 Rhinoviruses | before #72 (2 runs) | 58.4, 59.3 | 62.5, 66.7 | 2251 |
+| | after #72 (2 runs) | 16.67, 16.67 | 16.67, 16.67 | 223 |
+| Mixed 120/50/30 | before #72 (2 runs) | 70.2, 69.6 | 75.0, 75.0 | 2606 |
+| | after #72 (2 runs) | 16.67, 16.67 | 16.67, 16.67 | 325 |
+
+The web page is capped at 60 fps by the browser, so 16.67 ms is the cap, not the cost: the real frame time is at or under it, and the headroom is not known. The budget is met with 200 units, both for the Rhinovirus and for the mixed army.
+
+### What the numbers say
+
+- **The cheap wins did not move the desktop battle on this GPU.** The static island cache, the redraw policy, the allocation clean-up and the flat-band background took the Rhino bench from 33.58 to 33.54 ms. Their effect shows only in the stress scene (9.8 to 3.6 ms), where the full-screen background gradient was the main cost, and on the llvmpipe VM of the earlier sections, where that gradient cost about 25 ms. The draw-call counts dropped by about 250.
+- **The frame was the painters.** Baking took about 28 ms off the 33 ms frame, so that is what per-unit painting in `UnitLayer._draw` cost. It is now one textured quad per unit, 213 draw calls instead of 2244.
+- **The bake step is therefore on** (`USE_BAKED_SPRITES = true` in `unit_layer.gd`), for the reasons the section above predicted: without it desktop sits at 30 fps and the web at 15 fps.
+
+### Baked sprites: what changed in the look
+
+`SpriteBaker` renders every pathogen painter into one atlas at battle start, at the current T and screen scale (idle 8, move 8, attack 6, hit 3, death 8 frames), and again when either changes. Until the atlas is drawn, units are painted live. Differences from the live painters: the per-entity size and light variance (+-4%) is not baked; a hit flash shows as the HIT clip instead of a tint on the current pose, and only while the unit is not attacking; the 1 px antialiased edges are slightly darker, because the atlas holds premultiplied colour and is drawn with normal blending; sprites are drawn at fractional positions with linear filtering. Trails and shockwaves (`paint_ground`) still run live. Towers, walls and the Nucleus are not baked: there are at most seven towers on the field.
+
+### Not measured
+
+- Firefox, Safari, any phone or low-end laptop; web numbers have two runs at one window size.
+- The web cost of the cheap wins on their own (only before, and after both).
+- The headroom under the 60 fps cap on the web.

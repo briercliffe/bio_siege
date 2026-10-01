@@ -189,6 +189,39 @@ func test_ambient_cells_min_count_and_theme_colours() -> void:
 	assert_ne(night_cells[0]["fill"], day_cells[0]["fill"])
 
 
+func _tri_area(pts: PackedVector2Array, idx: PackedInt32Array) -> float:
+	var area: float = 0.0
+	for i: int in range(0, idx.size(), 3):
+		var a: Vector2 = pts[idx[i]]
+		var b: Vector2 = pts[idx[i + 1]]
+		var c: Vector2 = pts[idx[i + 2]]
+		area += absf((b - a).cross(c - a)) * 0.5
+	return area
+
+
+func test_ambient_gradient_is_one_layer_of_flat_bands() -> void:
+	var bg := AmbientBackground.new()
+	bg.night = true
+	bg._ensure_cache(1280.0, 720.0)
+	var n: int = AmbientBackground.GRADIENT_SEGMENTS
+	assert_eq(bg.triangle_counts().x, n + AmbientBackground.GRADIENT_STEPS * n * 2)
+	# Non-overlapping: the band triangles add up to exactly the outer ellipse polygon, so each pixel is filled once.
+	var rx: float = 640.0 * sqrt(2.0) * AmbientBackground.GRADIENT_OUTER_K
+	var ry: float = 720.0 * 0.55 * sqrt(2.0) * AmbientBackground.GRADIENT_OUTER_K
+	var polygon_area: float = 0.5 * float(n) * rx * ry * sin(TAU / float(n))
+	assert_almost_eq(_tri_area(bg._grad_pts, bg._grad_idx), polygon_area, polygon_area * 0.0001)
+	# Past the corners, so no full-screen rect is needed under it.
+	assert_gt(rx * cos(PI / float(n)), 640.0 * sqrt(2.0))
+	var pal: Dictionary = UiPalette.for_theme(true)
+	assert_eq(bg._grad_cols[0], AmbientBackground.band_color(1, pal))
+	assert_eq(bg._grad_cols[bg._grad_cols.size() - 1], pal["bg_edge"] as Color)
+	assert_true(AmbientBackground.band_color(1, pal).is_equal_approx((pal["bg_center"] as Color).lerp(pal["bg_mid"] as Color, 0.5 / 24.0 / 0.55)))
+	var tris: Vector2i = bg.triangle_counts()
+	bg._ensure_cache(1280.0, 720.0)
+	assert_eq(bg.triangle_counts(), tris, "cached per size and theme")
+	bg.free()
+
+
 func test_segmented_tabs_emit_tab_changed() -> void:
 	var labels: Array[String] = ["A", "B", "C"]
 	var tabs := SegmentedTabs.new(labels)
