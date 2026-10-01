@@ -419,7 +419,7 @@ func test_main_ui_normal_and_error() -> void:
 	assert_false(normal_ui.visible, "Normal UI should be hidden on config error")
 	assert_true(error_panel.visible, "Error panel should be visible on config error")
 	assert_eq(error_panel.chips.size(), 1)
-	assert_eq(error_panel.chips[0].text, "structures.json · test")
+	assert_eq(error_panel.chips[0].text, "structures.json Â· test")
 
 	# Restore GameData
 	GameData.load_errors = PackedStringArray()

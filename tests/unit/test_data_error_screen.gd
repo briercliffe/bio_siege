@@ -140,7 +140,7 @@ func test_copy_report_sets_clipboard_text_and_label() -> void:
 
 
 func test_reload_hides_screen_once_files_are_fixed() -> void:
-	var broken: String = FileAccess.get_file_as_string("res://data/structures.json").replace("{", "[", 1)
+	var broken: String = FileAccess.get_file_as_string("res://data/structures.json").replace("\"mucous_wall\"", "mucous_wall")
 	_write_temp_data(broken)
 	var data: Node = GameDataScript.new()
 	autofree(data)
