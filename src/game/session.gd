@@ -12,6 +12,7 @@ var last_result: Dictionary = {}          # filled by #20, shown by #22
 var last_launch: Dictionary = {}
 var prediction_structure_id: int = 0      # filled by #25
 var memory: ImmuneMemory = ImmuneMemory.new()  # immune_memory flag: strains learned across raids
+var populations: Dictionary = {}          # coevolution flag: type_id -> BreedPool, kept across raids
 var best_score: int = 0                   # raid_score flag: best score this session (not persisted)
 var intent_lines_enabled: bool = true
 var pending_config: GameConfig = null     # hot-reloaded config queued during INFECTION (#27)
@@ -25,6 +26,21 @@ func _init(p_config: GameConfig = null, settings_path: String = GameSettings.DEF
 		grid = GridModel.new(config)
 		grid.reset_with_nucleus()
 		army = Army.new(config)
+
+
+## The stored pool for a breeding type, or a wild pool when none is stored.
+## Null when the type does not breed or there is no config.
+func population(type_id: String) -> BreedPool:
+	if config == null or not config.is_breeding_type(type_id):
+		return null
+	var stored: Variant = populations.get(type_id, null)
+	if stored is BreedPool:
+		return stored
+	return BreedPool.wild_pool(type_id, config)
+
+
+func reset_populations() -> void:
+	populations.clear()
 
 
 ## Applies a hot-reloaded config to the running session (issue #27 apply rules).
@@ -52,6 +68,13 @@ func apply_new_config(new_config: GameConfig) -> Dictionary:
 	config = new_config
 	if new_config.memory_enabled():
 		memory.clamp_to(new_config)
+	if new_config.coevolution_enabled():
+		var rebuilt: Dictionary = {}
+		for type_id: Variant in populations.keys():
+			var tid: String = str(type_id)
+			if new_config.is_breeding_type(tid):
+				rebuilt[tid] = BreedPool.from_dict((populations[type_id] as BreedPool).to_dict(), tid, new_config)
+		populations = rebuilt
 	if grid == null or wallet == null or army == null:
 		summary["message"] = _reload_message(int(summary["changed_values"]), notices)
 		return summary

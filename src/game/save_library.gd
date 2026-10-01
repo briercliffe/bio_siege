@@ -86,10 +86,10 @@ func count(kind: String) -> int:
 	return list(kind).size()
 
 
-func save_base(slot_name: String, grid: GridModel, config: GameConfig, memory: ImmuneMemory = null) -> Dictionary:
+func save_base(slot_name: String, grid: GridModel, config: GameConfig, memory: ImmuneMemory = null, populations: Dictionary = {}) -> Dictionary:
 	if grid == null:
 		return {"ok": false, "path": "", "error": "Nothing to save"}
-	return _write_slot(KIND_BASE, slot_name, SnapshotIO.base_to_dict(grid, memory), summary_for_base(grid, config))
+	return _write_slot(KIND_BASE, slot_name, SnapshotIO.base_to_dict(grid, memory, populations), summary_for_base(grid, config))
 
 
 func save_army(slot_name: String, army: Army, config: GameConfig) -> Dictionary:
@@ -291,6 +291,14 @@ static func apply_base(session: Session, parsed: Dictionary) -> String:
 	if session.config.memory_enabled():
 		var memory: Variant = parsed.get("memory", {})
 		session.memory = ImmuneMemory.from_dict(memory if memory is Dictionary else {}, session.config)
+	if session.config.coevolution_enabled():
+		var pops_val: Variant = parsed.get("populations", {})
+		var pops: Dictionary = pops_val if pops_val is Dictionary else {}
+		session.reset_populations()
+		for type_id: String in session.config.coevo_types:
+			var pool_val: Variant = pops.get(type_id, null)
+			if pool_val is Dictionary:
+				session.populations[type_id] = BreedPool.from_dict(pool_val, type_id, session.config)
 	return ""
 
 
@@ -336,7 +344,7 @@ func _import_base(text: String, slot_name: String, config: GameConfig) -> Dictio
 		return {"ok": false, "kind": KIND_BASE, "path": "", "name": "", "error": str(parsed.get("error", ""))}
 	var layout: Array = parsed.get("layout", [])
 	var final_name: String = _name_or_default(slot_name, KIND_BASE)
-	var res: Dictionary = _write_slot(KIND_BASE, final_name, _base_dict(layout, parsed.get("memory", {}), config),
+	var res: Dictionary = _write_slot(KIND_BASE, final_name, _base_dict(layout, parsed.get("memory", {}), config, parsed.get("populations", {})),
 			summary_for_layout(layout, config))
 	res["kind"] = KIND_BASE
 	res["name"] = final_name
@@ -373,7 +381,7 @@ func _write_legacy_slot(kind: String, parsed: Dictionary, saved_unix: int, confi
 		var units: Array = parsed.get("units", [])
 		return _write_slot(kind, slot_name, SnapshotIO.army_to_dict(units), summary_for_units(units, config), saved_unix)
 	var layout: Array = parsed.get("layout", [])
-	return _write_slot(kind, slot_name, _base_dict(layout, parsed.get("memory", {}), config),
+	return _write_slot(kind, slot_name, _base_dict(layout, parsed.get("memory", {}), config, parsed.get("populations", {})),
 			summary_for_layout(layout, config), saved_unix)
 
 
@@ -390,7 +398,7 @@ static func _parse(kind: String, text: String, config: GameConfig) -> Dictionary
 
 
 ## SnapshotIO's base format rebuilt from a parsed layout (a GridModel cannot place without a wallet).
-static func _base_dict(layout: Array, memory: Variant, config: GameConfig) -> Dictionary:
+static func _base_dict(layout: Array, memory: Variant, config: GameConfig, populations: Variant = {}) -> Dictionary:
 	var structs_arr: Array = []
 	for item: Variant in layout:
 		if item is Dictionary:
@@ -404,6 +412,8 @@ static func _base_dict(layout: Array, memory: Variant, config: GameConfig) -> Di
 	}
 	if memory is Dictionary and not (memory as Dictionary).is_empty():
 		out["memory"] = (memory as Dictionary).duplicate(true)
+	if populations is Dictionary and not (populations as Dictionary).is_empty():
+		out["populations"] = (populations as Dictionary).duplicate(true)
 	return out
 
 

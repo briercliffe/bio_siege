@@ -492,3 +492,25 @@ func test_launch_event_includes_flags_and_army_atp_by_type() -> void:
 	var expected_staph: int = 1 * int(session.army.unit_cost("staphylococcus").get("atp", 0))
 	assert_eq(int(by_type.get("rhinovirus", -1)), expected_rhino)
 	assert_eq(int(by_type.get("staphylococcus", -1)), expected_staph)
+
+
+func test_launch_passes_populations() -> void:
+	var cfg: GameConfig = _load_config()
+	cfg.feature_flags["coevolution"] = true
+	var session: Session = _create_session(cfg)
+	var pool: BreedPool = BreedPool.wild_pool("rhinovirus", cfg)
+	pool.generation = 2
+	session.populations["rhinovirus"] = pool
+	session.army.reserve["rhinovirus"] = 1
+	var comps: Dictionary = _setup_components(session)
+	(comps["hud"] as HudSpawn).launch_requested.emit()
+	var pops: Dictionary = session.battle_setup.populations
+	for type_id: String in cfg.coevo_types:
+		assert_true(pops.has(type_id), type_id)
+	assert_eq(pops["rhinovirus"]["generation"], 2)
+
+	var off_session: Session = _create_session(_load_config())
+	off_session.army.reserve["rhinovirus"] = 1
+	var off_comps: Dictionary = _setup_components(off_session)
+	(off_comps["hud"] as HudSpawn).launch_requested.emit()
+	assert_true(off_session.battle_setup.populations.is_empty())

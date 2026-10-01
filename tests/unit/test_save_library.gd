@@ -431,3 +431,56 @@ func test_names_are_cut_to_the_max_length() -> void:
 	assert_true(res["ok"], str(res["error"]))
 	assert_eq(res["name"], "B".repeat(39), "trailing spaces left by the cut are trimmed")
 	assert_eq(lib.list("base")[0]["name"], "B".repeat(39))
+
+
+func _coevo_config(on: bool = true) -> GameConfig:
+	var cfg: GameConfig = _config()
+	cfg.feature_flags["coevolution"] = on
+	return cfg
+
+
+func test_populations_survive_save_and_apply() -> void:
+	var cfg: GameConfig = _coevo_config()
+	var session := _session(cfg)
+	var pool: BreedPool = BreedPool.wild_pool("rhinovirus", cfg)
+	pool.generation = 3
+	pool.genomes[0] = Genome.from_slots(["capsule_a", ""], ["binder_a", ""], cfg)
+	var lib := _library()
+	var res: Dictionary = lib.save_base("Pools", session.grid, cfg, null, {"rhinovirus": pool.to_dict()})
+	assert_true(res["ok"], str(res["error"]))
+	var loaded: Dictionary = lib.load_slot(lib.list("base")[0]["path"], cfg)
+	assert_true(loaded["ok"], str(loaded["error"]))
+
+	var other := _session(cfg)
+	assert_eq(SaveLibrary.apply_base(other, loaded["parsed"]), "")
+	assert_eq(other.population("rhinovirus").generation, 3)
+	assert_eq(other.population("rhinovirus").genomes[0].receptors[0], "binder_a")
+
+	# Pools ride through an import into the library too.
+	var imp: Dictionary = lib.import_json(SnapshotIO.to_json(SnapshotIO.base_to_dict(session.grid, null, {"rhinovirus": pool.to_dict()})), "Imported", cfg)
+	assert_true(imp["ok"], str(imp["error"]))
+	var re_loaded: Dictionary = lib.load_slot(imp["path"], cfg)
+	assert_eq(int(re_loaded["parsed"]["populations"]["rhinovirus"]["generation"]), 3)
+
+
+func test_apply_base_without_populations_resets_pool_when_flag_on() -> void:
+	var cfg: GameConfig = _coevo_config()
+	var session := _session(cfg)
+	var pool: BreedPool = BreedPool.wild_pool("rhinovirus", cfg)
+	pool.generation = 5
+	session.populations["rhinovirus"] = pool
+	var parsed: Dictionary = SnapshotIO.parse_base(SnapshotIO.to_json(SnapshotIO.base_to_dict(session.grid)), cfg)
+	assert_eq(SaveLibrary.apply_base(session, parsed), "")
+	assert_true(session.populations.is_empty())
+	assert_eq(session.population("rhinovirus").generation, 0)
+
+
+func test_apply_base_ignores_populations_when_flag_off() -> void:
+	var cfg: GameConfig = _coevo_config(false)
+	var session := _session(cfg)
+	var stored: BreedPool = BreedPool.wild_pool("rhinovirus", _coevo_config())
+	stored.generation = 5
+	session.populations["rhinovirus"] = stored
+	var parsed: Dictionary = SnapshotIO.parse_base(SnapshotIO.to_json(SnapshotIO.base_to_dict(session.grid, null, {"rhinovirus": {"generation": 9, "genomes": []}})), cfg)
+	assert_eq(SaveLibrary.apply_base(session, parsed), "")
+	assert_eq((session.populations["rhinovirus"] as BreedPool).generation, 5)

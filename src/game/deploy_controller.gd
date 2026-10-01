@@ -260,11 +260,16 @@ func _on_hud_launch_requested() -> void:
 			if not strain_keys.has(key):
 				strain_keys.append(key)
 		memory_seed = session.memory.seed_map(strain_keys, session.config)
+	var populations: Dictionary = {}
+	if session.config.coevolution_enabled():
+		for type_id: String in session.config.coevo_types:
+			populations[type_id] = session.population(type_id).to_dict()
 	session.battle_setup = BattleSetup.create(
 		session.grid.to_layout(),
 		session.army.deployments.duplicate(true),
 		session.seed,
-		memory_seed
+		memory_seed,
+		populations
 	)
 	var army_counts: Dictionary = {}
 	for p_id: String in session.config.pathogen_ids():

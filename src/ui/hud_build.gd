@@ -642,7 +642,11 @@ func save_base(slot_name: String) -> Dictionary:
 	if session == null or session.grid == null:
 		return {"ok": false, "path": "", "error": "Nothing to save"}
 	var lib := SaveLibrary.new(saves_root)
-	var res: Dictionary = lib.save_base(slot_name, session.grid, session.config, session.memory)
+	var populations: Dictionary = {}
+	if session.config != null and session.config.coevolution_enabled():
+		for type_id: String in session.config.coevo_types:
+			populations[type_id] = session.population(type_id).to_dict()
+	var res: Dictionary = lib.save_base(slot_name, session.grid, session.config, session.memory, populations)
 	if not bool(res.get("ok", false)):
 		save_dialog.set_error(str(res.get("error", "")))
 		return res
