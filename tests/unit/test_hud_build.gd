@@ -675,3 +675,110 @@ func test_undo_button_follows_the_history_and_undoes() -> void:
 	hud.btn_undo.pressed.emit()
 	assert_eq(session.grid.tile_state(Vector2i(3, 3)), GridModel.TileState.EMPTY)
 	assert_true(hud.btn_undo.disabled)
+
+# --- Living Base (#158) -----------------------------------------------------------------------------------
+
+const LB_DIR: String = "user://test_hud_lb"
+
+func _living_base_session() -> Session:
+	var cfg: GameConfig = _load_config()
+	cfg.feature_flags["living_base"] = true
+	DirAccess.make_dir_recursive_absolute(LB_DIR)
+	var store := LivingBaseStore.new()
+	store.path = LB_DIR + "/living_base.json"
+	var session := Session.new(cfg)
+	LivingBaseFlow.new(store).enter(session)
+	return session
+
+func _clean_lb_dir() -> void:
+	var d: DirAccess = DirAccess.open(LB_DIR)
+	if d != null:
+		for f: String in d.get_files():
+			d.remove(f)
+	DirAccess.remove_absolute(LB_DIR)
+
+func test_lab_hud_shows_none_of_the_living_base_widgets() -> void:
+	var session: Session = _create_session()
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	assert_false(hud.aa_pill.visible)
+	assert_false(hud.dna_pill.visible)
+	assert_false(hud.mito_box.visible)
+	assert_true(hud.btn_finalize.visible)
+	assert_false(hud.btn_raid.visible)
+	assert_false(hud.lb_buttons.visible)
+	assert_true(hud.lb_timer.is_stopped())
+
+func test_living_base_hud_swaps_finalize_for_hidden_raid_and_shows_amino_pill() -> void:
+	var session: Session = _living_base_session()
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	assert_false(hud.btn_finalize.visible)
+	assert_false(hud.btn_raid.visible, "Raid stays hidden until LB-08")
+	assert_true(hud.aa_pill.visible)
+	assert_eq(hud.aa_label.text, "0")
+	assert_false(hud.dna_pill.visible, "DNA is hidden at 0 without debug_dna")
+	assert_false(hud.mito_box.visible, "no Mitochondria yet")
+	assert_false(hud.btn_defense_log.visible)
+	assert_false(hud.btn_upgrades.visible)
+	_clean_lb_dir()
+
+func test_dna_pill_shows_with_dna_or_the_debug_flag() -> void:
+	var session: Session = _living_base_session()
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	session.wallet.set_amount("dna", 3)
+	assert_true(hud.dna_pill.visible)
+	assert_eq(hud.dna_label.text, "3")
+	session.wallet.set_amount("dna", 0)
+	assert_false(hud.dna_pill.visible)
+	session.config.feature_flags["debug_dna"] = true
+	hud._update_living_base()
+	assert_true(hud.dna_pill.visible)
+	_clean_lb_dir()
+
+func test_collect_button_follows_mitochondria_and_stored_atp() -> void:
+	var session: Session = _living_base_session()
+	var parts: Dictionary = _setup_hud(session)
+	var hud: HudBuild = parts["hud"]
+	assert_false(hud.mito_box.visible)
+	assert_gte(hud.btn_collect.custom_minimum_size.x, 48.0)
+	assert_gte(hud.btn_collect.custom_minimum_size.y, 48.0)
+	assert_true(session.grid.place("mitochondria", Vector2i(10, 10), session.wallet) > 0)
+	assert_true(hud.mito_box.visible)
+	assert_eq(hud.mito_label.text, "Stored 0 / 300 ATP")
+	assert_true(hud.btn_collect.disabled)
+	session.profile.stored_atp = 120
+	hud._update_living_base()
+	assert_eq(hud.mito_label.text, "Stored 120 / 300 ATP")
+	assert_false(hud.btn_collect.disabled)
+	var before: int = session.wallet.get_amount("atp")
+	hud.btn_collect.pressed.emit()
+	assert_eq(session.wallet.get_amount("atp"), before + 120)
+	assert_eq(hud.mito_label.text, "Stored 0 / 300 ATP")
+	assert_true(hud.btn_collect.disabled)
+	_clean_lb_dir()
+
+func test_test_in_lab_is_a_menu_item_only_in_living_base() -> void:
+	var lab: HudBuild = _setup_hud(_create_session())["hud"]
+	lab.open_menu()
+	assert_null(lab.menu_button(HudBuild.MENU_TEST_IN_LAB))
+	var session: Session = _living_base_session()
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	hud.open_menu()
+	var b: PillButton = hud.menu_button(HudBuild.MENU_TEST_IN_LAB)
+	assert_not_null(b)
+	assert_eq(b.text, "Test in Lab")
+	assert_gte(b.custom_minimum_size.y, 48.0)
+	watch_signals(hud)
+	b.pressed.emit()
+	assert_signal_emitted(hud, "test_in_lab_requested")
+	_clean_lb_dir()
+
+func test_living_base_timer_runs_and_banks_atp() -> void:
+	var session: Session = _living_base_session()
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	assert_false(hud.lb_timer.is_stopped())
+	session.grid.place("mitochondria", Vector2i(10, 10), session.wallet)
+	session.living_flow.sync_profile_from_session()
+	session.profile.last_clock_unix = LivingBaseStore.now_unix() - 3600
+	hud._on_lb_timer()
+	assert_between(session.profile.stored_atp, 60, 61)
+	_clean_lb_dir()

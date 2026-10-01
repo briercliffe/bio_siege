@@ -13,6 +13,11 @@ signal help_requested
 signal library_requested(kind: String)
 signal settings_requested
 signal quit_requested
+## Living Base: the buttons Phase 2 children switch on, and "Test in Lab" from the menu.
+signal raid_requested
+signal defense_log_requested
+signal upgrades_requested
+signal test_in_lab_requested
 
 const ATP_OVER_BUDGET_COLOR: Color = Color("#e74c3c")
 const IMPORT_DIALOG_SCENE: PackedScene = preload("res://src/ui/import_dialog.tscn")
@@ -23,6 +28,11 @@ const MENU_HOW_TO_PLAY: int = 2
 const MENU_SOUND: int = 3
 const MENU_SETTINGS: int = 4
 const MENU_QUIT: int = 5
+const MENU_TEST_IN_LAB: int = 6
+const MENU_TEST_IN_LAB_TEXT: String = "Test in Lab"
+const PILL_GAP: float = 12.0
+const COLLECT_SIZE: Vector2 = Vector2(120.0, 52.0)
+const LB_BUTTON_HEIGHT: float = 52.0
 const MENU_SAVE_TEXT: String = "Save base…"
 const MENU_IMPORT_TEXT: String = "Import…"
 const DEFAULT_NAME: String = "Base %d"
@@ -86,6 +96,32 @@ class IconDisc:
 		IconPainter.draw_icon(self, icon_id, Rect2(c - Vector2(ICON_PX, ICON_PX) * 0.5, Vector2(ICON_PX, ICON_PX)), config)
 
 
+## A 24 px disc with a short code-drawn label ("AA", "DNA"): the Amino Acid and DNA wallet icons.
+class CurrencyGlyph:
+	extends Control
+
+	const DIAMETER: float = 24.0
+
+	var code: String = ""
+	var fill: Color = Color.WHITE
+
+	func _init(p_code: String, p_fill: Color) -> void:
+		code = p_code
+		fill = p_fill
+		custom_minimum_size = Vector2(DIAMETER, DIAMETER)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+	func _draw() -> void:
+		var c: Vector2 = size * 0.5
+		draw_circle(c, DIAMETER * 0.5, fill.darkened(0.25))
+		draw_circle(c, DIAMETER * 0.5 - 1.5, fill)
+		var font: Font = ThemeDB.fallback_font
+		var px: int = 10 if code.length() > 2 else 11
+		var w: float = font.get_string_size(code, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x
+		draw_string(font, Vector2(c.x - w * 0.5, c.y + float(px) * 0.36), code, HORIZONTAL_ALIGNMENT_LEFT, -1, px, Color.WHITE)
+
+
 ## Small swatch for the status card legend.
 class Swatch:
 	extends Control
@@ -123,6 +159,22 @@ var phase_pill: PillPanel = null
 var btn_menu: IconButton = null
 var btn_finalize: PillButton = null
 var btn_undo: PillButton = null
+
+## Living Base widgets: extra wallet pills, the Mitochondria "Stored" block, and the Raid, Defense log
+## and Upgrades buttons (hidden until LB-08, LB-17 and LB-15 switch them on).
+var aa_pill: PillPanel = null
+var aa_label: Label = null
+var dna_pill: PillPanel = null
+var dna_label: Label = null
+var mito_box: VBoxContainer = null
+var mito_label: Label = null
+var btn_collect: PillButton = null
+var btn_raid: PillButton = null
+var lb_buttons: VBoxContainer = null
+var btn_defense_log: PillButton = null
+var btn_upgrades: PillButton = null
+var spent_block: VBoxContainer = null
+var lb_timer: Timer = null
 
 var left_card: FloatingCard = null
 var start_box: VBoxContainer = null
@@ -218,6 +270,7 @@ func setup(p_session: Session, p_controller: BuildController) -> void:
 	_sync_memory_panel()
 	_sync_coevolution_panel()
 	_update_all()
+	_start_living_base_timer()
 
 
 ## Shows the read-only MemoryPanel inside the status card, only when immune memory is enabled.
@@ -264,6 +317,7 @@ func _update_all() -> void:
 	_update_left_card()
 	_update_status()
 	_update_undo_button()
+	_update_living_base()
 
 
 func _update_undo_button() -> void:
@@ -431,16 +485,89 @@ func _on_wallet_changed(currency: String, new_amount: int) -> void:
 		_update_atp_label(new_amount, true)
 	_update_card_affordability()
 	_update_status()
+	_update_living_base()
 
 
 func _on_structure_placed(_s: GridModel.PlacedStructure) -> void:
 	_update_sell_card()
 	_update_status()
+	_update_living_base()
 
 
 func _on_structure_removed(_s: GridModel.PlacedStructure) -> void:
 	_update_sell_card()
 	_update_status()
+	_update_living_base()
+
+
+# --- Living Base ---------------------------------------------------------------------------
+
+func is_living_base() -> bool:
+	return session != null and session.mode == Session.Mode.LIVING_BASE and session.living_flow != null
+
+
+func _start_living_base_timer() -> void:
+	if not is_living_base():
+		return
+	if lb_timer.is_inside_tree():
+		lb_timer.start()
+	else:
+		lb_timer.autostart = true
+
+
+## Once a second: bank the ATP the Mitochondria made and refresh the Stored line.
+func _on_lb_timer() -> void:
+	if is_living_base():
+		session.living_flow.tick()
+		_update_living_base()
+
+
+func _on_collect_pressed() -> void:
+	if not is_living_base():
+		return
+	var amount: int = session.living_flow.collect()
+	if amount > 0:
+		_show_toast("Collected %d ATP" % amount)
+	_update_living_base()
+
+
+## Shows or hides everything that only exists in Living Base, and refreshes its numbers.
+func _update_living_base() -> void:
+	if btn_collect == null:
+		return
+	var lb: bool = is_living_base()
+	btn_finalize.visible = not lb
+	spent_block.visible = not lb
+	aa_pill.visible = lb
+	var amino: int = session.wallet.get_amount("amino_acids") if (lb and session.wallet != null) else 0
+	var dna: int = session.wallet.get_amount("dna") if (lb and session.wallet != null) else 0
+	aa_label.text = str(amino)
+	dna_label.text = str(dna)
+	dna_pill.visible = lb and (dna > 0 or session.config.flag("debug_dna"))
+	var capacity: int = 0
+	var stored: int = 0
+	if lb:
+		capacity = AtpGenerator.capacity(session.config, session.grid.to_layout())
+		stored = session.profile.stored_atp
+	mito_box.visible = lb and capacity > 0
+	mito_label.text = "Stored %d / %d ATP" % [stored, capacity]
+	btn_collect.disabled = stored <= 0
+	btn_collect.queue_redraw()
+	_layout_wallet_pills()
+
+
+## Later Phase 2 children switch their button on here: Raid (LB-08), Defense log (LB-17), Upgrades (LB-15).
+func show_living_base_buttons(raid: bool, defense_log: bool, upgrades: bool) -> void:
+	btn_raid.visible = raid and is_living_base()
+	btn_defense_log.visible = defense_log
+	btn_upgrades.visible = upgrades
+	lb_buttons.visible = (defense_log or upgrades) and is_living_base()
+
+
+func _layout_wallet_pills() -> void:
+	var x: float = atp_pill.position.x + atp_pill.size.x + PILL_GAP
+	aa_pill.position = Vector2(x, ATP_POS.y)
+	dna_pill.position = Vector2(x + aa_pill.size.x + PILL_GAP, ATP_POS.y)
 
 
 func _update_atp_label(amount: int, pulse: bool) -> void:
@@ -630,6 +757,21 @@ func _refresh_menu() -> void:
 	var sound: PillButton = menu_buttons[MENU_SOUND] as PillButton
 	sound.text = "Sound: Off" if Sfx.muted else "Sound: On"
 	sound.queue_redraw()
+	_sync_test_in_lab_item()
+
+
+## "Test in Lab" is a menu item only in Living Base, so the Lab menu is unchanged.
+func _sync_test_in_lab_item() -> void:
+	var existing: PillButton = menu_buttons.get(MENU_TEST_IN_LAB) as PillButton
+	if is_living_base() and existing == null:
+		var column: VBoxContainer = menu_sheet.get_child(0) as VBoxContainer
+		var button: PillButton = _menu_button(MENU_TEST_IN_LAB, MENU_TEST_IN_LAB_TEXT)
+		column.add_child(button)
+		column.move_child(button, column.get_child_count() - 2)
+	elif not is_living_base() and existing != null:
+		existing.get_parent().remove_child(existing)
+		existing.queue_free()
+		menu_buttons.erase(MENU_TEST_IN_LAB)
 
 
 func _on_btn_menu_pressed() -> void:
@@ -664,6 +806,8 @@ func _on_menu_item(id: int) -> void:
 			settings_requested.emit()
 		MENU_QUIT:
 			quit_requested.emit()
+		MENU_TEST_IN_LAB:
+			test_in_lab_requested.emit()
 
 
 func open_import_dialog() -> void:
@@ -710,6 +854,8 @@ func import_base(json_text: String) -> bool:
 	_sync_memory_panel()
 	_sync_coevolution_panel()
 	_update_all()
+	if is_living_base():
+		session.living_flow.sync_profile_from_session()
 	import_dialog.close()
 	_show_toast("Base loaded")
 	return true
@@ -769,6 +915,30 @@ func _build_atp_pill() -> void:
 	row.add_child(atp_label)
 	row.add_child(_label("ATP", 14, 700, _muted))
 	atp_pill.add_child(row)
+	atp_pill.resized.connect(_layout_wallet_pills)
+
+	aa_pill = _wallet_pill("AminoPill", "AA", Color("#e8a33d"), "aa")
+	aa_label = aa_pill.get_node("Row/Value") as Label
+	dna_pill = _wallet_pill("DnaPill", "DNA", Color("#3e8fd1"), "dna")
+	dna_label = dna_pill.get_node("Row/Value") as Label
+
+
+## An extra wallet pill (Amino Acids, DNA): code-drawn glyph, the amount and the currency name. Hidden by default.
+func _wallet_pill(node_name: String, code: String, fill: Color, caption: String) -> PillPanel:
+	var pill: PillPanel = _pill(node_name)
+	pill.position = ATP_POS
+	pill.visible = false
+	var row: HBoxContainer = _hbox(10)
+	row.name = "Row"
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(CurrencyGlyph.new(code, fill))
+	var value: Label = _label("0", 24, 800, _ink)
+	value.name = "Value"
+	row.add_child(value)
+	row.add_child(_label(caption.to_upper(), 14, 700, _muted))
+	pill.add_child(row)
+	pill.resized.connect(_layout_wallet_pills)
+	return pill
 
 
 func _build_phase_pill() -> void:
@@ -814,6 +984,26 @@ func _build_buttons() -> void:
 	btn_finalize.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	btn_finalize.pressed.connect(_on_finalize_button_pressed)
 	add_child(btn_finalize)
+
+	btn_raid = PillButton.new("Raid", PillButton.Variant.PRIMARY)
+	btn_raid.name = "BtnRaid"
+	btn_raid.visible = false
+	btn_raid.anchor_left = 1.0
+	btn_raid.anchor_right = 1.0
+	btn_raid.offset_right = -EDGE
+	btn_raid.offset_left = -EDGE - FINALIZE_SIZE.x
+	btn_raid.offset_top = BUTTON_TOP
+	btn_raid.offset_bottom = BUTTON_TOP + FINALIZE_SIZE.y
+	btn_raid.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	btn_raid.pressed.connect(func() -> void: raid_requested.emit())
+	add_child(btn_raid)
+
+	lb_timer = Timer.new()
+	lb_timer.name = "LivingBaseTimer"
+	lb_timer.wait_time = 1.0
+	lb_timer.one_shot = false
+	lb_timer.timeout.connect(_on_lb_timer)
+	add_child(lb_timer)
 
 
 func _build_left_card() -> void:
@@ -907,7 +1097,22 @@ func _build_right_card() -> void:
 
 	status_box.add_child(_kicker("BASE STATUS", _muted))
 
-	var spent_block: VBoxContainer = _vbox(8)
+	mito_box = _vbox(8)
+	mito_box.name = "MitochondriaBox"
+	mito_box.visible = false
+	mito_label = _wrapping(_label("Stored 0 / 0 ATP", 15, 800, _ink))
+	mito_label.name = "StoredLabel"
+	mito_box.add_child(mito_label)
+	btn_collect = PillButton.new("Collect", PillButton.Variant.PRIMARY)
+	btn_collect.name = "BtnCollect"
+	btn_collect.custom_minimum_size = COLLECT_SIZE
+	btn_collect.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	btn_collect.disabled = true
+	btn_collect.pressed.connect(_on_collect_pressed)
+	mito_box.add_child(btn_collect)
+	status_box.add_child(mito_box)
+
+	spent_block = _vbox(8)
 	var spent_row: HBoxContainer = _hbox(5)
 	spent_caption = _label("Spent", 15, 400, _ink)
 	spent_value = _label("0", 15, 800, _ink)
@@ -965,6 +1170,24 @@ func _build_right_card() -> void:
 		placing_legend.add_child(row)
 	status_box.add_child(placing_legend)
 
+	lb_buttons = _vbox(8)
+	lb_buttons.name = "LivingBaseButtons"
+	lb_buttons.visible = false
+	btn_defense_log = _lb_button("BtnDefenseLog", "Defense log", defense_log_requested)
+	btn_upgrades = _lb_button("BtnUpgrades", "Upgrades", upgrades_requested)
+	status_box.add_child(lb_buttons)
+
+
+## A secondary button in the status card that re-emits `sig`. Hidden until its Phase 2 child switches it on.
+func _lb_button(node_name: String, text: String, sig: Signal) -> PillButton:
+	var b := PillButton.new(text, PillButton.Variant.SECONDARY)
+	b.name = node_name
+	b.custom_minimum_size = Vector2(PillButton.MIN_WIDTH, LB_BUTTON_HEIGHT)
+	b.visible = false
+	b.pressed.connect(func() -> void: sig.emit())
+	lb_buttons.add_child(b)
+	return b
+
 
 func _build_tray() -> void:
 	tray = HBoxContainer.new()
@@ -1017,14 +1240,17 @@ func _build_menu() -> void:
 		[MENU_QUIT, "Quit to title"],
 	]
 	for item: Array in items:
-		var id: int = item[0] as int
-		var button := PillButton.new(item[1] as String, PillButton.Variant.SECONDARY)
-		button.name = "Menu_%d" % id
-		button.font_weight = 700
-		button.custom_minimum_size = Vector2(PillButton.MIN_WIDTH, MENU_ITEM_HEIGHT)
-		button.pressed.connect(_on_menu_item.bind(id))
-		column.add_child(button)
-		menu_buttons[id] = button
+		column.add_child(_menu_button(item[0] as int, item[1] as String))
+
+
+func _menu_button(id: int, text: String) -> PillButton:
+	var button := PillButton.new(text, PillButton.Variant.SECONDARY)
+	button.name = "Menu_%d" % id
+	button.font_weight = 700
+	button.custom_minimum_size = Vector2(PillButton.MIN_WIDTH, MENU_ITEM_HEIGHT)
+	button.pressed.connect(_on_menu_item.bind(id))
+	menu_buttons[id] = button
+	return button
 
 
 func _pill(node_name: String) -> PillPanel:

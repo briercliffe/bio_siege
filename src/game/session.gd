@@ -20,6 +20,7 @@ var pending_config: GameConfig = null     # hot-reloaded config queued during IN
 enum Mode { LAB, LIVING_BASE }
 var mode: Mode = Mode.LAB
 var profile: LivingBaseProfile = null     # set in LIVING_BASE
+var living_flow: LivingBaseFlow = null    # set in LIVING_BASE: loads, saves and collects the profile
 
 # The base being attacked this raid. Empty = the session's own base (Lab self-raid).
 # Assign a whole new array to change it: in-place edits do not reset the cached grid.

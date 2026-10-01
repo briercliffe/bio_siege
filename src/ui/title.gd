@@ -48,6 +48,12 @@ const FOOTER_BOTTOM: float = 30.0
 const FOOTER_PX: int = 14
 const BUILD_VERSION: String = "0.1"
 
+const MODE_CARD_SIZE: Vector2 = Vector2(420.0, 76.0)
+const MODE_LIVING_TITLE: String = "Living Base"
+const MODE_LIVING_TEXT: String = "Your base persists. Raid AI bases. Defend AI raids."
+const MODE_LAB_TITLE: String = "Lab"
+const MODE_LAB_TEXT: String = "Sandbox with 1000 ATP. Test base builds."
+
 ## Demo base on the backdrop: a wall ring with a gap on the right side, two B-Cells and a Macrophage.
 const DEMO_WALL_MIN: Vector2i = Vector2i(12, 12)
 const DEMO_WALL_MAX: Vector2i = Vector2i(27, 27)
@@ -64,6 +70,8 @@ const DEMO_WALL_TYPE: String = "mucous_wall"
 var session: Session = null
 var fsm: GameStateMachine = null
 var build_info_path: String = BuildInfo.DEFAULT_PATH
+## Where the Living Base profile lives; tests point this at a temp file.
+var living_base_path: String = LivingBaseStore.DEFAULT_PATH
 
 var demo_grid: GridModel = null
 
@@ -82,6 +90,12 @@ var btn_saved: PillButton = null
 var btn_how_to_play: PillButton = null
 var btn_settings: PillButton = null
 var footer_label: Label = null
+## Mode sheet shown by Play when the living_base flag is on.
+var mode_overlay: DimOverlay = null
+var mode_card: FloatingCard = null
+var btn_mode_living: PillButton = null
+var btn_mode_lab: PillButton = null
+var btn_mode_close: IconButton = null
 
 
 ## "BIO / SIEGE" drawn with a CSS-style line height, which a Label cannot do.
@@ -342,8 +356,89 @@ func _layout() -> void:
 
 
 func _on_play_pressed() -> void:
+	if session != null and session.config != null and session.config.flag("living_base"):
+		open_mode_sheet()
+		return
 	if fsm != null:
 		fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
+
+
+func mode_sheet_open() -> bool:
+	return mode_overlay != null and mode_overlay.visible
+
+
+## Built on first use, so the Title is exactly today's when the living_base flag is off.
+func open_mode_sheet() -> void:
+	if mode_overlay == null:
+		_build_mode_sheet()
+	mode_overlay.visible = true
+
+
+func close_mode_sheet() -> void:
+	if mode_overlay != null:
+		mode_overlay.visible = false
+
+
+## Sets the session mode and goes to Synthesis. Living Base loads (or creates) the saved profile.
+func choose_mode(mode: Session.Mode) -> void:
+	close_mode_sheet()
+	if session == null or session.config == null:
+		return
+	if mode == Session.Mode.LIVING_BASE:
+		var store := LivingBaseStore.new()
+		store.path = living_base_path
+		LivingBaseFlow.new(store).enter(session)
+	else:
+		LivingBaseFlow.reset_to_lab(session)
+	if fsm != null:
+		fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
+
+
+func _build_mode_sheet() -> void:
+	mode_overlay = DimOverlay.new()
+	mode_overlay.name = "ModeOverlay"
+	add_child(mode_overlay)
+	var center := CenterContainer.new()
+	center.name = "ModeCenter"
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	mode_overlay.add_child(center)
+	mode_card = FloatingCard.new()
+	mode_card.name = "ModeCard"
+	mode_card.custom_minimum_size = Vector2(MODE_CARD_SIZE.x + 2.0 * FloatingCard.PADDING, 0.0)
+	center.add_child(mode_card)
+	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_theme_constant_override("separation", 12)
+	mode_card.add_child(box)
+	var header := HBoxContainer.new()
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var heading := Label.new()
+	heading.text = "Choose a mode"
+	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	UiFonts.style_label(heading, 22, 800, UiPalette.color(false, "ink"))
+	header.add_child(heading)
+	btn_mode_close = IconButton.new(IconButton.Kind.CLOSE)
+	btn_mode_close.name = "BtnModeClose"
+	btn_mode_close.pressed.connect(close_mode_sheet)
+	header.add_child(btn_mode_close)
+	box.add_child(header)
+	btn_mode_living = _make_mode_button("BtnModeLiving", MODE_LIVING_TITLE, MODE_LIVING_TEXT, PillButton.Variant.PRIMARY)
+	btn_mode_living.pressed.connect(choose_mode.bind(Session.Mode.LIVING_BASE))
+	box.add_child(btn_mode_living)
+	btn_mode_lab = _make_mode_button("BtnModeLab", MODE_LAB_TITLE, MODE_LAB_TEXT, PillButton.Variant.SECONDARY)
+	btn_mode_lab.pressed.connect(choose_mode.bind(Session.Mode.LAB))
+	box.add_child(btn_mode_lab)
+
+
+func _make_mode_button(node_name: String, label: String, description: String, v: PillButton.Variant) -> PillButton:
+	var b := PillButton.new(label, v)
+	b.name = node_name
+	b.subtitle = description
+	b.custom_minimum_size = MODE_CARD_SIZE
+	b.font_px = 20
+	return b
 
 
 func _push_screen(id: String) -> void:
