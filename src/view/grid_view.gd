@@ -67,6 +67,17 @@ const GHOST_BAD_FILL: Color = Color(231.0 / 255.0, 76.0 / 255.0, 60.0 / 255.0, 0
 const GHOST_DOT: Color = Color(30.0 / 255.0, 90.0 / 255.0, 168.0 / 255.0, 0.65)
 const RANGE_FILL: Color = Color(30.0 / 255.0, 90.0 / 255.0, 168.0 / 255.0, 0.07)
 const RANGE_LINE: Color = Color(30.0 / 255.0, 90.0 / 255.0, 168.0 / 255.0, 0.55)
+const NUCLEUS_GLOW_RING: Color = Color(NUCLEUS_GLOW, NUCLEUS_GLOW.a * BLOB_RING_ALPHA)
+const BAND_ACTIVE_LINE: Color = Color(GREEN, 0.9)
+const BAND_ACTIVE_GLOW_OUTER: Color = Color(GREEN, 0.12)
+const BAND_ACTIVE_GLOW_INNER: Color = Color(GREEN, 0.3)
+const GHOST_OK_GLOW_OUTER: Color = Color(GREEN, 0.15)
+const GHOST_OK_GLOW_INNER: Color = Color(GREEN, 0.3)
+const MARKER_BADGE_RIM: Color = Color(0.2, 0.2, 0.2, 0.6)
+const PREDICTION_FILL: Color = Color("#f1c40f")
+const PREDICTION_RIM: Color = Color(0.1, 0.1, 0.1, 0.8)
+## Extra px around the island in the ground texture, for the rim's half width and its antialiasing.
+const GROUND_MARGIN_PX: float = 4.0
 
 ## A placed structure with its projected geometry cached. Towers and the core are painted by their
 ## ModelPainter with an idle pose; walls by the WallRenderer.
@@ -133,7 +144,6 @@ var _decor_ground_kinds: PackedInt32Array = PackedInt32Array()
 var _decor_ground_alpha: PackedFloat32Array = PackedFloat32Array()
 var _decor_ground_rim: PackedByteArray = PackedByteArray()
 var _decor_dims: Vector2i = Vector2i.ZERO
-var _band_quads: Array[PackedVector2Array] = []
 var _band_line: PackedVector2Array = PackedVector2Array()
 var _band_line_dashes: PackedVector2Array = PackedVector2Array()
 
@@ -161,6 +171,47 @@ var _still_pose: ModelPose = ModelPose.new()
 var _ghost_group: CanvasGroup = null
 var _ghost_canvas: GhostCanvas = null
 
+## The static island (slab, surface, decor, and the band and plates unless the band is pulsing) is painted
+## once into a SubViewport and drawn as one texture (docs/MODEL_PIPELINE_PLAN.md section 3.4). It is painted
+## again only when the theme, the phase flags, T, the origin, the structures or the screen scale change.
+var _ground_vp: SubViewport = null
+var _ground_canvas: GroundCanvas = null
+var _ground_sprite: GroundSprite = null
+var _ground_dirty: bool = true
+var _ground_scale: float = 0.0
+## Times the ground texture was painted, for tests and the perf notes.
+var ground_renders: int = 0
+var _band_pts: PackedVector2Array = PackedVector2Array()
+var _band_cols: PackedColorArray = PackedColorArray()
+var _band_idx: PackedInt32Array = PackedInt32Array()
+var _band_fill: Color = Color.TRANSPARENT
+
+
+## Paints the ground layers into the SubViewport, offset and scaled to its pixels.
+class GroundCanvas extends Node2D:
+	var view: GridView = null
+
+	func _draw() -> void:
+		if view != null:
+			view._paint_ground(self)
+
+
+## Draws the cached ground texture behind GridView's own commands. The SubViewport holds premultiplied colour
+## (translucent edges were blended over a clear target), so it composites with the premultiplied blend.
+class GroundSprite extends Node2D:
+	var texture: Texture2D = null
+	var rect: Rect2 = Rect2()
+
+	func _init() -> void:
+		show_behind_parent = true
+		var mat := CanvasItemMaterial.new()
+		mat.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+		material = mat
+
+	func _draw() -> void:
+		if texture != null and rect.size.x > 0.0 and rect.size.y > 0.0:
+			draw_texture_rect(texture, rect, false)
+
 
 class GhostCanvas extends Node2D:
 	var walls: WallRenderer = WallRenderer.new()
@@ -187,8 +238,24 @@ func _init() -> void:
 	_ghost_canvas = GhostCanvas.new()
 	_ghost_group.add_child(_ghost_canvas)
 	add_child(_ghost_group, false, Node.INTERNAL_MODE_BACK)
+	_ground_vp = SubViewport.new()
+	_ground_vp.name = "GroundCache"
+	_ground_vp.transparent_bg = true
+	_ground_vp.disable_3d = true
+	_ground_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_ground_vp.size = Vector2i(2, 2)
+	_ground_canvas = GroundCanvas.new()
+	_ground_canvas.view = self
+	_ground_vp.add_child(_ground_canvas)
+	add_child(_ground_vp, false, Node.INTERNAL_MODE_FRONT)
+	_ground_sprite = GroundSprite.new()
+	_ground_sprite.name = "Ground"
+	_ground_sprite.texture = _ground_vp.get_texture()
+	add_child(_ground_sprite, false, Node.INTERNAL_MODE_FRONT)
 
 func set_draw_structures(val: bool) -> void:
+	if draw_structures != val:
+		_ground_dirty = true
 	draw_structures = val
 	queue_redraw()
 
@@ -196,6 +263,7 @@ func set_deploy_mode(val: bool) -> void:
 	if deploy_mode != val:
 		deploy_mode = val
 		_markers_dirty = true
+		_ground_dirty = true
 		_redraw_accum = 0.0
 		queue_redraw()
 
@@ -218,6 +286,7 @@ func set_army(val: Army) -> void:
 func set_night(val: bool) -> void:
 	if night != val:
 		night = val
+		_ground_dirty = true
 		queue_redraw()
 
 func _on_army_changed() -> void:
@@ -499,6 +568,7 @@ func _ensure_island() -> void:
 
 func _rebuild_geometry() -> void:
 	_geometry_dirty = false
+	_ground_dirty = true
 	_ensure_island()
 	var w: float = float(grid.width)
 	var h: float = float(grid.height)
@@ -520,7 +590,10 @@ func _rebuild_geometry() -> void:
 
 	# Deploy band: concentric rounded rects share their corner centres, so quads pair up point for point.
 	var ring: float = float(grid.deploy_ring)
-	_band_quads.clear()
+	_band_pts = PackedVector2Array()
+	_band_cols = PackedColorArray()
+	_band_idx = PackedInt32Array()
+	_band_fill = Color.TRANSPARENT
 	_band_line = PackedVector2Array()
 	_band_line_dashes = PackedVector2Array()
 	if ring > 0.0 and w > ring * 2.0 and h > ring * 2.0:
@@ -530,13 +603,19 @@ func _rebuild_geometry() -> void:
 		var inner: PackedVector2Array = _project(inner_ground)
 		var n: int = mini(outer.size(), inner.size())
 		for i: int in range(n):
-			var j: int = (i + 1) % n
-			_band_quads.append(PackedVector2Array([outer[i], outer[j], inner[j], inner[i]]))
+			_band_pts.append(outer[i])
+			_band_pts.append(inner[i])
+		_band_cols.resize(_band_pts.size())
+		for i: int in range(n):
+			var a: int = i * 2
+			var b: int = ((i + 1) % n) * 2
+			_band_idx.append_array(PackedInt32Array([a, b, b + 1, a, b + 1, a + 1]))
 		_band_line = _closed(inner)
 		_band_line_dashes = _dash_segments(_band_line, false)
 
 func _rebuild_items() -> void:
 	_items_dirty = false
+	_ground_dirty = true
 	_items.clear()
 	if grid == null:
 		return
@@ -670,12 +749,12 @@ func _draw() -> void:
 		_rebuild_ghost()
 
 	var k: float = projection.tile_px / 14.0
-	_draw_slab()
-	_draw_top(k)
-	_draw_decor(k)
-	_draw_band(k)
+	_update_ground_cache()
+	if _band_live():
+		_draw_band(self, k)
+		if draw_structures:
+			_draw_plates(self, k)
 	if draw_structures:
-		_draw_plates(k)
 		_walls.paint_shadows(self)
 		_draw_structure_items()
 	if _has_ghost:
@@ -684,23 +763,79 @@ func _draw() -> void:
 		_draw_markers()
 	_draw_prediction()
 
-func _draw_slab() -> void:
+## The night deploy band pulses in Incubation, so it and the plates above it stay live, outside the cache.
+func _band_live() -> bool:
+	return night and deploy_mode
+
+## Screen px per local px (the stretch and any parent scale), so the cached texture stays sharp.
+func _screen_scale() -> float:
+	if not is_inside_tree():
+		return 1.0
+	var xf: Transform2D = get_viewport().get_final_transform() * get_global_transform_with_canvas()
+	return clampf(xf.get_scale().x, 0.25, 4.0)
+
+## Bounding box in local px of everything the ground pass paints: the island top and the slab below it.
+func ground_rect() -> Rect2:
+	if _outline.is_empty():
+		return Rect2()
+	var r := Rect2(_outline[0], Vector2.ZERO)
+	for p: Vector2 in _outline:
+		r = r.expand(p)
+	r.size.y += SLAB_T * projection.tile_px
+	var m: float = GROUND_MARGIN_PX * maxf(projection.tile_px / 14.0, 1.0)
+	r = r.grow(m)
+	var pos := Vector2(floorf(r.position.x), floorf(r.position.y))
+	return Rect2(pos, Vector2(ceilf(r.end.x) - pos.x, ceilf(r.end.y) - pos.y))
+
+func _update_ground_cache() -> void:
+	var s: float = _screen_scale()
+	if s != _ground_scale:
+		_ground_scale = s
+		_ground_dirty = true
+	if not _ground_dirty:
+		return
+	_ground_dirty = false
+	var rect: Rect2 = ground_rect()
+	var px := Vector2i(maxi(int(ceilf(rect.size.x * s)), 2), maxi(int(ceilf(rect.size.y * s)), 2))
+	_ground_vp.size = px
+	_ground_canvas.scale = Vector2(s, s)
+	_ground_canvas.position = -rect.position * s
+	_ground_canvas.queue_redraw()
+	_ground_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	_ground_sprite.rect = Rect2(rect.position, Vector2(px) / s)
+	_ground_sprite.queue_redraw()
+	ground_renders += 1
+
+## The static ground layers, back to front, onto `ci` (the cache's canvas).
+func _paint_ground(ci: CanvasItem) -> void:
+	if grid == null or _outline.is_empty():
+		return
+	var k: float = projection.tile_px / 14.0
+	_draw_slab(ci)
+	_draw_top(ci, k)
+	_draw_decor(ci, k)
+	if not _band_live():
+		_draw_band(ci, k)
+		if draw_structures:
+			_draw_plates(ci, k)
+
+func _draw_slab(ci: CanvasItem) -> void:
 	var th: float = SLAB_T * projection.tile_px
-	draw_set_transform(Vector2(0.0, th), 0.0, Vector2.ONE)
-	draw_colored_polygon(_outline, SHADOW_NIGHT if night else SHADOW_DAY)
+	ci.draw_set_transform(Vector2(0.0, th), 0.0, Vector2.ONE)
+	ci.draw_colored_polygon(_outline, SHADOW_NIGHT if night else SHADOW_DAY)
 	for i: int in range(SLAB_LAYERS, 0, -1):
 		var col: Color
 		if night:
 			col = SLAB_HI_NIGHT if i > 3 else SLAB_LO_NIGHT
 		else:
 			col = SLAB_HI_DAY if i > 3 else SLAB_LO_DAY
-		draw_set_transform(Vector2(0.0, th * float(i) / float(SLAB_LAYERS)), 0.0, Vector2.ONE)
-		draw_colored_polygon(_outline, col)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		ci.draw_set_transform(Vector2(0.0, th * float(i) / float(SLAB_LAYERS)), 0.0, Vector2.ONE)
+		ci.draw_colored_polygon(_outline, col)
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-func _draw_top(k: float) -> void:
-	draw_colored_polygon(_outline, TOP_NIGHT if night else TOP_DAY)
-	draw_polyline(_outline_closed, RIM_NIGHT if night else RIM_DAY, 3.0 * k, true)
+func _draw_top(ci: CanvasItem, k: float) -> void:
+	ci.draw_colored_polygon(_outline, TOP_NIGHT if night else TOP_DAY)
+	ci.draw_polyline(_outline_closed, RIM_NIGHT if night else RIM_DAY, 3.0 * k, true)
 
 func _decor_color(kind: int) -> Color:
 	match kind:
@@ -713,56 +848,60 @@ func _decor_color(kind: int) -> Color:
 		_:
 			return BLOB_HI_NIGHT if night else BLOB_HI_DAY
 
-func _draw_decor(k: float) -> void:
+func _draw_decor(ci: CanvasItem, k: float) -> void:
 	for i: int in range(_decor_polys.size()):
 		var col: Color = _decor_color(_decor_kinds[i])
 		col.a *= _decor_alpha[i]
 		if col.a > 0.0:
-			draw_colored_polygon(_decor_polys[i], col)
+			ci.draw_colored_polygon(_decor_polys[i], col)
 	var rim: Color = CELL_RIM_NIGHT if night else CELL_RIM_DAY
 	for line: PackedVector2Array in _decor_rims:
-		draw_polyline(line, rim, 1.5 * k, true)
+		ci.draw_polyline(line, rim, 1.5 * k, true)
 
-func _draw_band(k: float) -> void:
+func _draw_band(ci: CanvasItem, k: float) -> void:
 	var fill: Color
 	var line: Color
 	var active: bool = night and deploy_mode
 	if night:
 		if active:
 			var pulse: float = 0.5 + 0.5 * sin(_pulse_time / PULSE_PERIOD_S * TAU)
-			fill = Color(GREEN, lerpf(BAND_ACTIVE_ALPHA_LO, BAND_ACTIVE_ALPHA_HI, pulse))
-			line = Color(GREEN, 0.9)
+			fill = GREEN
+			fill.a = lerpf(BAND_ACTIVE_ALPHA_LO, BAND_ACTIVE_ALPHA_HI, pulse)
+			line = BAND_ACTIVE_LINE
 		else:
 			fill = BAND_NIGHT_IDLE
 			line = BAND_LINE_NIGHT_IDLE
 	else:
 		fill = BAND_DAY
 		line = BAND_LINE_DAY
-	for quad: PackedVector2Array in _band_quads:
-		draw_colored_polygon(quad, fill)
+	if not _band_idx.is_empty():
+		if fill != _band_fill:
+			_band_fill = fill
+			_band_cols.fill(fill)
+		RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), _band_idx, _band_pts, _band_cols)
 	if _band_line.size() < 2:
 		return
 	if active:
-		draw_polyline(_band_line, Color(GREEN, 0.12), 6.0 * k, true)
-		draw_polyline(_band_line, Color(GREEN, 0.3), 3.0 * k, true)
-		draw_polyline(_band_line, line, 2.0 * k, true)
+		ci.draw_polyline(_band_line, BAND_ACTIVE_GLOW_OUTER, 6.0 * k, true)
+		ci.draw_polyline(_band_line, BAND_ACTIVE_GLOW_INNER, 3.0 * k, true)
+		ci.draw_polyline(_band_line, line, 2.0 * k, true)
 	elif night:
-		draw_polyline(_band_line, line, 2.0 * k, true)
+		ci.draw_polyline(_band_line, line, 2.0 * k, true)
 	else:
-		draw_multiline(_band_line_dashes, line, 2.0 * k, true)
+		ci.draw_multiline(_band_line_dashes, line, 2.0 * k, true)
 
-func _draw_plates(k: float) -> void:
+func _draw_plates(ci: CanvasItem, k: float) -> void:
 	var plate_fill: Color = PLATE_NIGHT if night else PLATE_DAY
 	var plate_rim: Color = PLATE_RIM_NIGHT if night else PLATE_RIM_DAY
 	for item: StructureItem in _items:
 		if item.kind == 0:
-			draw_colored_polygon(item.plate, plate_fill)
-			draw_polyline(item.plate_rim, plate_rim, 1.5 * k, true)
+			ci.draw_colored_polygon(item.plate, plate_fill)
+			ci.draw_polyline(item.plate_rim, plate_rim, 1.5 * k, true)
 		elif item.kind == 2:
 			for ring: PackedVector2Array in item.glow_rings:
-				draw_colored_polygon(ring, Color(NUCLEUS_GLOW, NUCLEUS_GLOW.a * BLOB_RING_ALPHA))
-			draw_colored_polygon(item.plate, NUCLEUS_PLATE)
-			draw_polyline(item.plate_rim, NUCLEUS_PLATE_RIM, 2.0 * k, true)
+				ci.draw_colored_polygon(ring, NUCLEUS_GLOW_RING)
+			ci.draw_colored_polygon(item.plate, NUCLEUS_PLATE)
+			ci.draw_polyline(item.plate_rim, NUCLEUS_PLATE_RIM, 2.0 * k, true)
 
 func _show_ghost_wall(cell: Vector2i) -> void:
 	_ghost_canvas.painter = null
@@ -809,11 +948,13 @@ func _draw_ghost(k: float) -> void:
 		draw_multiline(_g_range_dashes, RANGE_LINE, 2.0 * k, true)
 	draw_colored_polygon(_g_fill, GHOST_OK_FILL if _ghost_valid else GHOST_BAD_FILL)
 	if _ghost_valid:
-		draw_polyline(_g_border, Color(tint, 0.15), 10.0 * k, true)
-		draw_polyline(_g_border, Color(tint, 0.3), 6.0 * k, true)
+		draw_polyline(_g_border, GHOST_OK_GLOW_OUTER, 10.0 * k, true)
+		draw_polyline(_g_border, GHOST_OK_GLOW_INNER, 6.0 * k, true)
 	draw_polyline(_g_border, tint, 2.0 * k, true)
+	var dot: Color = GHOST_DOT
 	for i: int in range(_g_dots.size()):
-		draw_circle(_g_dots[i], 1.4 * k, Color(GHOST_DOT, GHOST_DOT.a * _g_dot_alpha[i]))
+		dot.a = GHOST_DOT.a * _g_dot_alpha[i]
+		draw_circle(_g_dots[i], 1.4 * k, dot)
 
 func _draw_markers() -> void:
 	var t: float = projection.tile_px
@@ -825,7 +966,7 @@ func _draw_markers() -> void:
 			var badge_r: float = maxf(t * 0.3, 6.0)
 			var badge_c: Vector2 = m.center + Vector2(size * 0.5, -size * 0.5)
 			draw_circle(badge_c, badge_r, Color.WHITE)
-			draw_arc(badge_c, badge_r, 0.0, TAU, 16, Color(0.2, 0.2, 0.2, 0.6), 1.0, true)
+			draw_arc(badge_c, badge_r, 0.0, TAU, 16, MARKER_BADGE_RIM, 1.0, true)
 			if font != null:
 				var font_size: int = maxi(int(badge_r * 1.5), 9)
 				var text: String = str(m.count)
@@ -842,8 +983,8 @@ func _draw_prediction() -> void:
 	var t: float = projection.tile_px
 	var center: Vector2 = projection.footprint_center(s.origin, s.footprint) + Vector2(0.0, -2.0 * t)
 	var badge_r: float = t * 0.35
-	draw_circle(center, badge_r, Color("#f1c40f"))
-	draw_arc(center, badge_r, 0.0, TAU, 16, Color(0.1, 0.1, 0.1, 0.8), 1.5, true)
+	draw_circle(center, badge_r, PREDICTION_FILL)
+	draw_arc(center, badge_r, 0.0, TAU, 16, PREDICTION_RIM, 1.5, true)
 	var font: Font = ThemeDB.fallback_font
 	if font != null:
 		var font_size: int = maxi(int(badge_r * 1.4), 10)
