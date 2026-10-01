@@ -270,3 +270,17 @@ func test_session_integration() -> void:
 
 	var null_session: Session = Session.new(null)
 	assert_null(null_session.wallet)
+
+func test_mixed_currency_spend_is_all_or_nothing_and_refund_restores() -> void:
+	var wallet: Wallet = Wallet.new({"atp": 100, "amino_acids": 3})
+	assert_false(wallet.spend({"atp": 10, "amino_acids": 5}))
+	assert_eq(wallet.get_amount("atp"), 100)
+	assert_eq(wallet.get_amount("amino_acids"), 3)
+	wallet.refund({"amino_acids": 2})
+	assert_true(wallet.spend({"atp": 10, "amino_acids": 5}))
+	assert_eq(wallet.get_amount("atp"), 90)
+	assert_eq(wallet.get_amount("amino_acids"), 0)
+	wallet.refund({"atp": 10, "amino_acids": 5})
+	assert_eq(wallet.get_amount("atp"), 100)
+	assert_eq(wallet.get_amount("amino_acids"), 5)
+

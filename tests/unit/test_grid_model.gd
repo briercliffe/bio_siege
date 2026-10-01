@@ -491,3 +491,45 @@ func test_reset_with_nucleus_signals() -> void:
 	assert_signal_emitted(grid, "structure_placed")
 	assert_eq(grid.structures().size(), 1)
 	assert_eq(grid.structures()[0].id, 1)
+
+# Phase 2 (#154): a structure whose requires_flag is off behaves as not buildable.
+func _config_with_gated_wall() -> GameConfig:
+	var structs: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/structures.json"))
+	structs["mucous_wall"]["requires_flag"] = "living_base"
+	var res: ConfigLoadResult = GameConfig.load_from_strings(
+		FileAccess.get_file_as_string("res://data/game_rules.json"),
+		JSON.stringify(structs),
+		FileAccess.get_file_as_string("res://data/pathogens.json")
+	)
+	assert_true(res.is_ok())
+	return res.config
+
+func test_check_place_disabled_type_is_not_buildable() -> void:
+	var cfg: GameConfig = _config_with_gated_wall()
+	var grid: GridModel = GridModel.new(cfg)
+	grid.reset_with_nucleus()
+	var wallet: Wallet = Wallet.new({"atp": 1000})
+	assert_eq(grid.check_place("mucous_wall", Vector2i(2, 2), wallet), GridModel.PlaceError.NOT_BUILDABLE)
+	assert_eq(grid.place("mucous_wall", Vector2i(2, 2), wallet), 0)
+	cfg.feature_flags["living_base"] = true
+	assert_eq(grid.check_place("mucous_wall", Vector2i(2, 2), wallet), GridModel.PlaceError.OK)
+
+func test_load_layout_disabled_type_fails_like_unknown() -> void:
+	var cfg: GameConfig = _config_with_gated_wall()
+	var grid: GridModel = GridModel.new(cfg)
+	var wallet: Wallet = Wallet.new({"atp": 1000})
+	var err: GridModel.PlaceError = grid.load_layout([{"type": "mucous_wall", "origin": Vector2i(2, 2)}], wallet)
+	assert_eq(err, GridModel.PlaceError.UNKNOWN_TYPE)
+	assert_eq(wallet.get_amount("atp"), 1000)
+
+func test_remove_unknown_structures_also_removes_disabled() -> void:
+	var cfg: GameConfig = _config_with_gated_wall()
+	cfg.feature_flags["living_base"] = true
+	var grid: GridModel = GridModel.new(cfg)
+	grid.reset_with_nucleus()
+	assert_ne(grid.place("mucous_wall", Vector2i(10, 10), Wallet.new({"atp": 100})), 0)
+	var before: int = grid.structures().size()
+	cfg.feature_flags["living_base"] = false
+	assert_eq(grid.remove_unknown_structures(), 1)
+	assert_eq(grid.structures().size(), before - 1)
+

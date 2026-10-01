@@ -791,3 +791,46 @@ func test_config_without_coevolution_block_loads() -> void:
 	assert_true(res.is_ok())
 	assert_eq(res.config.coevo_pool_size, 0)
 	assert_false(res.config.coevolution_enabled())
+
+# -----------------------------------------------------------------------------
+# Phase 2 config groundwork (#154): currencies, support tag, requires_flag
+# -----------------------------------------------------------------------------
+
+func test_structure_cost_accepts_new_currencies() -> void:
+	var res: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mucous_wall"]["cost"] = {"amino_acids": 5, "dna": 2})
+	assert_true(res.is_ok())
+	assert_eq((res.config.structures["mucous_wall"] as StructureDef).cost, {"amino_acids": 5, "dna": 2})
+
+func test_structure_cost_unknown_currency_still_fails() -> void:
+	var res: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mucous_wall"]["cost"] = {"gold": 5})
+	assert_true(res.is_err())
+	assert_true(_contains_error(res.errors, "structures.json: mucous_wall.cost.gold: unknown currency (got gold)"))
+
+func test_support_tag_loads() -> void:
+	var res: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mucous_wall"]["tags"] = ["wall", "support"])
+	assert_true(res.is_ok())
+	assert_true((res.config.structures["mucous_wall"] as StructureDef).has_tag("support"))
+
+func test_requires_flag_loads_and_gates_buildable() -> void:
+	var res: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mucous_wall"]["requires_flag"] = "living_base")
+	assert_true(res.is_ok())
+	var cfg: GameConfig = res.config
+	assert_eq((cfg.structures["mucous_wall"] as StructureDef).requires_flag, "living_base")
+	assert_false(cfg.is_structure_enabled("mucous_wall"))
+	assert_false(cfg.buildable_structure_ids().has("mucous_wall"))
+	cfg.feature_flags["living_base"] = true
+	assert_true(cfg.is_structure_enabled("mucous_wall"))
+	assert_true(cfg.buildable_structure_ids().has("mucous_wall"))
+
+func test_is_structure_enabled_default_data_and_unknown() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	assert_true(cfg.is_structure_enabled("mucous_wall"))
+	assert_false(cfg.is_structure_enabled("no_such_structure"))
+
+func test_requires_flag_validation_errors() -> void:
+	var r1: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mucous_wall"]["requires_flag"] = "")
+	assert_true(_contains_error(r1.errors, "structures.json: mucous_wall.requires_flag: must be a non-empty flag name (got "))
+	var r2: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mucous_wall"]["requires_flag"] = "Bad-Flag")
+	assert_true(_contains_error(r2.errors, "structures.json: mucous_wall.requires_flag: must be a non-empty flag name (got Bad-Flag)"))
+	var r3: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mucous_wall"]["requires_flag"] = 5)
+	assert_true(r3.is_err())

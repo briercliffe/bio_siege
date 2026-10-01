@@ -48,7 +48,7 @@ func remove_unknown_structures() -> int:
 	if _config == null:
 		return removed
 	for s: PlacedStructure in structures():
-		if _config.structures.has(s.type_id):
+		if _config.is_structure_enabled(s.type_id):
 			continue
 		_structures.erase(s.id)
 		for c: Vector2i in s.cells():
@@ -108,7 +108,7 @@ func check_place(type_id: String, origin: Vector2i, wallet: Wallet = null) -> Pl
 		return PlaceError.UNKNOWN_TYPE
 
 	var sdef: StructureDef = _config.structures[type_id]
-	if not sdef.buildable:
+	if not sdef.buildable or not _config.is_structure_enabled(type_id):
 		return PlaceError.NOT_BUILDABLE
 
 	var footprint_err: PlaceError = _check_footprint(sdef.footprint, origin, 0)
@@ -366,6 +366,8 @@ func load_layout(layout: Array, wallet: Wallet = null) -> PlaceError:
 		if _is_core_type(type_id):
 			continue
 		var origin: Vector2i = entry["origin"]
+		if _config != null and not _config.is_structure_enabled(type_id):
+			return PlaceError.UNKNOWN_TYPE
 		var err: PlaceError = check_place(type_id, origin, wallet)
 		if err != PlaceError.OK:
 			return err
