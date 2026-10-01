@@ -62,7 +62,7 @@ func test_wall_drag_places_walls_and_spends_atp() -> void:
 	assert_eq(spent_atp, 15, "Wall drag across 3 tiles should spend 15 ATP")
 	assert_eq(bc.tool, "mucous_wall", "Tool remains selected after action")
 
-func test_wall_drag_reentering_cell_does_not_double_place() -> void:
+func test_wall_drag_back_to_start_builds_one_wall() -> void:
 	var session: Session = _create_session()
 	var grid_view: GridView = GridView.new()
 	add_child_autofree(grid_view)
@@ -82,7 +82,8 @@ func test_wall_drag_reentering_cell_does_not_double_place() -> void:
 	grid_view.cell_released.emit(Vector2i(2, 2))
 
 	var spent_atp: int = initial_atp - session.wallet.get_amount("atp")
-	assert_eq(spent_atp, 10, "Re-entering (2,2) should not place a second wall or deduct extra ATP")
+	assert_eq(spent_atp, 5, "Dragging back to the start leaves a one-wall line")
+	assert_eq(session.grid.tile_state(Vector2i(3, 2)), GridModel.TileState.EMPTY)
 
 func test_tower_press_and_drag_places_at_release_only() -> void:
 	var session: Session = _create_session()
@@ -387,3 +388,88 @@ func test_synthesis_phase_integration() -> void:
 	phase.grid_view.cell_pressed.emit(Vector2i(0, 0))
 	phase.grid_view.cell_released.emit(Vector2i(0, 0))
 	assert_eq(phase.toast.last_message, "The outer ring is reserved for pathogen deployment")
+
+
+func _wall_setup() -> Array:
+	var session: Session = _create_session()
+	var grid_view: GridView = GridView.new()
+	add_child_autofree(grid_view)
+	grid_view.setup(session.grid, session.config)
+	var bc: BuildController = BuildController.new()
+	add_child_autofree(bc)
+	bc.setup(session, grid_view)
+	bc.select_tool("mucous_wall")
+	return [session, grid_view, bc]
+
+func test_wall_line_locks_to_the_dominant_axis() -> void:
+	assert_eq(BuildController.wall_line(Vector2i(2, 2), Vector2i(5, 3)),
+			[Vector2i(2, 2), Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)] as Array[Vector2i])
+	assert_eq(BuildController.wall_line(Vector2i(2, 2), Vector2i(3, 0)),
+			[Vector2i(2, 2), Vector2i(2, 1), Vector2i(2, 0)] as Array[Vector2i])
+	assert_eq(BuildController.wall_line(Vector2i(4, 4), Vector2i(4, 4)), [Vector2i(4, 4)] as Array[Vector2i])
+
+func test_wall_drag_shows_a_ghost_line_and_builds_nothing_until_release() -> void:
+	var parts: Array = _wall_setup()
+	var session: Session = parts[0]
+	var grid_view: GridView = parts[1]
+	var atp: int = session.wallet.get_amount("atp")
+	grid_view.cell_pressed.emit(Vector2i(2, 2))
+	grid_view.cell_dragged.emit(Vector2i(5, 3))
+	assert_true(grid_view._has_ghost)
+	assert_eq(grid_view._ghost_line.size(), 4)
+	assert_eq(grid_view._ghost_line_ok, [true, true, true, true] as Array[bool])
+	assert_eq(session.grid.tile_state(Vector2i(3, 2)), GridModel.TileState.EMPTY)
+	assert_eq(session.wallet.get_amount("atp"), atp)
+	grid_view.cell_released.emit(Vector2i(5, 3))
+	assert_false(grid_view._has_ghost)
+	for x: int in range(2, 6):
+		assert_eq(session.grid.tile_state(Vector2i(x, 2)), GridModel.TileState.WALL)
+	assert_eq(session.grid.tile_state(Vector2i(5, 3)), GridModel.TileState.EMPTY)
+	assert_eq(session.wallet.get_amount("atp"), atp - 20)
+
+func test_wall_tap_builds_one_wall_on_release() -> void:
+	var parts: Array = _wall_setup()
+	var session: Session = parts[0]
+	var grid_view: GridView = parts[1]
+	grid_view.cell_pressed.emit(Vector2i(6, 6))
+	assert_eq(session.grid.tile_state(Vector2i(6, 6)), GridModel.TileState.EMPTY)
+	grid_view.cell_released.emit(Vector2i(6, 6))
+	assert_eq(session.grid.tile_state(Vector2i(6, 6)), GridModel.TileState.WALL)
+
+func test_wall_line_skips_occupied_cells_and_marks_them_invalid() -> void:
+	var parts: Array = _wall_setup()
+	var session: Session = parts[0]
+	var grid_view: GridView = parts[1]
+	session.grid.place("mucous_wall", Vector2i(4, 2), session.wallet)
+	var atp: int = session.wallet.get_amount("atp")
+	grid_view.cell_pressed.emit(Vector2i(2, 2))
+	grid_view.cell_dragged.emit(Vector2i(5, 2))
+	assert_eq(grid_view._ghost_line_ok, [true, true, false, true] as Array[bool])
+	grid_view.cell_released.emit(Vector2i(5, 2))
+	assert_eq(session.wallet.get_amount("atp"), atp - 15)
+
+func test_wall_line_builds_only_what_the_wallet_can_pay_for() -> void:
+	var parts: Array = _wall_setup()
+	var session: Session = parts[0]
+	var grid_view: GridView = parts[1]
+	var wall_cost: int = int(session.config.structures["mucous_wall"].cost.get("atp", 0))
+	session.wallet.spend({"atp": session.wallet.get_amount("atp") - wall_cost * 2})
+	grid_view.cell_pressed.emit(Vector2i(2, 2))
+	grid_view.cell_dragged.emit(Vector2i(6, 2))
+	assert_eq(grid_view._ghost_line_ok, [true, true, false, false, false] as Array[bool])
+	grid_view.cell_released.emit(Vector2i(6, 2))
+	assert_eq(session.grid.tile_state(Vector2i(3, 2)), GridModel.TileState.WALL)
+	assert_eq(session.grid.tile_state(Vector2i(4, 2)), GridModel.TileState.EMPTY)
+	assert_eq(session.wallet.get_amount("atp"), 0)
+
+func test_release_off_the_grid_cancels_the_wall_line() -> void:
+	var parts: Array = _wall_setup()
+	var session: Session = parts[0]
+	var grid_view: GridView = parts[1]
+	var atp: int = session.wallet.get_amount("atp")
+	grid_view.cell_pressed.emit(Vector2i(2, 2))
+	grid_view.cell_dragged.emit(Vector2i(5, 2))
+	grid_view.touch_cancelled.emit()
+	assert_false(grid_view._has_ghost)
+	assert_eq(session.grid.tile_state(Vector2i(2, 2)), GridModel.TileState.EMPTY)
+	assert_eq(session.wallet.get_amount("atp"), atp)

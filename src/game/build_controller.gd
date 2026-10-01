@@ -16,6 +16,8 @@ var grid_view: GridView = null
 var _sell_press_id: int = 0
 var _move_id: int = 0
 var _move_grab_offset: Vector2i = Vector2i.ZERO
+var _wall_anchor: Vector2i = Vector2i.ZERO
+var _wall_dragging: bool = false
 
 func setup(p_session: Session, p_grid_view: GridView) -> void:
 	if grid_view != null:
@@ -25,6 +27,8 @@ func setup(p_session: Session, p_grid_view: GridView) -> void:
 			grid_view.cell_dragged.disconnect(_on_cell_dragged)
 		if grid_view.cell_released.is_connected(_on_cell_released):
 			grid_view.cell_released.disconnect(_on_cell_released)
+		if grid_view.touch_cancelled.is_connected(_on_touch_cancelled):
+			grid_view.touch_cancelled.disconnect(_on_touch_cancelled)
 		if grid_view.press_cancelled.is_connected(_on_press_cancelled):
 			grid_view.press_cancelled.disconnect(_on_press_cancelled)
 
@@ -35,12 +39,14 @@ func setup(p_session: Session, p_grid_view: GridView) -> void:
 		grid_view.cell_pressed.connect(_on_cell_pressed)
 		grid_view.cell_dragged.connect(_on_cell_dragged)
 		grid_view.cell_released.connect(_on_cell_released)
+		grid_view.touch_cancelled.connect(_on_touch_cancelled)
 		grid_view.press_cancelled.connect(_on_press_cancelled)
 
 ## A pinch took over the touch: drop any pending placement, sale or nucleus move.
 func _on_press_cancelled() -> void:
 	_sell_press_id = 0
 	_move_id = 0
+	_wall_dragging = false
 	if grid_view != null:
 		grid_view.clear_ghost()
 
@@ -53,6 +59,7 @@ func select_tool(t: String) -> void:
 		tool = t
 	_sell_press_id = 0
 	_move_id = 0
+	_wall_dragging = false
 	if grid_view != null:
 		grid_view.clear_ghost()
 	tool_changed.emit(tool)
@@ -80,6 +87,55 @@ func _place_current_tool(cell: Vector2i) -> void:
 		var atp_after: int = session.wallet.get_amount("atp") if session.wallet != null else 0
 		SessionLogger.log_event("structure_placed", {"type": tool, "cell": cell, "atp_after": atp_after})
 	placed.emit(tool, cell)
+
+## The cells of the straight run from `start` to `end`, along whichever axis the finger has moved furthest.
+static func wall_line(start: Vector2i, end: Vector2i) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	var delta: Vector2i = end - start
+	var horizontal: bool = absi(delta.x) >= absi(delta.y)
+	var step: Vector2i = Vector2i(signi(delta.x), 0) if horizontal else Vector2i(0, signi(delta.y))
+	var count: int = (absi(delta.x) if horizontal else absi(delta.y)) + 1
+	for i: int in range(count):
+		cells.append(start + step * i)
+	return cells
+
+## Which cells of `cells` would be built: free, in bounds, and paid for by the wallet after the cells before.
+func _plan_wall_line(cells: Array[Vector2i]) -> Array[bool]:
+	var plan: Array[bool] = []
+	var sdef: StructureDef = session.config.structures.get(tool)
+	var built: int = 0
+	for cell: Vector2i in cells:
+		var err: GridModel.PlaceError = session.grid.check_place(tool, cell, session.wallet)
+		# Funds are judged below, for the whole run, so a poor wallet only rejects the cells it cannot pay for.
+		var free: bool = err == GridModel.PlaceError.OK or err == GridModel.PlaceError.INSUFFICIENT_FUNDS
+		var scaled: Dictionary = {}
+		for cur: Variant in sdef.cost.keys():
+			scaled[cur] = int(sdef.cost[cur]) * (built + 1)
+		var ok: bool = free and session.wallet.can_afford(scaled)
+		if ok:
+			built += 1
+		plan.append(ok)
+	return plan
+
+func _preview_wall_line(end: Vector2i) -> void:
+	if grid_view == null:
+		return
+	var cells: Array[Vector2i] = wall_line(_wall_anchor, end)
+	grid_view.set_ghost_line(tool, cells, _plan_wall_line(cells))
+
+func _commit_wall_line(end: Vector2i) -> void:
+	_wall_dragging = false
+	if grid_view != null:
+		grid_view.clear_ghost()
+	var cells: Array[Vector2i] = wall_line(_wall_anchor, end)
+	var plan: Array[bool] = _plan_wall_line(cells)
+	var any_placed: bool = false
+	for i: int in range(cells.size()):
+		if plan[i]:
+			_place_current_tool(cells[i])
+			any_placed = true
+	if not any_placed:
+		place_failed.emit(int(session.grid.check_place(tool, cells[0], session.wallet)))
 
 func _begin_move(cell: Vector2i) -> void:
 	_move_id = 0
@@ -135,11 +191,9 @@ func _on_cell_pressed(cell: Vector2i) -> void:
 		if grid_view != null:
 			grid_view.set_ghost(tool, cell, err == GridModel.PlaceError.OK)
 	elif _is_wall_tool(tool):
-		var err: GridModel.PlaceError = session.grid.check_place(tool, cell, session.wallet)
-		if err == GridModel.PlaceError.OK:
-			_place_current_tool(cell)
-		else:
-			place_failed.emit(int(err))
+		_wall_anchor = cell
+		_wall_dragging = true
+		_preview_wall_line(cell)
 	elif tool == "sell":
 		var sid: int = session.grid.structure_id_at(cell)
 		if sid > 0:
@@ -170,9 +224,8 @@ func _on_cell_dragged(cell: Vector2i) -> void:
 		if grid_view != null:
 			grid_view.set_ghost(tool, cell, err == GridModel.PlaceError.OK)
 	elif _is_wall_tool(tool):
-		var err: GridModel.PlaceError = session.grid.check_place(tool, cell, session.wallet)
-		if err == GridModel.PlaceError.OK:
-			_place_current_tool(cell)
+		if _wall_dragging:
+			_preview_wall_line(cell)
 
 func _on_cell_released(cell: Vector2i) -> void:
 	if session == null or session.grid == null:
@@ -191,7 +244,8 @@ func _on_cell_released(cell: Vector2i) -> void:
 		else:
 			place_failed.emit(int(err))
 	elif _is_wall_tool(tool):
-		pass
+		if _wall_dragging:
+			_commit_wall_line(cell)
 	elif tool == "sell":
 		var sid: int = session.grid.structure_id_at(cell)
 		if _sell_press_id > 0 and sid == _sell_press_id:
@@ -207,6 +261,14 @@ func _on_cell_released(cell: Vector2i) -> void:
 						var atp_after: int = session.wallet.get_amount("atp") if session.wallet != null else 0
 						SessionLogger.log_event("structure_sold", {"type": type_id, "cell": cell, "atp_after": atp_after})
 		_sell_press_id = 0
+
+## A touch ended off the grid: drop the wall line or tower ghost without building.
+func _on_touch_cancelled() -> void:
+	if tool.is_empty() or tool == TOOL_MOVE_NUCLEUS:
+		return
+	_wall_dragging = false
+	if grid_view != null:
+		grid_view.clear_ghost()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not OS.is_debug_build():

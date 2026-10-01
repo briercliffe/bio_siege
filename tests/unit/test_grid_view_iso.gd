@@ -157,6 +157,21 @@ func test_night_switch_and_structure_cache_is_depth_sorted() -> void:
 		assert_true(item.depth >= last)
 		last = item.depth
 
+
+func test_ghost_line_paints_every_cell_and_clears() -> void:
+	var gv: GridView = _make_view()
+	assert_not_null(gv)
+	var cells: Array[Vector2i] = [Vector2i(10, 10), Vector2i(11, 10), Vector2i(12, 10)]
+	gv.set_ghost_line("mucous_wall", cells, [true, false, true] as Array[bool])
+	gv._rebuild_ghost()
+	assert_true(gv._ghost_group.visible)
+	assert_eq(gv._ghost_canvas.cells.size(), 3)
+	assert_eq(gv._g_line_fill.size(), 3)
+	gv.set_ghost("mucous_wall", Vector2i(10, 10), true)
+	gv._rebuild_ghost()
+	assert_eq(gv._ghost_canvas.cells.size(), 0)
+	gv.clear_ghost()
+	assert_false(gv._ghost_group.visible)
 # --- pinch zoom ------------------------------------------------------------
 
 func _finger(gv: GridView, idx: int, local: Vector2, pressed: bool) -> InputEventScreenTouch:
