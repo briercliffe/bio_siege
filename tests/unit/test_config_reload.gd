@@ -38,6 +38,11 @@ func _variant(mutator: Callable) -> GameConfig:
 			if structures.has(t) or pathogens.has(t):
 				kept.append(t)
 		rules["coevolution"]["types"] = kept
+	# AI tower weights must name buildable towers, so drop any the mutator removed.
+	if rules.has("ai_bases"):
+		for tower: String in (rules["ai_bases"]["tower_weights"] as Dictionary).keys():
+			if not structures.has(tower):
+				(rules["ai_bases"]["tower_weights"] as Dictionary).erase(tower)
 	var res: ConfigLoadResult = GameConfig.load_from_strings(JSON.stringify(rules), JSON.stringify(structures), JSON.stringify(pathogens))
 	assert_true(res.is_ok(), "variant config must be valid: %s" % ["\n".join(res.errors)])
 	return res.config
