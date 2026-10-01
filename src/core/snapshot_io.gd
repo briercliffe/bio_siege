@@ -588,16 +588,7 @@ static func parse_battle(text: String, config: GameConfig) -> Dictionary:
 				"config_hash": "",
 			}
 
-	var defender_mods: Dictionary = {}
-	var dm_val: Variant = d.get("defender_mods", {})
-	if dm_val is Dictionary:
-		for dk: Variant in (dm_val as Dictionary).keys():
-			var dv: Variant = (dm_val as Dictionary)[dk]
-			# JSON numbers parse as floats; whole values are coerced back to int.
-			if typeof(dv) == TYPE_FLOAT and is_equal_approx(float(dv), roundf(float(dv))):
-				dv = int(dv)
-			defender_mods[str(dk)] = dv
-	var setup: BattleSetup = BattleSetup.create(parsed_base.layout, parsed_army.units, seed_val, memory_seed, parsed_base.get("populations", {}), defender_mods)
+	var setup: BattleSetup = BattleSetup.create(parsed_base.layout, parsed_army.units, seed_val, memory_seed, parsed_base.get("populations", {}), _parse_defender_mods(d))
 
 	return {
 		"ok": true,
@@ -606,6 +597,19 @@ static func parse_battle(text: String, config: GameConfig) -> Dictionary:
 		"result": result,
 		"config_hash": config_hash,
 	}
+
+
+## The "defender_mods" block of a battle dictionary, with whole floats (JSON numbers) coerced back to ints.
+static func _parse_defender_mods(d: Dictionary) -> Dictionary:
+	var mods: Dictionary = {}
+	var dm_val: Variant = d.get("defender_mods", {})
+	if dm_val is Dictionary:
+		for dk: Variant in (dm_val as Dictionary).keys():
+			var dv: Variant = (dm_val as Dictionary)[dk]
+			if typeof(dv) == TYPE_FLOAT and is_equal_approx(float(dv), roundf(float(dv))):
+				dv = int(dv)
+			mods[str(dk)] = dv
+	return mods
 
 
 ## Returns key -> int pct, or {} if any entry is malformed.
@@ -664,4 +668,4 @@ static func setup_from_battle(d: Dictionary) -> BattleSetup:
 		memory_seed = _parse_memory_seed(ms_val as Dictionary)
 	var pops_val: Variant = base_dict.get("populations", {})
 	var populations: Dictionary = pops_val if pops_val is Dictionary else {}
-	return BattleSetup.create(structs_arr, units_arr, seed_val, memory_seed, populations)
+	return BattleSetup.create(structs_arr, units_arr, seed_val, memory_seed, populations, _parse_defender_mods(d))

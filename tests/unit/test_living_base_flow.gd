@@ -92,11 +92,12 @@ func test_test_in_lab_copies_the_base_and_leaves_the_profile_alone() -> void:
 	var session: Session = _enter()
 	session.grid.place("macrophage", Vector2i(10, 10), session.wallet)
 	session.living_flow.sync_profile_from_session()
-	var saved_text: String = FileAccess.get_file_as_string(_store.path)
 	var layout: Array[Dictionary] = session.grid.to_layout()
 	var cost: int = int(session.grid.total_cost().get("atp", 0))
 
 	session.living_flow.start_test_in_lab()
+	# start_test_in_lab saves once more (the clock may have ticked); nothing after it may touch the file.
+	var saved_text: String = FileAccess.get_file_as_string(_store.path)
 	assert_eq(session.mode, Session.Mode.LAB)
 	assert_null(session.profile)
 	assert_eq(session.grid.to_layout(), layout)

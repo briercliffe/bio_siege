@@ -96,6 +96,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 			hud_build.incoming_infection_requested.connect(_on_incoming_infection_requested)
 		if not hud_build.upgrades_requested.is_connected(_on_upgrades_requested):
 			hud_build.upgrades_requested.connect(_on_upgrades_requested)
+		if not hud_build.defense_log_requested.is_connected(_on_defense_log_requested):
+			hud_build.defense_log_requested.connect(_on_defense_log_requested)
 
 	_update_grid_layout()
 
@@ -203,6 +205,12 @@ func _on_help_requested() -> void:
 func _on_settings_requested() -> void:
 	if fsm != null and fsm.screen_stack != null:
 		fsm.screen_stack.push("settings")
+
+## Living Base: the Defense log button opens the log of AI raids over Synthesis.
+func _on_defense_log_requested() -> void:
+	if fsm != null and fsm.screen_stack != null:
+		fsm.screen_stack.push("defense_log")
+
 
 ## Living Base: the Upgrades button opens the Amino Acid upgrades screen over Synthesis.
 func _on_upgrades_requested() -> void:

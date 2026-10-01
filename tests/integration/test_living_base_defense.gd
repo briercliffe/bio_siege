@@ -109,6 +109,9 @@ func test_the_away_card_resolves_raids_then_shows_the_summary() -> void:
 	var fsm := GameStateMachine.new()
 	fsm.session = session
 	add_child_autoqfree(fsm)
+	var stack := ScreenStack.new()
+	add_child_autofree(stack)
+	fsm.screen_stack = stack
 	var phase: SynthesisPhase = (load("res://src/game/phases/synthesis_phase.tscn") as PackedScene).instantiate() as SynthesisPhase
 	phase.setup(session, fsm)
 	add_child_autofree(phase)
@@ -121,7 +124,8 @@ func test_the_away_card_resolves_raids_then_shows_the_summary() -> void:
 	assert_true(phase.away_label.text.begins_with("While you were away: 2 raids"))
 	assert_true(phase.away_buttons.visible)
 	assert_gte(phase.btn_away_ok.custom_minimum_size.y, 48.0)
-	assert_false(phase.btn_away_log.visible, "View log waits for the Defense log screen")
+	assert_true(phase.btn_away_log.visible, "View log shows once the Defense log screen exists")
+	assert_gte(phase.btn_away_log.custom_minimum_size.y, 48.0)
 	phase.btn_away_ok.pressed.emit()
 	assert_null(phase.away_card)
 
@@ -233,3 +237,124 @@ func test_the_defender_intro_text() -> void:
 	overlay.play_defender()
 	assert_eq(overlay.subtitle_label.text, "You are the Immune System")
 	assert_eq(overlay.kicker_label.text, "INCOMING INFECTION")
+
+
+# --- replays (#170) ---
+
+func _log_one_offline_raid() -> Session:
+	_write_profile(9)
+	var session := Session.new(_cfg)
+	LivingBaseFlow.new(_store).enter(session)
+	assert_eq(session.profile.defense_log.size(), 1)
+	return session
+
+
+func _read_profile_bytes() -> String:
+	return FileAccess.get_file_as_string(_store.path)
+
+
+func test_watching_an_entry_plays_it_with_the_recorded_hash_and_no_side_effects() -> void:
+	var session: Session = _log_one_offline_raid()
+	var fsm := GameStateMachine.new()
+	fsm.session = session
+	add_child_autoqfree(fsm)
+	fsm.phase = GameStateMachine.Phase.SYNTHESIS
+	var before: String = _read_profile_bytes()
+	var profile_before: Dictionary = session.profile.to_dict()
+	var screen := DefenseLogScreen.new()
+	add_child_autofree(screen)
+	screen.setup(session, fsm)
+	screen.rows[0]["watch"].pressed.emit()
+	assert_eq(fsm.phase, GameStateMachine.Phase.INFECTION)
+	assert_true(session.replay_mode)
+	var recorded: String = str(session.profile.defense_log[0]["battle"]["result"]["final_state_hash"])
+	assert_eq(session.replay_expected_hash, recorded)
+	# Play it to the end like the Infection phase would.
+	var sim := BattleSim.new(_cfg, session.battle_setup)
+	sim.run_to_end()
+	assert_eq(sim.state_hash(), recorded, "the replay reaches the recorded final hash")
+	var inf := InfectionPhase.new()
+	add_child_autoqfree(inf)
+	inf.session = session
+	inf.fsm = fsm
+	inf._on_battle_finished(sim)
+	assert_false(session.replay_mode, "replay_mode is reset")
+	assert_eq(session.replay_expected_hash, "")
+	assert_false(session.has_attack_target())
+	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS, "it ends back at the base, not Results")
+	assert_true(session.last_result.is_empty(), "no result was written")
+	assert_eq(session.profile.to_dict(), profile_before)
+	assert_eq(_read_profile_bytes(), before, "the profile file is byte-identical")
+	assert_eq(session.living_flow.notices, [] as Array[String], "a matching hash raises no notice")
+
+
+func test_a_changed_game_is_noticed_after_a_replay() -> void:
+	var session: Session = _log_one_offline_raid()
+	assert_true(session.living_flow.begin_replay(0))
+	session.replay_expected_hash = "0000"
+	var sim := BattleSim.new(_cfg, session.battle_setup)
+	sim.run_to_end()
+	var inf := InfectionPhase.new()
+	add_child_autoqfree(inf)
+	inf.session = session
+	inf._on_battle_finished(sim)
+	assert_eq(session.living_flow.notices, ["Replay differs from the recorded raid (data changed since)."] as Array[String])
+	assert_false(session.replay_mode)
+
+
+func test_leaving_a_replay_early_changes_nothing() -> void:
+	var session: Session = _log_one_offline_raid()
+	var fsm := GameStateMachine.new()
+	fsm.session = session
+	add_child_autoqfree(fsm)
+	var before: String = _read_profile_bytes()
+	session.living_flow.begin_replay(0)
+	var inf := InfectionPhase.new()
+	add_child_autoqfree(inf)
+	inf.session = session
+	inf.fsm = fsm
+	inf._abandon("quit", GameStateMachine.Phase.TITLE)
+	assert_false(session.replay_mode)
+	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
+	assert_eq(_read_profile_bytes(), before)
+
+
+func test_begin_replay_rejects_missing_entries() -> void:
+	var session := Session.new(_cfg)
+	var flow := LivingBaseFlow.new(_store)
+	flow.enter(session)
+	assert_false(flow.begin_replay(0))
+	assert_false(flow.begin_replay(-1))
+	assert_false(session.replay_mode)
+
+
+func test_the_replay_pill_is_shown_instead_of_the_siege_title() -> void:
+	var session: Session = _log_one_offline_raid()
+	session.living_flow.begin_replay(0)
+	var fsm := GameStateMachine.new()
+	fsm.session = session
+	add_child_autoqfree(fsm)
+	var inf: InfectionPhase = (load("res://src/game/phases/infection_phase.tscn") as PackedScene).instantiate() as InfectionPhase
+	inf.setup(session, fsm)
+	add_child_autofree(inf)
+	assert_eq(inf.hud_combat.phase_pill._title.text, "REPLAY")
+	assert_eq(inf.hud_combat.phase_pill._subtitle.text, "Recorded raid")
+
+
+func test_every_logged_raid_can_be_replayed_including_upgraded_defenses() -> void:
+	_cfg.feature_flags["amino_upgrades"] = true
+	_write_profile(17)
+	var session := Session.new(_cfg)
+	var flow := LivingBaseFlow.new(_store)
+	flow.enter(session)
+	session.profile.upgrades = {"analysis_speed": 2}
+	var entry: Dictionary = DefenseRunner.resolve_offline(_cfg, session.profile, session.profile.ai_raid_counter)
+	session.profile.push_defense_log(entry, _cfg)
+	assert_eq(session.profile.defense_log.size(), 3)
+	for i: int in range(session.profile.defense_log.size()):
+		assert_true(flow.begin_replay(i))
+		var sim := BattleSim.new(_cfg, session.battle_setup)
+		sim.run_to_end()
+		assert_eq(sim.state_hash(), session.replay_expected_hash, "entry %d replays" % i)
+		flow.end_replay()
+	assert_eq((session.profile.defense_log[0]["battle"] as Dictionary)["defender_mods"], {"analysis_threshold_pct": 81})
