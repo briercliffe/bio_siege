@@ -341,6 +341,7 @@ func _apply_pathogen_damage(p: PathogenState, amount: int, source_structure_id: 
 	})
 	if p.hp == 0:
 		p.alive = false
+		p.cause_of_death = "killed"
 		p.state = PathogenState.State.DEAD
 		if p.channel_target_id != 0:
 			_clear_channel(p, "unit_died")
@@ -748,6 +749,7 @@ func _hijack_tick(p: PathogenState, victim: StructureState) -> void:
 	hijacks_completed += 1
 	p.hp = 0
 	p.alive = false
+	p.cause_of_death = "hijack"
 	p.state = PathogenState.State.DEAD
 	biofilm.remove(p.id)
 	status.clear_entity(StatusEffects.key_pathogen(p.id))
