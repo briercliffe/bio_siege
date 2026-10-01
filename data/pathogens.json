@@ -14,7 +14,7 @@
     },
     "tags": ["virus", "small"],
     "targeting": {
-      "priority_tags": [],
+      "priority_tags": ["resource"],
       "fallback": "nearest"
     },
     "damage_multipliers": {},

@@ -174,3 +174,16 @@ func test_edge_cases() -> void:
 	# Structure without attack (e.g. wall)
 	var wall := StructureState.create(2, "mucous_wall", _cfg.structures["mucous_wall"], Vector2i(5, 5))
 	assert_eq(Targeting.pick_unit_target(wall, [rhino]), 0, "Structure without attack cannot target")
+
+# Phase 2 (#155): Rhinovirus goes for resource structures first.
+func test_rhinovirus_prefers_far_mitochondria() -> void:
+	var mito := StructureState.create(2, "mitochondria", _cfg.structures["mitochondria"], Vector2i(30, 30))
+	var macro := StructureState.create(3, "macrophage", _cfg.structures["macrophage"], Vector2i(3, 3))
+	var rhino := PathogenState.create(10, "rhinovirus", _cfg.pathogens["rhinovirus"], Vector2i(0, 0))
+	assert_eq(Targeting.pick_structure_target(rhino, [macro, mito]), 2)
+
+func test_rhinovirus_without_resource_picks_nearest() -> void:
+	var nucleus := StructureState.create(1, "nucleus", _cfg.structures["nucleus"], Vector2i(30, 30))
+	var macro := StructureState.create(3, "macrophage", _cfg.structures["macrophage"], Vector2i(3, 3))
+	var rhino := PathogenState.create(10, "rhinovirus", _cfg.pathogens["rhinovirus"], Vector2i(0, 0))
+	assert_eq(Targeting.pick_structure_target(rhino, [nucleus, macro]), 3)

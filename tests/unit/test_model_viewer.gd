@@ -12,7 +12,7 @@ func _make_viewer() -> Control:
 func test_lists_every_model_plus_post_and_walls() -> void:
 	var viewer: Control = _make_viewer()
 	var ids: Array[String] = viewer.model_ids
-	assert_eq(ids.size(), 9)
+	assert_eq(ids.size(), 10)
 	assert_true(ids.has("post"))
 	assert_true(ids.has("walls"))
 	assert_true(ids.has("rhinovirus"))

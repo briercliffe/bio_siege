@@ -41,6 +41,32 @@
       "color": "#c8b98a"
     }
   },
+  "mitochondria": {
+    "display_name": "Mitochondria",
+    "role": "Makes ATP over time. Raiders loot it.",
+    "cost": {
+      "atp": 150
+    },
+    "hp": 400,
+    "footprint": [3, 3],
+    "buildable": true,
+    "is_targetable": true,
+    "visible_to_attacker": true,
+    "path_weight": 15,
+    "tags": ["resource"],
+    "attack": null,
+    "damage_multipliers": {},
+    "levels": [],
+    "requires_flag": "living_base",
+    "generator": {
+      "atp_per_hour": 60,
+      "storage": 300
+    },
+    "placeholder": {
+      "shape": "rounded_square",
+      "color": "#e74c3c"
+    }
+  },
   "macrophage": {
     "display_name": "Macrophage",
     "role": "Splash damage, 4-tile range",

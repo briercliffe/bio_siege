@@ -367,6 +367,13 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 
 		s.requires_flag = str(s_data.get("requires_flag", ""))
 
+		var gen_cfg: Variant = s_data.get("generator", null)
+		if gen_cfg is Dictionary:
+			var gen: Dictionary = gen_cfg
+			s.has_generator = true
+			s.generator_atp_per_hour = int(gen.get("atp_per_hour", 0))
+			s.generator_storage = int(gen.get("storage", 0))
+
 		var an_cfg: Variant = s_data.get("analysis", null)
 		if an_cfg is Dictionary:
 			var an: Dictionary = an_cfg
@@ -538,6 +545,27 @@ static func _validate_hijack(id: String, hj_val: Variant, errors: PackedStringAr
 			errors.append("pathogens.json: %s.hijack.turncoat_max_damage: must be an integer (got %s)" % [id, _format_val(tm)])
 		elif int(tm) < 0:
 			errors.append("pathogens.json: %s.hijack.turncoat_max_damage: must be >= 0 (got %s)" % [id, _format_val(tm)])
+
+static func _validate_generator(id: String, s_data: Dictionary, errors: PackedStringArray) -> void:
+	var g_val: Variant = s_data["generator"]
+	if typeof(g_val) != TYPE_DICTIONARY:
+		errors.append("structures.json: %s.generator: must be a JSON object (got %s)" % [id, _format_val(g_val)])
+		return
+	var g: Dictionary = g_val
+	var allowed: Array[String] = ["atp_per_hour", "storage"]
+	for gk_var: Variant in g.keys():
+		var gk: String = str(gk_var)
+		if not gk.begins_with("_") and not allowed.has(gk):
+			errors.append("structures.json: %s.generator.%s: unknown key (got %s)" % [id, gk, gk])
+	for req: String in allowed:
+		if not g.has(req):
+			errors.append("structures.json: %s.generator.%s: missing required field (got null)" % [id, req])
+			continue
+		var v: Variant = g[req]
+		if not _is_whole_number(v):
+			errors.append("structures.json: %s.generator.%s: must be an integer (got %s)" % [id, req, _format_val(v)])
+		elif int(v) <= 0:
+			errors.append("structures.json: %s.generator.%s: must be > 0 (got %s)" % [id, req, _format_val(v)])
 
 static func _validate_analysis(id: String, s_data: Dictionary, errors: PackedStringArray) -> void:
 	var an_val: Variant = s_data["analysis"]
@@ -892,7 +920,7 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 		"is_targetable", "visible_to_attacker", "path_weight", "tags",
 		"attack", "damage_multipliers", "levels", "placeholder"
 	]
-	var optional_keys: Array[String] = ["analysis", "requires_flag"]
+	var optional_keys: Array[String] = ["analysis", "requires_flag", "generator"]
 
 	var core_count: int = 0
 
@@ -919,6 +947,9 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 
 		if s_data.has("analysis"):
 			_validate_analysis(id, s_data, errors)
+
+		if s_data.has("generator"):
+			_validate_generator(id, s_data, errors)
 
 		if s_data.has("requires_flag"):
 			var rf: Variant = s_data["requires_flag"]
