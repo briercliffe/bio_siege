@@ -22,6 +22,7 @@
     "bcell_analysis": false,
     "biofilm": false,
     "phage_hijack": false,
+    "phage_turncoat": false,
     "strains": false,
     "immune_memory": false,
     "intent_lines_default": true

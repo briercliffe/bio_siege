@@ -26,6 +26,8 @@ var has_hijack: bool = false
 var hijack_channel_ticks: int = 0
 var hijack_disable_ticks: int = 0
 var hijack_target_tags: PackedStringArray = PackedStringArray()
+var hijack_turncoat_damage_pct: int = 0   # phage_turncoat: share of the tower's damage it deals to friends
+var hijack_turncoat_max_damage: int = 0   # phage_turncoat: total friendly damage one hijack can deal
 var strains: Array[StrainDef] = []
 
 func strain(variant_id: String) -> StrainDef:

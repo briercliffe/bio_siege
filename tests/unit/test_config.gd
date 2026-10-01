@@ -639,6 +639,24 @@ func test_hijack_validation_errors() -> void:
 	var r4: ConfigLoadResult = _load_with_hijack(func(d: Dictionary) -> void: d["bacteriophage"]["hijack"]["bogus"] = 1)
 	assert_true(_contains_error(r4.errors, "pathogens.json: bacteriophage.hijack.bogus: unknown key"))
 
+func test_hijack_turncoat_keys() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	var phage: PathogenDef = cfg.pathogens["bacteriophage"]
+	assert_eq(phage.hijack_turncoat_damage_pct, 50)
+	assert_eq(phage.hijack_turncoat_max_damage, 300)
+	assert_false(cfg.flag("phage_turncoat"))
+	var bare: ConfigLoadResult = _load_with_hijack(func(d: Dictionary) -> void:
+		d["bacteriophage"]["hijack"].erase("turncoat_damage_pct")
+		d["bacteriophage"]["hijack"].erase("turncoat_max_damage"))
+	assert_false(bare.is_err())
+	assert_eq((bare.config.pathogens["bacteriophage"] as PathogenDef).hijack_turncoat_max_damage, 0)
+	var r1: ConfigLoadResult = _load_with_hijack(func(d: Dictionary) -> void: d["bacteriophage"]["hijack"]["turncoat_damage_pct"] = 101)
+	assert_true(_contains_error(r1.errors, "pathogens.json: bacteriophage.hijack.turncoat_damage_pct: must be <= 100 (got 101)"))
+	var r2: ConfigLoadResult = _load_with_hijack(func(d: Dictionary) -> void: d["bacteriophage"]["hijack"]["turncoat_damage_pct"] = 12.5)
+	assert_true(_contains_error(r2.errors, "pathogens.json: bacteriophage.hijack.turncoat_damage_pct: must be an integer"))
+	var r3: ConfigLoadResult = _load_with_hijack(func(d: Dictionary) -> void: d["bacteriophage"]["hijack"]["turncoat_max_damage"] = -1)
+	assert_true(_contains_error(r3.errors, "pathogens.json: bacteriophage.hijack.turncoat_max_damage: must be >= 0 (got -1)"))
+
 
 func _load_with_strains(mutate: Callable) -> ConfigLoadResult:
 	var p_dict: Dictionary = JSON.parse_string(default_pathogens_str)

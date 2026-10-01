@@ -32,6 +32,9 @@ var _channeled_by: Dictionary = {}  # structure id -> unit id
 var pathogens_consumed: int = 0
 var hijacks_completed: int = 0
 var hijacks_interrupted: int = 0
+var _turncoat_on: bool = false
+var _turncoat_hit_tick: Dictionary = {}  # structure id -> last tick it took turncoat damage
+var turncoat_damage_dealt: int = 0
 
 
 func _init(p_config: GameConfig, setup: BattleSetup) -> void:
@@ -40,6 +43,7 @@ func _init(p_config: GameConfig, setup: BattleSetup) -> void:
 	_analysis_on = p_config != null and p_config.flag("bcell_analysis")
 	_biofilm_on = p_config != null and p_config.flag("biofilm")
 	_hijack_on = p_config != null and p_config.flag("phage_hijack")
+	_turncoat_on = _hijack_on and p_config.flag("phage_turncoat")
 	_strains_on = p_config != null and p_config.flag("strains")
 	if _biofilm_on:
 		for pd: PathogenDef in p_config.pathogens.values():
@@ -242,6 +246,10 @@ func state_hash() -> String:
 	for p: PathogenState in pathogens:
 		if p.channel_target_id != 0:
 			lines.append("H:%d:%d:%d" % [p.id, p.channel_target_id, p.channel_ticks_left])
+	if _turncoat_on:
+		for s: StructureState in structures:
+			if s.turncoat_until_tick >= 0:
+				lines.append("TC:%d:%d:%d:%d" % [s.id, s.turncoat_until_tick, s.turncoat_budget, s.turncoat_target_id])
 	for proj: ProjectileState in projectiles:
 		lines.append("J:%d:%d:%d:%d" % [
 			proj.id,
@@ -366,6 +374,9 @@ func _tower_fire(s: StructureState, target: PathogenState) -> void:
 
 func _update_towers() -> void:
 	for s: StructureState in structures:
+		if s.turncoat_until_tick >= 0 and s.alive:
+			_update_turncoat(s)
+			continue
 		if not s.alive or s.def == null or not s.def.has_attack or status.has_flag(StatusEffects.key_structure(s.id), StatusEffects.Kind.DISABLED):
 			continue
 		if s.attack_cooldown > 0:
@@ -384,6 +395,41 @@ func _update_towers() -> void:
 				"structure_id": s.id,
 				"target_unit_id": tgt.id,
 			})
+
+
+## Hijack turncoat (#150): while its window lasts, a hijacked tower shoots nearby friendly
+## defense/support structures instead of pathogens. Instant hits, capped by turncoat_budget.
+func _update_turncoat(s: StructureState) -> void:
+	if tick >= s.turncoat_until_tick or s.turncoat_budget <= 0:
+		_end_turncoat(s)
+		return
+	if s.attack_cooldown > 0:
+		s.attack_cooldown -= 1
+	if not Targeting.is_friendly_target(s, structure(s.turncoat_target_id)):
+		s.turncoat_target_id = Targeting.pick_friendly_target(s, structures)
+	if s.turncoat_target_id == 0 or s.attack_cooldown > 0:
+		return
+	var victim: StructureState = structure(s.turncoat_target_id)
+	var dmg: int = mini(s.turncoat_budget, maxi(1, FixedMath.apply_pct(s.def.attack_damage, s.turncoat_pct)))
+	_damage_structure(victim, dmg, 0)
+	_turncoat_hit_tick[victim.id] = tick
+	s.turncoat_budget -= dmg
+	turncoat_damage_dealt += dmg
+	s.attack_cooldown = maxi(1, s.def.attack_interval_ticks)
+	_emit_event(SimEvents.TURNCOAT_FIRED, {
+		"structure_id": s.id,
+		"target_structure_id": victim.id,
+		"amount": dmg,
+	})
+	if s.turncoat_budget <= 0:
+		_end_turncoat(s)
+
+
+func _end_turncoat(s: StructureState) -> void:
+	# The rest of the DISABLED window still runs out as before.
+	s.turncoat_until_tick = -1
+	s.turncoat_target_id = 0
+	s.turncoat_budget = 0
 
 
 func _accrue_analysis(s: StructureState) -> void:
@@ -587,6 +633,9 @@ func _can_hijack(p: PathogenState, victim: StructureState) -> bool:
 		return false
 	if _channeled_by.has(victim.id) and int(_channeled_by[victim.id]) != p.id:
 		return false
+	# No chaining: a structure a turncoat hit recently can't be hijacked.
+	if _turncoat_on and _turncoat_hit_tick.has(victim.id) and tick - int(_turncoat_hit_tick[victim.id]) < p.def.hijack_disable_ticks:
+		return false
 	return true
 
 
@@ -605,6 +654,11 @@ func _hijack_tick(p: PathogenState, victim: StructureState) -> void:
 	if p.channel_ticks_left > 0:
 		return
 	status.add(StatusEffects.key_structure(victim.id), StatusEffects.Kind.DISABLED, 1, p.def.hijack_disable_ticks, "hijack:%d" % p.id)
+	if _turncoat_on and victim.def.has_attack:
+		victim.turncoat_until_tick = tick + p.def.hijack_disable_ticks
+		victim.turncoat_budget = p.def.hijack_turncoat_max_damage
+		victim.turncoat_pct = p.def.hijack_turncoat_damage_pct
+		victim.turncoat_target_id = 0
 	_emit_event(SimEvents.HIJACK_COMPLETE, {
 		"unit_id": p.id,
 		"structure_id": victim.id,

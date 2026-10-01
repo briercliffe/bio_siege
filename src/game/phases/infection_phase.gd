@@ -445,6 +445,8 @@ func _on_battle_finished(sim: BattleSim) -> void:
 			session.last_result["hijacks_completed"] = sim.hijacks_completed
 			session.last_result["hijacks_interrupted"] = sim.hijacks_interrupted
 			session.last_result["pathogens_consumed"] = sim.pathogens_consumed
+			if session.config.flag("phage_turncoat"):
+				session.last_result["turncoat_damage"] = sim.turncoat_damage_dealt
 
 		var pred_id: int = session.prediction_structure_id if session != null else 0
 		# Kept with the result so a config applied on leaving INFECTION cannot erase it.
