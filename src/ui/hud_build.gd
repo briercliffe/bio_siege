@@ -556,6 +556,9 @@ func _update_living_base() -> void:
 		capacity = AtpGenerator.capacity(session.config, session.grid.to_layout())
 		stored = session.profile.stored_atp
 	mito_box.visible = lb and capacity > 0
+	var mito_painter: ModelPainter = ModelRegistry.painter_for("mitochondria")
+	if mito_painter is MitochondriaPainter:
+		(mito_painter as MitochondriaPainter).stored_fraction = float(stored) / float(capacity) if capacity > 0 else 0.0
 	mito_label.text = "Stored %d / %d ATP" % [stored, capacity]
 	btn_collect.disabled = stored <= 0
 	btn_collect.queue_redraw()

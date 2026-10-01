@@ -13,7 +13,7 @@ const WINDUP_CAP_TICKS: int = 12
 const HIT_DECAY_TICKS: int = 4
 const WALL_SHAKE_TICKS: int = 3
 const DEATH_TICKS: Dictionary = {"rhinovirus": 8, "bacteriophage": 14, "staphylococcus": 18,
-	"macrophage": 16, "b_cell": 20, "nucleus": 40, "mucous_wall": 10}
+	"macrophage": 16, "b_cell": 20, "nucleus": 40, "mucous_wall": 10, "mitochondria": 18, "dendritic_cell": 14}
 const STRIDE_TILES: Dictionary = {"rhinovirus": 1.6, "bacteriophage": 2.0, "staphylococcus": 1.2}
 const TOWER_CHARGE_TICKS: int = 6      # B-Cell charge glow before a shot
 const TOWER_RECOIL_TICKS: int = 6      # B-Cell recoil after a shot
@@ -26,6 +26,9 @@ const IDLE_DESYNC_SECONDS: float = 10.0
 const STRIKE_T: float = 0.5
 const B_CELL_ID: String = "b_cell"
 const NUCLEUS_ID: String = "nucleus"
+## Mitochondria idle pulse rate, and how long a Dendritic Cell's "present" pulse lasts after ANALYSIS_SHARED.
+const MITO_PULSE_HZ: float = 0.35
+const PRESENT_TICKS: int = 8
 ## Seconds for a tower's aim_lock to go from 0 to 1 (or back) as it gains or loses a target.
 const AIM_LOCK_S: float = 0.2
 ## Longest view-clock step fed to the time-integrated pose fields, so a hitch does not jump them.
@@ -39,6 +42,7 @@ var _death_p: Dictionary = {}      # unit id -> death tick
 var _hit_s: Dictionary = {}        # structure id -> tick of its last hit
 var _death_s: Dictionary = {}      # structure id -> death tick
 var _fire_s: Dictionary = {}       # structure id -> tick of its last shot
+var _present_s: Dictionary = {}    # Dendritic Cell id -> tick it last shared an analysis
 var _poses_p: Dictionary = {}      # unit id -> reused ModelPose
 var _poses_s: Dictionary = {}      # structure id -> reused ModelPose
 var _last_ground_p: Dictionary = {}    # unit id -> ground position at the previous pose call
@@ -149,6 +153,8 @@ func on_event(ev: Dictionary) -> void:
 				_death_s[sid] = t
 		SimEvents.TOWER_FIRED:
 			_fire_s[int(ev.get("structure_id", 0))] = t
+		SimEvents.ANALYSIS_SHARED:
+			_present_s[int(ev.get("presenter_id", 0))] = t
 
 
 ## Ticks since a pathogen died, or -1 while it is alive.
@@ -228,6 +234,9 @@ func pose_for_structure(s: StructureState, sim_tick: int, aim_ground: Vector2, v
 
 	if s.type_id == NUCLEUS_ID:
 		pose.pulse_phase = advance_pulse(pose.pulse_phase, dt, NucleusPainter.pulse_rate(pose.hp_frac))
+	elif s.def != null and s.def.has_generator and not reduce_flashes:
+		# The Mitochondria pulse; Reduce flashes holds the clock still.
+		pose.pulse_phase = advance_pulse(pose.pulse_phase, dt, MITO_PULSE_HZ)
 	pose.death_t = 0.0
 	pose.anim = ModelPose.Anim.IDLE
 	pose.attack_t = 0.0
@@ -237,6 +246,11 @@ func pose_for_structure(s: StructureState, sim_tick: int, aim_ground: Vector2, v
 	else:
 		pose.aim = Vector2.ZERO
 		pose.aim_lock = 0.0
+	if s.def != null and s.def.has_presenter and not reduce_flashes:
+		var since_present: int = sim_tick - int(_present_s.get(s.id, NEVER))
+		if since_present >= 0 and since_present < PRESENT_TICKS:
+			pose.anim = ModelPose.Anim.STRIKE
+			pose.attack_t = float(since_present) / float(PRESENT_TICKS)
 	var since_hit: int = sim_tick - int(_hit_s.get(s.id, NEVER))
 	_apply_hit(pose, since_hit)
 	if s.def != null and s.def.has_tag("wall"):

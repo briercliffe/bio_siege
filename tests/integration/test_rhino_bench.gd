@@ -85,3 +85,18 @@ func test_bench_scene_runs_for_three_seconds() -> void:
 	assert_not_null(bench.infection_phase.unit_layer)
 	assert_false(bench.stats_label.text.is_empty())
 	assert_eq(get_logger().get_errors().size(), 0)
+
+
+func test_the_organelle_bench_adds_four_mitochondria_and_two_dendritic_cells() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	var grid := GridModel.new(cfg)
+	var plain: BattleSetup = RhinoBench.build_setup(grid.ring_cells(), 20, RhinoBench.BENCH_SEED)
+	var with: BattleSetup = RhinoBench.build_setup(grid.ring_cells(), 20, RhinoBench.BENCH_SEED, ["rhinovirus"], true)
+	assert_eq(with.structures.size(), plain.structures.size() + 6)
+	var counts: Dictionary = {}
+	for s: Dictionary in with.structures:
+		counts[s["type"]] = int(counts.get(s["type"], 0)) + 1
+	assert_eq(counts["mitochondria"], 4)
+	assert_eq(counts["dendritic_cell"], 2)
+	assert_eq(with.validate(cfg).size(), 0, str(with.validate(cfg)))
+	assert_false(plain.structures.any(func(s: Dictionary) -> bool: return s["type"] == "mitochondria"))
