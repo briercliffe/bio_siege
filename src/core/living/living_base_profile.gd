@@ -56,6 +56,21 @@ func collect() -> int:
 	stored_atp = 0
 	return amount
 
+## Player raided an AI base: the looted ATP, Amino Acids and DNA go straight to the wallet.
+func apply_raid_result(res: Dictionary) -> void:
+	_add_currency("atp", int(res.get("atp_looted", 0)))
+	_add_currency("amino_acids", int(res.get("amino_attacker", 0)))
+	_add_currency("dna", int(res.get("dna_attacker", 0)))
+
+## An AI raided the player: the looted ATP leaves the Mitochondria (never below 0) and kills pay Amino Acids.
+func apply_defense_result(res: Dictionary) -> void:
+	stored_atp = maxi(0, stored_atp - maxi(0, int(res.get("atp_looted", 0))))
+	_add_currency("amino_acids", int(res.get("amino_defender", 0)))
+
+func _add_currency(currency: String, amount: int) -> void:
+	if amount != 0:
+		wallet[currency] = int(wallet.get(currency, 0)) + amount
+
 func push_defense_log(entry: Dictionary, cfg: GameConfig) -> void:
 	defense_log.push_front(entry)
 	var limit: int = maxi(1, cfg.lb_defense_log_size)

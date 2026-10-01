@@ -439,8 +439,7 @@ func _on_battle_finished(sim: BattleSim) -> void:
 				SessionLogger.log_event("memory_updated", {"raids": defender_mem.raids, "changes": mem_changes})
 
 		if session.config != null and session.config.coevolution_enabled():
-			var battle_seed: int = session.battle_setup.seed if session.battle_setup != null else session.seed
-			breed_after_raid(session, sim, battle_seed)
+			breed_after_raid(session, sim)
 
 		if session.config != null and session.config.flag("biofilm"):
 			session.last_result["biofilm_max_group"] = _biofilm_max_group
@@ -472,32 +471,21 @@ func _on_battle_finished(sim: BattleSim) -> void:
 		fsm.request_transition(GameStateMachine.Phase.RESULTS)
 
 
-## Coevolution: scores the finished raid onto the session pools, then breeds every pool that scored.
-## One Rng for all types, in sorted type order. Seed = battle seed + pre-breed generation * 100003.
-static func breed_after_raid(session: Session, sim: BattleSim, battle_seed: int) -> void:
+## Coevolution: scores the finished raid onto the pools and breeds them (RaidResolver.breed_after_battle).
+## Pathogen pools belong to the attacker and structure pools to the defender (see Session.pool_for).
+static func breed_after_raid(session: Session, sim: BattleSim) -> void:
 	var cfg: GameConfig = session.config
-	sim.grant_survival_bonus()
-	var fitness: Dictionary = sim.fitness_by_type()
+	var setup: BattleSetup = session.battle_setup if session.battle_setup != null else BattleSetup.create([], [], session.seed)
 	var type_ids: Array[String] = cfg.coevo_types.duplicate()
 	type_ids.sort()
-	var base_generation: int = -1
+	var pools: Dictionary = {}
 	for type_id: String in type_ids:
-		var pool: BreedPool = session.pool_for(type_id)
-		var scores: Variant = fitness.get(type_id, null)
-		if scores is Array and (scores as Array).size() == pool.fitness.size():
-			for i: int in range(pool.fitness.size()):
-				pool.fitness[i] = int((scores as Array)[i])
-		session.store_pool(type_id, pool)
-		if base_generation < 0 or pool.generation < base_generation:
-			base_generation = pool.generation
-	var rng := Rng.new(battle_seed + maxi(0, base_generation) * 100003)
-	var evolution: Array[Dictionary] = []
+		pools[type_id] = session.pool_for(type_id)
+	var evolution: Array[Dictionary] = RaidResolver.breed_after_battle(cfg, setup, sim, pools)
 	var pools_out: Dictionary = {}
 	for type_id: String in type_ids:
-		var pool: BreedPool = session.pool_for(type_id)
-		var res: Dictionary = pool.breed(rng, cfg)
-		res["type_id"] = type_id
-		evolution.append(res)
+		var pool: BreedPool = pools[type_id]
+		session.store_pool(type_id, pool)
 		pools_out[type_id] = pool.to_dict()
 	session.last_result["evolution"] = evolution
 	session.last_result["populations"] = pools_out

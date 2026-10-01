@@ -25,6 +25,7 @@ var channel_ticks_left: int = 0
 var speed_mt_per_tick: int = 0
 var genome_index: int = -1         # coevolution: index into the type pool, -1 = none
 var attack_damage: int = 0
+var cause_of_death: String = ""    # "killed" (damage) or "hijack" (consumed); not in state_hash()
 
 static func create(p_id: int, p_type_id: String, p_def: PathogenDef, p_cell: Vector2i, p_strain: StrainDef = null) -> PathogenState:
 	var s := PathogenState.new()

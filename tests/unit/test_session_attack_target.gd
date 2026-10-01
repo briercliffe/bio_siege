@@ -111,7 +111,7 @@ func test_coevolution_split_after_a_raid_on_another_base() -> void:
 	sim.damage_pathogen(p, 10, 1)
 	sim._pathogen_attack(p, sim.structure(1))
 	session.battle_setup = setup
-	InfectionPhase.breed_after_raid(session, sim, 1)
+	InfectionPhase.breed_after_raid(session, sim)
 	assert_eq((session.attack_populations["macrophage"] as BreedPool).generation, 1)
 	assert_false(session.populations.has("macrophage"), "the defender pool does not land in the attacker's pools")
 	assert_eq((session.populations["rhinovirus"] as BreedPool).generation, 1)

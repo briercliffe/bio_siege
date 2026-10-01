@@ -32,6 +32,10 @@ var memory_max_level: int = 0
 var lb_start_wallet: Dictionary = {} # Living Base starting wallet (#156)
 var lb_max_offline_s: int = 0
 var lb_defense_log_size: int = 0
+var loot_atp_pct: int = 0 # share of a destroyed Mitochondria's stored ATP the raider takes (#159)
+var loot_amino_structure_pct: int = 0
+var loot_amino_kill_pct: int = 0
+var loot_dna_per_win: int = 0
 var memory_seed_pct_per_level: int = 0
 var memory_decay_raids: int = 0
 var memory_slots: int = 0
@@ -231,6 +235,10 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 			_validate_rules(rules_data, errors)
 			_validate_immune_memory(rules_data, errors)
 			_validate_living_base(rules_data, errors)
+			_validate_int_block(rules_data, "loot", "living_base", {
+				"atp_from_mitochondria_pct": [0, 100], "amino_per_structure_pct": [0, 100],
+				"amino_per_kill_pct": [0, 100], "dna_per_win": [0, -1]
+			}, errors)
 
 	var structures_data: Dictionary = {}
 	if err_structures == OK:
@@ -303,6 +311,14 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 				config.lb_start_wallet[str(lb_cur)] = int((lb_wallet as Dictionary)[lb_cur])
 		config.lb_max_offline_s = int(lb.get("max_offline_hours", 0)) * 3600
 		config.lb_defense_log_size = int(lb.get("defense_log_size", 0))
+
+	var loot_raw: Variant = rules_data.get("loot", null)
+	if typeof(loot_raw) == TYPE_DICTIONARY:
+		var loot: Dictionary = loot_raw
+		config.loot_atp_pct = int(loot.get("atp_from_mitochondria_pct", 0))
+		config.loot_amino_structure_pct = int(loot.get("amino_per_structure_pct", 0))
+		config.loot_amino_kill_pct = int(loot.get("amino_per_kill_pct", 0))
+		config.loot_dna_per_win = int(loot.get("dna_per_win", 0))
 
 	var coevo_raw: Variant = rules_data.get("coevolution", null)
 	if typeof(coevo_raw) == TYPE_DICTIONARY:
@@ -638,7 +654,7 @@ static func _validate_rules(data: Dictionary, errors: PackedStringArray) -> void
 		"battle_timeout_s", "max_path_recalcs_per_tick", "empty_path_weight",
 		"deploy_hold_interval_s", "default_seed", "feature_flags"
 	]
-	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution", "living_base"]
+	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution", "living_base", "loot"]
 	for k_var: Variant in data.keys():
 		var k: String = str(k_var)
 		if not k.begins_with("_") and not allowed_keys.has(k) and not optional_rule_keys.has(k):
@@ -814,6 +830,42 @@ static func _validate_immune_memory(data: Dictionary, errors: PackedStringArray)
 			errors.append("game_rules.json: immune_memory.%s: must be >= %d (got %s)" % [key, lo, _format_val(v)])
 		elif hi >= 0 and int(v) > hi:
 			errors.append("game_rules.json: immune_memory.%s: must be <= %d (got %s)" % [key, hi, _format_val(v)])
+
+## Optional rule block of integers, required only when `flag_name` is on (the immune_memory pattern).
+## spec: key -> [min, max]; max -1 means unbounded.
+static func _validate_int_block(data: Dictionary, block: String, flag_name: String, spec: Dictionary, errors: PackedStringArray) -> void:
+	var flags_val: Variant = data.get("feature_flags", null)
+	var flag_on: bool = false
+	if typeof(flags_val) == TYPE_DICTIONARY:
+		flag_on = (flags_val as Dictionary).get(flag_name, false) == true
+	if not data.has(block):
+		if flag_on:
+			errors.append("game_rules.json: %s: required when feature_flags.%s is true (got null)" % [block, flag_name])
+		return
+	var b_val: Variant = data[block]
+	if typeof(b_val) != TYPE_DICTIONARY:
+		errors.append("game_rules.json: %s: must be a JSON object (got %s)" % [block, _format_val(b_val)])
+		return
+	var b: Dictionary = b_val
+	for bk_var: Variant in b.keys():
+		var bk: String = str(bk_var)
+		if not bk.begins_with("_") and not spec.has(bk):
+			errors.append("game_rules.json: %s.%s: unknown key (got %s)" % [block, bk, bk])
+	for key_var: Variant in spec.keys():
+		var key: String = str(key_var)
+		var range_arr: Array = spec[key]
+		var lo: int = int(range_arr[0])
+		var hi: int = int(range_arr[1])
+		if not b.has(key):
+			errors.append("game_rules.json: %s.%s: missing required field (got null)" % [block, key])
+			continue
+		var v: Variant = b[key]
+		if not _is_whole_number(v):
+			errors.append("game_rules.json: %s.%s: must be an integer (got %s)" % [block, key, _format_val(v)])
+		elif int(v) < lo:
+			errors.append("game_rules.json: %s.%s: must be >= %d (got %s)" % [block, key, lo, _format_val(v)])
+		elif hi >= 0 and int(v) > hi:
+			errors.append("game_rules.json: %s.%s: must be <= %d (got %s)" % [block, key, hi, _format_val(v)])
 
 static func _validate_living_base(data: Dictionary, errors: PackedStringArray) -> void:
 	var flags_val: Variant = data.get("feature_flags", null)
