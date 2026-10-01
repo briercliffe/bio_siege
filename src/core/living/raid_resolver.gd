@@ -16,12 +16,13 @@ const BCELL_ID: String = "b_cell"
 ##   defender_stored_atp: uncollected ATP in the defender's Mitochondria before the raid
 ##   defender_memory: the defender's ImmuneMemory (mutated in place)
 ##   pools: type_id -> BreedPool for every breeding type in the battle (mutated in place)
+##   slots_override, decay_override: the defender's memory slots and decay (Living Base upgrades); -1 = config
 ## Returns {outcome, atp_looted, amino_attacker, amino_defender, dna_attacker, memory_changes, evolution}.
 static func resolve(cfg: GameConfig, setup: BattleSetup, sim: BattleSim, defender_stored_atp: int,
-		defender_memory: ImmuneMemory, pools: Dictionary) -> Dictionary:
+		defender_memory: ImmuneMemory, pools: Dictionary, slots_override: int = -1, decay_override: int = -1) -> Dictionary:
 	var memory_changes: Array[Dictionary] = []
 	if cfg.memory_enabled() and defender_memory != null:
-		memory_changes = defender_memory.update_after_raid(sim.seen_strain_keys(), sim.analyzed_strain_keys(), cfg)
+		memory_changes = defender_memory.update_after_raid(sim.seen_strain_keys(), sim.analyzed_strain_keys(), cfg, slots_override, decay_override)
 	var evolution: Array[Dictionary] = []
 	if cfg.coevolution_enabled():
 		evolution = breed_after_battle(cfg, setup, sim, pools)

@@ -6,10 +6,14 @@ var units: Array[Dictionary] = []
 var seed: int = 0
 var memory_seed: Dictionary = {}  # strain_key -> int pct (0..100)
 var populations: Dictionary = {}  # type_id -> BreedPool.to_dict() (coevolution)
+## Living Base upgrades of the defending base. The only key is "analysis_threshold_pct" (int, percent of the
+## B-Cell analysis time). Serialized only when non-empty, so older logs and hashes are unchanged.
+var defender_mods: Dictionary = {}
 
-static func create(p_structures: Array, p_units: Array, p_seed: int, p_memory_seed: Dictionary = {}, p_populations: Dictionary = {}) -> BattleSetup:
+static func create(p_structures: Array, p_units: Array, p_seed: int, p_memory_seed: Dictionary = {}, p_populations: Dictionary = {}, p_defender_mods: Dictionary = {}) -> BattleSetup:
 	var setup: BattleSetup = BattleSetup.new()
 	setup.seed = p_seed
+	setup.defender_mods = p_defender_mods.duplicate(true)
 	setup.memory_seed = p_memory_seed.duplicate(true)
 	setup.populations = p_populations.duplicate(true)
 	for item: Variant in p_structures:
@@ -21,7 +25,7 @@ static func create(p_structures: Array, p_units: Array, p_seed: int, p_memory_se
 	return setup
 
 func duplicate_setup() -> BattleSetup:
-	return create(structures, units, seed, memory_seed, populations)
+	return create(structures, units, seed, memory_seed, populations, defender_mods)
 
 func to_dict() -> Dictionary:
 	var d: Dictionary = {
@@ -33,6 +37,8 @@ func to_dict() -> Dictionary:
 		d["memory_seed"] = memory_seed.duplicate(true)
 	if not populations.is_empty():
 		d["populations"] = populations.duplicate(true)
+	if not defender_mods.is_empty():
+		d["defender_mods"] = defender_mods.duplicate(true)
 	return d
 
 static func from_dict(d: Dictionary) -> BattleSetup:
@@ -50,7 +56,15 @@ static func from_dict(d: Dictionary) -> BattleSetup:
 			ms[mk] = mv
 	var pops_val: Variant = d.get("populations", {})
 	var pops: Dictionary = pops_val if pops_val is Dictionary else {}
-	return create(s, u, sd, ms, pops)
+	var mods: Dictionary = {}
+	var mods_val: Variant = d.get("defender_mods", {})
+	if mods_val is Dictionary:
+		for dk: Variant in (mods_val as Dictionary).keys():
+			var dv: Variant = (mods_val as Dictionary)[dk]
+			if typeof(dv) == TYPE_FLOAT and is_equal_approx(float(dv), roundf(float(dv))):
+				dv = int(dv)
+			mods[str(dk)] = dv
+	return create(s, u, sd, ms, pops, mods)
 
 func validate(config: GameConfig) -> PackedStringArray:
 	var errors: PackedStringArray = PackedStringArray()
@@ -62,6 +76,11 @@ func validate(config: GameConfig) -> PackedStringArray:
 		var mv: Variant = memory_seed[mk]
 		if typeof(mk) != TYPE_STRING or typeof(mv) != TYPE_INT or int(mv) < 0 or int(mv) > 100:
 			errors.append("Invalid memory_seed entry '%s'" % [str(mk)])
+
+	for dk: Variant in defender_mods.keys():
+		var dv: Variant = defender_mods[dk]
+		if str(dk) != "analysis_threshold_pct" or typeof(dv) != TYPE_INT or int(dv) < 1 or int(dv) > 100:
+			errors.append("Invalid defender_mods entry '%s'" % [str(dk)])
 
 	if config.coevolution_enabled():
 		for pk: Variant in populations.keys():

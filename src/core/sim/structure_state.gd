@@ -20,6 +20,8 @@ var turncoat_budget: int = 0              # friendly damage left in this window
 var turncoat_pct: int = 0                 # share of attack_damage dealt per friendly shot
 var turncoat_target_id: int = 0           # structure being shot, 0 = none
 var genome_index: int = -1                # coevolution: index into the type pool, -1 = none
+## Ticks of exposure that complete an analysis. The def's value, scaled by the defender's upgrades (#168).
+var analysis_threshold_ticks: int = 0
 
 static func create(p_id: int, p_type_id: String, p_def: StructureDef, p_origin: Vector2i) -> StructureState:
 	var state := StructureState.new()
@@ -29,6 +31,7 @@ static func create(p_id: int, p_type_id: String, p_def: StructureDef, p_origin: 
 	state.origin = p_origin
 	state.footprint = p_def.footprint if p_def != null else Vector2i.ONE
 	state.center = FixedMath.rect_center(state.origin, state.footprint)
+	state.analysis_threshold_ticks = p_def.analysis_threshold_ticks if p_def != null else 0
 	state.hp = p_def.hp if p_def != null else 0
 	state.max_hp = state.hp
 	state.alive = true
@@ -46,9 +49,9 @@ func cells() -> Array[Vector2i]:
 func analysis_progress_pct(strain_key: String) -> int:
 	if analyzed.has(strain_key):
 		return 100
-	if def == null or def.analysis_threshold_ticks <= 0:
+	if def == null or analysis_threshold_ticks <= 0:
 		return 0
-	return mini(100, int(analysis_exposure.get(strain_key, 0)) / def.analysis_threshold_ticks)
+	return mini(100, int(analysis_exposure.get(strain_key, 0)) / analysis_threshold_ticks)
 
 func is_analyzed(strain_key: String) -> bool:
 	return analyzed.has(strain_key)

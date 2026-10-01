@@ -17,6 +17,7 @@ const SCREENS: Dictionary = {
 	"saved": "res://src/ui/screens/saved_screen.tscn",               # built in #77
 	"settings": "res://src/ui/screens/settings_screen.tscn",         # built in #76
 	"opponents": "res://src/ui/screens/opponent_screen.tscn",        # built in #161
+	"upgrades": "res://src/ui/screens/upgrades_screen.tscn",         # built in #168
 }
 
 const TITLES: Dictionary = {
@@ -24,6 +25,7 @@ const TITLES: Dictionary = {
 	"saved": "Saved bases and armies",
 	"settings": "Settings",
 	"opponents": "Choose a target",
+	"upgrades": "Upgrades",
 }
 
 ## Per-instance copy of SCREENS so tests can point an id at another path.

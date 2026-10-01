@@ -94,6 +94,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 			hud_build.raid_requested.connect(_on_raid_requested)
 		if not hud_build.incoming_infection_requested.is_connected(_on_incoming_infection_requested):
 			hud_build.incoming_infection_requested.connect(_on_incoming_infection_requested)
+		if not hud_build.upgrades_requested.is_connected(_on_upgrades_requested):
+			hud_build.upgrades_requested.connect(_on_upgrades_requested)
 
 	_update_grid_layout()
 
@@ -201,6 +203,12 @@ func _on_help_requested() -> void:
 func _on_settings_requested() -> void:
 	if fsm != null and fsm.screen_stack != null:
 		fsm.screen_stack.push("settings")
+
+## Living Base: the Upgrades button opens the Amino Acid upgrades screen over Synthesis.
+func _on_upgrades_requested() -> void:
+	if fsm != null and fsm.screen_stack != null:
+		fsm.screen_stack.push("upgrades")
+
 
 ## Living Base: "Incoming infection" plays an AI raid on the base now, straight into Infection.
 func _on_incoming_infection_requested() -> void:

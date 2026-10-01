@@ -7,6 +7,8 @@ const KNOWN_TAGS: Array[String] = [
 const KNOWN_CURRENCIES: Array[String] = [
 	"atp", "amino_acids", "dna"
 ]
+## The upgrade ids the "upgrades" block may name (#169 adds receptor_slot).
+const KNOWN_UPGRADES: Array[String] = ["memory_slot", "analysis_speed", "memory_retention"]
 const KNOWN_SHAPES: Array[String] = [
 	"square", "rounded_square", "circle", "triangle", "diamond", "lander", "cluster"
 ]
@@ -37,6 +39,8 @@ var loot_amino_structure_pct: int = 0
 var loot_amino_kill_pct: int = 0
 var loot_dna_per_win: int = 0
 var presenter_record_interval_ticks: int = 20 # Dendritic Cells record antigens once per second (#167)
+## Amino Acid base upgrades (#168): id -> {display_name, costs: Array[Dictionary], per_level}. #169 adds receptor_slot.
+var upgrade_defs: Dictionary = {}
 var ai_opponents_shown: int = 0 # AI base generator (#160)
 var ai_tower_weights: Dictionary = {} # structure id -> weight
 var ai_tiers: Array[Dictionary] = [] # {id, display_name, budget_atp, wall_pct, mitochondria, dendritic, stored_atp}
@@ -269,6 +273,7 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 		_validate_coevolution(rules_data, structures_data, pathogens_data, errors)
 		_validate_ai_bases(rules_data, structures_data, errors)
 		_validate_ai_raids(rules_data, pathogens_data, errors)
+		_validate_upgrades(rules_data, errors)
 
 	if not errors.is_empty():
 		result.errors = errors
@@ -353,6 +358,22 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 					"dendritic": int(td.get("dendritic", 0)),
 					"stored_atp": int(td.get("stored_atp", 0)),
 				})
+
+	var upgrades_raw: Variant = rules_data.get("upgrades", null)
+	if typeof(upgrades_raw) == TYPE_DICTIONARY:
+		for up_id: Variant in (upgrades_raw as Dictionary).keys():
+			var ud: Dictionary = (upgrades_raw as Dictionary)[up_id]
+			var costs: Array[Dictionary] = []
+			for c_var: Variant in ud.get("costs", []):
+				var cost: Dictionary = {}
+				for cur: Variant in (c_var as Dictionary).keys():
+					cost[str(cur)] = int((c_var as Dictionary)[cur])
+				costs.append(cost)
+			config.upgrade_defs[str(up_id)] = {
+				"display_name": str(ud.get("display_name", "")),
+				"costs": costs,
+				"per_level": int(ud.get("per_level", 0)),
+			}
 
 	var raids_raw: Variant = rules_data.get("ai_raids", null)
 	if typeof(raids_raw) == TYPE_DICTIONARY:
@@ -793,7 +814,7 @@ static func _validate_rules(data: Dictionary, errors: PackedStringArray) -> void
 		"battle_timeout_s", "max_path_recalcs_per_tick", "empty_path_weight",
 		"deploy_hold_interval_s", "default_seed", "feature_flags"
 	]
-	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution", "living_base", "loot", "ai_bases", "ai_raids"]
+	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution", "living_base", "loot", "ai_bases", "ai_raids", "upgrades"]
 	for k_var: Variant in data.keys():
 		var k: String = str(k_var)
 		if not k.begins_with("_") and not allowed_keys.has(k) and not optional_rule_keys.has(k):
@@ -1055,6 +1076,71 @@ static func _validate_living_base(data: Dictionary, errors: PackedStringArray) -
 			errors.append("game_rules.json: living_base.%s: must be >= %d (got %s)" % [key, int(range_arr[0]), _format_val(v)])
 		elif int(v) > int(range_arr[1]):
 			errors.append("game_rules.json: living_base.%s: must be <= %d (got %s)" % [key, int(range_arr[1]), _format_val(v)])
+
+## upgrades (#168): required when amino_upgrades is on; keys are KNOWN_UPGRADES; each entry is exactly
+## display_name, costs (cost objects) and per_level.
+static func _validate_upgrades(data: Dictionary, errors: PackedStringArray) -> void:
+	var flags_val: Variant = data.get("feature_flags", null)
+	var flag_on: bool = false
+	if typeof(flags_val) == TYPE_DICTIONARY:
+		flag_on = (flags_val as Dictionary).get("amino_upgrades", false) == true
+	if not data.has("upgrades"):
+		if flag_on:
+			errors.append("game_rules.json: upgrades: required when feature_flags.amino_upgrades is true (got null)")
+		return
+	var u_val: Variant = data["upgrades"]
+	if typeof(u_val) != TYPE_DICTIONARY:
+		errors.append("game_rules.json: upgrades: must be a JSON object (got %s)" % [_format_val(u_val)])
+		return
+	for id_var: Variant in (u_val as Dictionary).keys():
+		var id: String = str(id_var)
+		if id.begins_with("_"):
+			continue
+		var prefix: String = "upgrades.%s" % id
+		if not KNOWN_UPGRADES.has(id):
+			errors.append("game_rules.json: %s: unknown key (got %s)" % [prefix, id])
+			continue
+		var e_val: Variant = (u_val as Dictionary)[id_var]
+		if typeof(e_val) != TYPE_DICTIONARY:
+			errors.append("game_rules.json: %s: must be a JSON object (got %s)" % [prefix, _format_val(e_val)])
+			continue
+		var e: Dictionary = e_val
+		var allowed: Array[String] = ["display_name", "costs", "per_level"]
+		for ek_var: Variant in e.keys():
+			var ek: String = str(ek_var)
+			if not ek.begins_with("_") and not allowed.has(ek):
+				errors.append("game_rules.json: %s.%s: unknown key (got %s)" % [prefix, ek, ek])
+		for req: String in allowed:
+			if not e.has(req):
+				errors.append("game_rules.json: %s.%s: missing required field (got null)" % [prefix, req])
+		if e.has("display_name") and (typeof(e["display_name"]) != TYPE_STRING or str(e["display_name"]).is_empty()):
+			errors.append("game_rules.json: %s.display_name: must be a non-empty string (got %s)" % [prefix, _format_val(e["display_name"])])
+		if e.has("per_level"):
+			var pl: Variant = e["per_level"]
+			if not _is_whole_number(pl):
+				errors.append("game_rules.json: %s.per_level: must be an integer (got %s)" % [prefix, _format_val(pl)])
+			elif int(pl) <= 0:
+				errors.append("game_rules.json: %s.per_level: must be > 0 (got %s)" % [prefix, _format_val(pl)])
+		if e.has("costs"):
+			var costs_val: Variant = e["costs"]
+			if typeof(costs_val) != TYPE_ARRAY or (costs_val as Array).is_empty():
+				errors.append("game_rules.json: %s.costs: must be a non-empty array (got %s)" % [prefix, _format_val(costs_val)])
+			else:
+				for i: int in range((costs_val as Array).size()):
+					var c_val: Variant = (costs_val as Array)[i]
+					var cpath: String = "%s.costs[%d]" % [prefix, i]
+					if typeof(c_val) != TYPE_DICTIONARY or (c_val as Dictionary).is_empty():
+						errors.append("game_rules.json: %s: must be a non-empty JSON object (got %s)" % [cpath, _format_val(c_val)])
+						continue
+					for cur_var: Variant in (c_val as Dictionary).keys():
+						var cur: String = str(cur_var)
+						if not KNOWN_CURRENCIES.has(cur):
+							errors.append("game_rules.json: %s.%s: unknown currency (got %s)" % [cpath, cur, cur])
+						var amt: Variant = (c_val as Dictionary)[cur_var]
+						if not _is_whole_number(amt):
+							errors.append("game_rules.json: %s.%s: must be an integer >= 0 (got %s)" % [cpath, cur, _format_val(amt)])
+						elif int(amt) < 0:
+							errors.append("game_rules.json: %s.%s: must be >= 0 (got %s)" % [cpath, cur, _format_val(amt)])
 
 ## ai_raids (#162): the integer fields plus pathogen_weights, whose keys must be pathogens.
 static func _validate_ai_raids(data: Dictionary, pathogens_data: Dictionary, errors: PackedStringArray) -> void:

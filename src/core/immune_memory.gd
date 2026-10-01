@@ -41,7 +41,11 @@ func seed_map(strain_keys: Array[String], cfg: GameConfig) -> Dictionary:
 	return out
 
 
-func update_after_raid(seen: Array[String], analyzed: Array[String], cfg: GameConfig) -> Array[Dictionary]:
+## `slots_override` and `decay_override` replace cfg.memory_slots and cfg.memory_decay_raids for this base
+## (Living Base upgrades); -1 uses the config.
+func update_after_raid(seen: Array[String], analyzed: Array[String], cfg: GameConfig, slots_override: int = -1, decay_override: int = -1) -> Array[Dictionary]:
+	var slots: int = slots_override if slots_override >= 0 else cfg.memory_slots
+	var decay: int = decay_override if decay_override >= 0 else cfg.memory_decay_raids
 	var changes: Array[Dictionary] = []
 	raids += 1
 
@@ -51,7 +55,7 @@ func update_after_raid(seen: Array[String], analyzed: Array[String], cfg: GameCo
 			continue
 		var e: Dictionary = entries[k]
 		e["absent"] = int(e["absent"]) + 1
-		if int(e["absent"]) >= cfg.memory_decay_raids:
+		if int(e["absent"]) >= decay:
 			var from_level: int = int(e["level"])
 			e["level"] = from_level - 1
 			e["absent"] = 0
@@ -79,7 +83,7 @@ func update_after_raid(seen: Array[String], analyzed: Array[String], cfg: GameCo
 				e2["level"] = new_level
 				changes.append({"strain_key": k, "from": old_level, "to": new_level, "reason": "learned"})
 		else:
-			if entries.size() >= cfg.memory_slots:
+			if entries.size() >= slots:
 				var victim: String = _eviction_victim()
 				if victim != "":
 					changes.append({"strain_key": victim, "from": level_of(victim), "to": 0, "reason": "evicted"})
@@ -89,12 +93,13 @@ func update_after_raid(seen: Array[String], analyzed: Array[String], cfg: GameCo
 	return changes
 
 
-func clamp_to(cfg: GameConfig) -> void:
+func clamp_to(cfg: GameConfig, slots_override: int = -1) -> void:
+	var slots: int = slots_override if slots_override >= 0 else cfg.memory_slots
 	for k: String in _sorted_keys():
 		var e: Dictionary = entries[k]
 		if int(e["level"]) > cfg.memory_max_level:
 			e["level"] = cfg.memory_max_level
-	while entries.size() > cfg.memory_slots and not entries.is_empty():
+	while entries.size() > slots and not entries.is_empty():
 		entries.erase(_eviction_victim())
 
 
@@ -106,7 +111,7 @@ func to_dict() -> Dictionary:
 	return {"raids": raids, "entries": entries.duplicate(true)}
 
 
-static func from_dict(d: Dictionary, cfg: GameConfig) -> ImmuneMemory:
+static func from_dict(d: Dictionary, cfg: GameConfig, slots_override: int = -1) -> ImmuneMemory:
 	var m := ImmuneMemory.new()
 	var raids_val: Variant = d.get("raids", 0)
 	if _is_whole(raids_val) and int(raids_val) >= 0:
@@ -125,7 +130,7 @@ static func from_dict(d: Dictionary, cfg: GameConfig) -> ImmuneMemory:
 			if int(e["level"]) < 1 or int(e["absent"]) < 0 or int(e["since"]) < 0:
 				continue
 			m.entries[str(k_var)] = {"level": int(e["level"]), "absent": int(e["absent"]), "since": int(e["since"])}
-	m.clamp_to(cfg)
+	m.clamp_to(cfg, slots_override)
 	return m
 
 

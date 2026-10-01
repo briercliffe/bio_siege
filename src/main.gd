@@ -55,6 +55,9 @@ func _on_screen_opened(_id: String) -> void:
 	var opponents: OpponentScreen = top as OpponentScreen
 	if opponents != null and fsm != null:
 		opponents.setup(fsm.session, fsm)
+	var upgrades: UpgradesScreen = top as UpgradesScreen
+	if upgrades != null and fsm != null:
+		upgrades.setup(fsm.session, fsm)
 
 ## Opens the Saved bases and armies screen on one tab ("base" or "army").
 func open_library(kind: String) -> void:
