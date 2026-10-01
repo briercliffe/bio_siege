@@ -96,7 +96,7 @@ func validate(config: GameConfig) -> PackedStringArray:
 	for i: int in range(structures.size()):
 		var s: Dictionary = structures[i]
 		var type_id: String = str(s.get("type", ""))
-		if type_id.is_empty() or not config.structures.has(type_id):
+		if type_id.is_empty() or not config.is_structure_enabled(type_id):
 			errors.append("Unknown structure type: '%s'" % type_id)
 			continue
 

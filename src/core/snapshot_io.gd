@@ -239,7 +239,7 @@ static func parse_base(text: String, config: GameConfig) -> Dictionary:
 				"layout": [],
 			}
 		var type_id: String = str(s_dict["type"])
-		if config != null and not config.structures.has(type_id):
+		if config != null and not config.is_structure_enabled(type_id):
 			return {
 				"ok": false,
 				"error": "Unknown structure type '%s'" % type_id,

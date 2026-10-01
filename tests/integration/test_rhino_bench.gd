@@ -89,6 +89,8 @@ func test_bench_scene_runs_for_three_seconds() -> void:
 
 func test_the_organelle_bench_adds_four_mitochondria_and_two_dendritic_cells() -> void:
 	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	cfg.feature_flags["living_base"] = true
+	cfg.feature_flags["dendritic_cell"] = true
 	var grid := GridModel.new(cfg)
 	var plain: BattleSetup = RhinoBench.build_setup(grid.ring_cells(), 20, RhinoBench.BENCH_SEED)
 	var with: BattleSetup = RhinoBench.build_setup(grid.ring_cells(), 20, RhinoBench.BENCH_SEED, ["rhinovirus"], true)
