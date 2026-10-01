@@ -22,13 +22,24 @@ static func run_run(
 	jitter: int,
 	generations: int,
 	start_levels: Dictionary,
-	ring_cells: Array[Vector2i]
+	ring_cells: Array[Vector2i],
+	upgrades: Dictionary = {}
 ) -> Array[Dictionary]:
 	var results: Array[Dictionary] = []
 	var memory: ImmuneMemory = BalanceSimArgs.memory_from_levels(start_levels, config)
 	var memory_on: bool = config.memory_enabled()
 	var analysis_on: bool = config.flag("bcell_analysis")
 	var biofilm_on: bool = config.flag("biofilm")
+	# Living Base upgrades apply to the defender: analysis time (defender_mods) and the memory limits.
+	var mods: Dictionary = {}
+	var mem_slots: int = -1
+	var mem_decay: int = -1
+	if not upgrades.is_empty():
+		var analysis_pct: int = BaseUpgrades.analysis_threshold_pct(config, upgrades)
+		if analysis_pct != 100:
+			mods["analysis_threshold_pct"] = analysis_pct
+		mem_slots = BaseUpgrades.memory_slots(config, upgrades)
+		mem_decay = BaseUpgrades.memory_decay_raids(config, upgrades)
 
 	for gen: int in range(1, generations + 1):
 		var gen_seed: int = generation_seed(run_seed, gen, generations)
@@ -36,7 +47,7 @@ static func run_run(
 		var memory_seed: Dictionary = {}
 		if memory_on:
 			memory_seed = memory.seed_map(BalanceSimArgs.unit_strain_keys(units), config)
-		var setup: BattleSetup = BattleSetup.create(base_setup.structures, units, gen_seed, memory_seed)
+		var setup: BattleSetup = BattleSetup.create(base_setup.structures, units, gen_seed, memory_seed, {}, mods)
 		var sim: BattleSim = BattleSim.new(config, setup)
 
 		var biofilm_max_group: int = 0
@@ -51,7 +62,7 @@ static func run_run(
 			analyzed = sim.analyzed_strain_keys()
 		var memory_after: String = ""
 		if memory_on:
-			memory.update_after_raid(sim.seen_strain_keys(), analyzed, config)
+			memory.update_after_raid(sim.seen_strain_keys(), analyzed, config, mem_slots, mem_decay)
 			memory_after = memory_string(memory)
 
 		var walls_damaged: int = 0
@@ -95,6 +106,9 @@ static func run_run(
 			"memory_levels": _levels_of(memory) if memory_on else {},
 			"hijacks_completed": sim.hijacks_completed,
 			"biofilm_max_group": biofilm_max_group,
+			"units_trapped": sim.units_trapped,
+			"analyses_shared": sim.analyses_shared,
+			"turncoat_damage": sim.turncoat_damage_dealt,
 		})
 	return results
 

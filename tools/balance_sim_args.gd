@@ -36,6 +36,11 @@ static func parse_args(args: Array[String]) -> Dictionary:
 	var strains: Dictionary = {}
 	var memory: Dictionary = {}
 	var generations: int = 1
+	var ai_base: Dictionary = {}
+	var ai_army_seed: int = -1
+	var has_ai_army: bool = false
+	var upgrades: Dictionary = {}
+	var ai_campaign: Dictionary = {}
 	var flag_re := RegEx.new()
 	flag_re.compile(FLAG_NAME_PATTERN)
 
@@ -155,6 +160,33 @@ static func parse_args(args: Array[String]) -> Dictionary:
 			var mem_levels: Dictionary = mem_res.get("levels", {})
 			for mk: Variant in mem_levels.keys():
 				memory[mk] = mem_levels[mk]
+		elif arg.begins_with("--ai-base="):
+			var ab_parts: PackedStringArray = arg.substr("--ai-base=".length()).strip_edges().split(":")
+			if ab_parts.size() != 2 or flag_re.search(ab_parts[0].strip_edges()) == null or not ab_parts[1].strip_edges().is_valid_int():
+				return _fail("Invalid --ai-base value '%s': expected <tier>:<seed>" % arg.substr("--ai-base=".length()))
+			ai_base = {"tier": ab_parts[0].strip_edges(), "seed": ab_parts[1].strip_edges().to_int()}
+		elif arg.begins_with("--ai-army="):
+			var aa_str: String = arg.substr("--ai-army=".length()).strip_edges()
+			if not aa_str.is_valid_int():
+				return _fail("Invalid --ai-army value '%s': must be an integer seed" % aa_str)
+			ai_army_seed = aa_str.to_int()
+			has_ai_army = true
+		elif arg.begins_with("--upgrades="):
+			var up_res: Dictionary = parse_upgrades(arg.substr("--upgrades=".length()))
+			if not up_res.get("ok", false):
+				return _fail("Invalid --upgrades value: %s" % up_res.get("error", ""))
+			var up_levels: Dictionary = up_res.get("levels", {})
+			for uk: Variant in up_levels.keys():
+				upgrades[uk] = up_levels[uk]
+		elif arg.begins_with("--ai-campaign="):
+			var ac_parts: PackedStringArray = arg.substr("--ai-campaign=".length()).strip_edges().split(":")
+			if ac_parts.size() != 3 or flag_re.search(ac_parts[0].strip_edges()) == null \
+					or not ac_parts[1].strip_edges().is_valid_int() or not ac_parts[2].strip_edges().is_valid_int():
+				return _fail("Invalid --ai-campaign value '%s': expected <tier>:<seed>:<raids>" % arg.substr("--ai-campaign=".length()))
+			var raids: int = ac_parts[2].strip_edges().to_int()
+			if raids < 1 or raids > 50:
+				return _fail("Invalid --ai-campaign raids '%d': must be an integer from 1 to 50" % raids)
+			ai_campaign = {"tier": ac_parts[0].strip_edges(), "seed": ac_parts[1].strip_edges().to_int(), "raids": raids}
 		elif arg.begins_with("--generations="):
 			var gen_str: String = arg.substr("--generations=".length()).strip_edges()
 			if not gen_str.is_valid_int() or gen_str.to_int() < 1 or gen_str.to_int() > 50:
@@ -170,19 +202,34 @@ static func parse_args(args: Array[String]) -> Dictionary:
 			}
 
 	var input_modes: int = 0
+	if not ai_campaign.is_empty():
+		# A campaign is its own input: the AI base comes from the tier and the player army from --army.
+		if not scenario.is_empty() or not battle.is_empty() or not base_file.is_empty() or not ai_base.is_empty() or has_ai_army:
+			return _fail("--ai-campaign cannot be combined with --scenario, --battle, --base, --ai-base or --ai-army")
+		if army_file.is_empty():
+			return _fail("--ai-campaign needs --army=<file>: the player army that raids the AI base")
+		input_modes += 1
+		scenario = ""
 	if not scenario.is_empty():
 		input_modes += 1
 	if not battle.is_empty():
 		input_modes += 1
-	if not base_file.is_empty() or not army_file.is_empty():
-		if base_file.is_empty() or army_file.is_empty():
+	var base_side: bool = not base_file.is_empty() or not ai_base.is_empty()
+	var army_side: bool = not army_file.is_empty() or has_ai_army
+	if ai_campaign.is_empty() and (base_side or army_side):
+		if not base_side or not army_side:
+			var ai_used: bool = not ai_base.is_empty() or has_ai_army
 			return {
 				"ok": false,
-				"error": "Both --base and --army must be specified together",
+				"error": "Both a base (--base or --ai-base) and an army (--army or --ai-army) must be specified together" if ai_used else "Both --base and --army must be specified together",
 				"exit_code": 1,
 				"inputs": {},
 				"options": {},
 			}
+		if not base_file.is_empty() and not ai_base.is_empty():
+			return _fail("Specify only one of --base and --ai-base")
+		if not army_file.is_empty() and has_ai_army:
+			return _fail("Specify only one of --army and --ai-army")
 		input_modes += 1
 
 	if input_modes == 0:
@@ -203,7 +250,10 @@ static func parse_args(args: Array[String]) -> Dictionary:
 		}
 
 	var inputs: Dictionary = {}
-	if not scenario.is_empty():
+	if not ai_campaign.is_empty():
+		inputs["type"] = "ai_campaign"
+		inputs["army"] = army_file
+	elif not scenario.is_empty():
 		inputs["type"] = "scenario"
 		inputs["scenario"] = scenario
 		inputs["name"] = scenario
@@ -215,6 +265,10 @@ static func parse_args(args: Array[String]) -> Dictionary:
 		inputs["type"] = "base_army"
 		inputs["base"] = base_file
 		inputs["army"] = army_file
+		if not ai_base.is_empty():
+			inputs["ai_base"] = ai_base
+		if has_ai_army:
+			inputs["ai_army_seed"] = ai_army_seed
 
 	var options: Dictionary = {
 		"runs": runs,
@@ -228,6 +282,10 @@ static func parse_args(args: Array[String]) -> Dictionary:
 		"memory": memory,
 		"generations": generations,
 	}
+	if not upgrades.is_empty():
+		options["upgrades"] = upgrades
+	if not ai_campaign.is_empty():
+		options["ai_campaign"] = ai_campaign
 
 	return {
 		"ok": true,
@@ -394,6 +452,26 @@ static func apply_jitter(units: Array, jitter: int, seed: int, ring_cells: Array
 			unit["cell"] = ring_cells[new_idx]
 
 	return new_units
+
+
+## Parses "memory_slot:2,analysis_speed:1" into {"ok", "error", "levels": {id: int}}. Ids are GameConfig.KNOWN_UPGRADES.
+static func parse_upgrades(spec: String) -> Dictionary:
+	var levels: Dictionary = {}
+	var clean: String = spec.strip_edges()
+	if clean.is_empty():
+		return {"ok": false, "error": "empty upgrades specification", "levels": {}}
+	for entry: String in clean.split(","):
+		var parts: PackedStringArray = entry.strip_edges().split(":")
+		if parts.size() != 2:
+			return {"ok": false, "error": "entry '%s' must be <upgrade>:<level>" % entry, "levels": {}}
+		var id: String = parts[0].strip_edges()
+		if not GameConfig.KNOWN_UPGRADES.has(id):
+			return {"ok": false, "error": "unknown upgrade '%s'. Allowed: %s" % [id, ", ".join(GameConfig.KNOWN_UPGRADES)], "levels": {}}
+		var level_str: String = parts[1].strip_edges()
+		if not level_str.is_valid_int() or level_str.to_int() < 0 or level_str.to_int() > 10:
+			return {"ok": false, "error": "level '%s' must be an integer from 0 to 10" % level_str, "levels": {}}
+		levels[id] = level_str.to_int()
+	return {"ok": true, "error": "", "levels": levels}
 
 
 ## Parses "rhinovirus/wild:3,staphylococcus/wild:1" into {"ok", "error", "levels": {key: int}}.

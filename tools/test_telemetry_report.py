@@ -5,7 +5,14 @@ import shutil
 import tempfile
 import unittest
 
-from tools.telemetry_report import parse_telemetry_files, extract_battles, generate_report
+from tools.telemetry_report import (
+    parse_telemetry_files,
+    extract_battles,
+    generate_report,
+    living_base_sessions,
+    living_base_metrics,
+    living_base_lines,
+)
 
 
 class TestTelemetryReport(unittest.TestCase):
@@ -151,6 +158,72 @@ class TestIdentityMetrics(unittest.TestCase):
             self.assertEqual(row["largest_strain_share"], "")
             self.assertEqual(row["score"], "")
             self.assertEqual(row["flags_key"], "none")
+
+
+class TestLivingBaseReport(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.path = os.path.join(
+            os.path.dirname(__file__), "fixtures", "living_base_telemetry.jsonl"
+        )
+        self.old_path = os.path.join(
+            os.path.dirname(__file__), "fixtures", "sample_telemetry.jsonl"
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_events_are_tagged_with_tester_file_and_session(self):
+        events = parse_telemetry_files([self.path])
+        self.assertTrue(all(e["_tester"] == "fixtures" for e in events))
+        self.assertEqual(max(e["_session"] for e in events), 4)
+
+    def test_only_sessions_with_lb_events_count(self):
+        sessions = living_base_sessions(parse_telemetry_files([self.path]))
+        self.assertEqual(len(sessions), 3, "the fourth session has no Living Base event")
+
+    def test_gate_metrics(self):
+        m = living_base_metrics(parse_telemetry_files([self.path]))
+        self.assertEqual(m["sessions"], 3)
+        self.assertAlmostEqual(m["sessions_per_tester_day"], 1.5)
+        self.assertAlmostEqual(m["median_session_s"], 300.05, places=2)
+        self.assertAlmostEqual(m["return_24h"], 1 / 3)
+        self.assertAlmostEqual(m["raids_per_session"], 4 / 3)
+        self.assertEqual(m["army_change_pairs"], 3)
+        self.assertAlmostEqual(m["army_change_rate"], 1 / 3)
+        self.assertEqual(m["amino_earned"], 86)
+        self.assertEqual(m["amino_spent"], 250)
+        self.assertEqual(m["upgrade_picks"], {"memory_slot": 1, "analysis_speed": 1})
+        self.assertEqual(m["offline_raids"], 2)
+        self.assertEqual(m["replays_watched"], 1)
+        self.assertAlmostEqual(m["replays_per_offline_raid"], 0.5)
+
+    def test_testers_are_separated_by_log_folder(self):
+        events = parse_telemetry_files([self.path])
+        other = [dict(e, _tester="someone_else") for e in events]
+        m = living_base_metrics(events + other)
+        self.assertEqual(m["sessions"], 6)
+        self.assertAlmostEqual(m["sessions_per_tester_day"], 1.5)
+        self.assertEqual(m["army_change_pairs"], 6, "armies are compared per tester, not across testers")
+
+    def test_summary_has_a_living_base_section_only_with_lb_events(self):
+        generate_report(parse_telemetry_files([self.path]), self.temp_dir)
+        with open(os.path.join(self.temp_dir, "summary.txt"), "r", encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("Living Base:", text)
+        self.assertIn("sessions per tester per day: 1.50", text)
+        self.assertIn("sessions that return within 24 h: 33.3%", text)
+        self.assertIn("Amino Acids earned: 86, spent: 250", text)
+        self.assertIn("upgrade picks: analysis_speed x1, memory_slot x1", text)
+        self.assertIn("replays watched per offline raid: 0.50", text)
+        old_dir = os.path.join(self.temp_dir, "old")
+        generate_report(parse_telemetry_files([self.old_path]), old_dir)
+        with open(os.path.join(old_dir, "summary.txt"), "r", encoding="utf-8") as f:
+            self.assertNotIn("Living Base", f.read())
+
+    def test_no_events_means_no_metrics(self):
+        self.assertIsNone(living_base_metrics([]))
+        self.assertEqual(living_base_lines([]), [])
 
 
 if __name__ == "__main__":

@@ -14,6 +14,9 @@ var pending_raids: int = 0
 ## What the resolved away-raids did: {"raids", "held", "atp_lost", "amino_gained"}. Empty when none were due.
 var away_summary: Dictionary = {}
 
+var _offline_s: int = 0
+var _atp_generated: int = 0
+var _session_start_logged: bool = false
 var _raids_total: int = 0
 var _raids_done: int = 0
 var _raids_origin_unix: int = 0
@@ -38,7 +41,9 @@ func enter(p_session: Session, defer_raids: bool = false) -> void:
 		notices.append(str(n))
 	var profile: LivingBaseProfile = res["profile"]
 	var now: int = LivingBaseStore.now_unix()
-	profile.advance_clock(cfg, now)
+	_offline_s = maxi(0, now - profile.last_clock_unix)
+	_atp_generated = profile.advance_clock(cfg, now)
+	_session_start_logged = false
 	profile.ensure_opponents(cfg)
 	session.mode = Session.Mode.LIVING_BASE
 	session.profile = profile
@@ -51,6 +56,7 @@ func enter(p_session: Session, defer_raids: bool = false) -> void:
 	if not defer_raids:
 		resolve_all_pending()
 	store.save_profile(profile)
+	_log_session_start_if_ready()
 
 
 ## True while away-raids are waiting to be resolved.
@@ -75,18 +81,38 @@ func resolve_next_raid() -> bool:
 	away_summary["held"] = int(away_summary.get("held", 0)) + (1 if str(entry["outcome"]) == "defender" else 0)
 	away_summary["atp_lost"] = int(away_summary.get("atp_lost", 0)) + int(entry["atp_lost"])
 	away_summary["amino_gained"] = int(away_summary.get("amino_gained", 0)) + int(entry["amino_gained"])
+	_log("lb_defense_end", {"live": false, "outcome": str(entry["outcome"]), "atp_lost": int(entry["atp_lost"]), "amino_gained": int(entry["amino_gained"])})
 	# Saved after every raid, so an interrupted resolve never repeats a raid.
 	if pending_raids == 0:
 		profile.last_ai_raid_unix = RaidSchedule.advance(cfg, _raids_origin_unix, _raids_now_unix, _raids_total)
 	else:
 		profile.last_ai_raid_unix = _raids_origin_unix + _raids_done * cfg.ai_raid_interval_s
 	store.save_profile(profile)
+	_log_session_start_if_ready()
 	return true
 
 
 func resolve_all_pending() -> void:
 	while resolve_next_raid():
 		pass
+
+
+## Telemetry (Living Base only). lb_session_start waits until the away-raids are resolved so it can report them.
+func _log_session_start_if_ready() -> void:
+	if _session_start_logged or pending_raids > 0 or not is_active():
+		return
+	_session_start_logged = true
+	_log("lb_session_start", {
+		"offline_s": _offline_s,
+		"atp_generated": _atp_generated,
+		"raids_resolved": int(away_summary.get("raids", 0)),
+		"raids_held": int(away_summary.get("held", 0)),
+	})
+
+
+func _log(event: String, data: Dictionary) -> void:
+	if SessionLogger != null and SessionLogger.has_method("log_event"):
+		SessionLogger.log_event(event, data)
 
 
 ## "While you were away: 2 raids · 1 held · -80 ATP · +12 Amino Acids". Empty when no raid came due.
@@ -139,6 +165,7 @@ func finish_live_defense(sim: BattleSim) -> Dictionary:
 	profile.wallet = session.wallet.to_dict()
 	var entry: Dictionary = DefenseRunner.apply_result(cfg, profile, session.battle_setup, sim, profile.ai_raid_counter)
 	entry["live"] = true
+	_log("lb_defense_end", {"live": true, "outcome": str(entry["outcome"]), "atp_lost": int(entry["atp_lost"]), "amino_gained": int(entry["amino_gained"])})
 	profile.push_defense_log(entry, cfg)
 	_load_defender_state_into_session()
 	sync_profile_from_session()
@@ -168,6 +195,7 @@ func begin_replay(index: int) -> bool:
 	session.last_launch = {}
 	session.live_defense = false
 	session.replay_mode = true
+	_log("lb_replay_watched", {"raid_index": int(session.profile.defense_log[index].get("raid_index", 0)), "live": bool(session.profile.defense_log[index].get("live", false))})
 	session.replay_expected_hash = str(((battle as Dictionary).get("result", {}) as Dictionary).get("final_state_hash", ""))
 	return true
 
@@ -303,6 +331,24 @@ func finish_raid(sim: BattleSim) -> Dictionary:
 	for type_id: String in cfg.coevo_types:
 		pools[type_id] = session.pool_for(type_id)
 	var res: Dictionary = RaidResolver.resolve(cfg, session.battle_setup, sim, int(opp.get("stored_atp", 0)), session.defender_memory(), pools)
+	var army_atp: int = 0
+	var army_counts: Dictionary = {}
+	for u: Dictionary in session.battle_setup.units:
+		var utype: String = str(u.get("type", ""))
+		var udef: PathogenDef = cfg.pathogens.get(utype) as PathogenDef
+		army_atp += int(udef.cost.get("atp", 0)) if udef != null else 0
+		army_counts[utype] = int(army_counts.get(utype, 0)) + 1
+	_log("lb_raid_end", {
+		"opponent_id": str(opp.get("id", "")),
+		"opponent_tier": str(opp.get("tier", "")),
+		"opponent_raids": int(opp.get("raids", 0)),
+		"outcome": str(res["outcome"]),
+		"atp_looted": int(res["atp_looted"]),
+		"amino": int(res["amino_attacker"]),
+		"army_atp": army_atp,
+		"army_counts": army_counts,
+		"base_value": RaidScore.base_value(cfg, session.battle_setup.structures),
+	})
 	for type_id: String in cfg.coevo_types:
 		session.store_pool(type_id, pools[type_id])
 
@@ -355,8 +401,10 @@ func raid_again() -> bool:
 func buy_upgrade(upgrade_id: String) -> bool:
 	if not is_active():
 		return false
+	var cost: Dictionary = BaseUpgrades.next_cost(session.config, session.profile.upgrades, upgrade_id)
 	if not BaseUpgrades.buy(session.config, session.profile.upgrades, upgrade_id, session.wallet):
 		return false
+	_log("lb_upgrade", {"id": upgrade_id, "level": BaseUpgrades.level(session.profile.upgrades, upgrade_id), "cost": int(cost.get("amino_acids", 0))})
 	if upgrade_id == "receptor_slot":
 		BaseUpgrades.widen_receptor_pools(session.config, session.populations)
 	sync_profile_from_session()
@@ -372,6 +420,7 @@ func collect() -> int:
 	var amount: int = profile.collect()
 	if amount > 0:
 		session.wallet.set_amount("atp", int(profile.wallet.get("atp", 0)))
+		_log("lb_collect", {"amount": amount})
 	sync_profile_from_session()
 	return amount
 
