@@ -182,7 +182,7 @@ The web page is capped at 60 fps by the browser, so 16.67 ms is the cap, not the
 ### What the numbers say
 
 - **The cheap wins did not move the desktop battle on this GPU.** The static island cache, the redraw policy, the allocation clean-up and the flat-band background took the Rhino bench from 33.58 to 33.54 ms. Their effect shows only in the stress scene (9.8 to 3.6 ms), where the full-screen background gradient was the main cost, and on the llvmpipe VM of the earlier sections, where that gradient cost about 25 ms. The draw-call counts dropped by about 250.
-- **The frame was the painters.** With 200 units, GDScript painting in `UnitLayer._draw` was about 28 ms of the 33 ms. Baking removes it: one textured quad per unit, 213 draw calls instead of 2244.
+- **The frame was the painters.** Baking took about 28 ms off the 33 ms frame, so that is what per-unit painting in `UnitLayer._draw` cost. It is now one textured quad per unit, 213 draw calls instead of 2244.
 - **The bake step is therefore on** (`USE_BAKED_SPRITES = true` in `unit_layer.gd`), for the reasons the section above predicted: without it desktop sits at 30 fps and the web at 15 fps.
 
 ### Baked sprites: what changed in the look
