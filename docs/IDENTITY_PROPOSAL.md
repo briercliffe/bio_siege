@@ -127,14 +127,14 @@ This replaces "Capsid Hardening: +15% HP forever" (a Clash lab upgrade) with "Ca
 These two mechanics give pathogens behavior that no Clash troop has. Both are specified in plan section 9 and change from stretch goals to core features.
 
 - **Biofilm (Staphylococcus):** nearby units link up, split incoming damage evenly across the group, and take 25% less damage. Formation becomes part of planning an attack.
-- **Bacteriophage hijack:** a 2 s injection channel that disables a tower for 8 s and consumes the phage. This uses `StatusEffects.Kind.DISABLED`, which already exists. The phage becomes the attacker's answer to a strongly adapted B-Cell: switch off the tower that remembers you.
+- **Bacteriophage hijack:** a 2 s injection channel that disables a tower for 8 s and consumes the phage. This uses `StatusEffects.Kind.DISABLED`, which already exists. **Decided:** the hijacked tower also turns on neighbouring immune structures, and the balance sim has to check that a single phage can't unravel a cluster. The phage becomes the attacker's answer to a strongly adapted B-Cell: switch off the tower that remembers you.
 
 ### 4.6 Supporting defenses (reframed)
 
 | Planned item | Current framing | Proposed framing |
 | --- | --- | --- |
 | Dendritic Cell | Hidden trap that reveals itself and buffs attack speed (Hidden Tesla) | **Antigen presenter:** always visible. It shares any analysis completed within 4 tiles with every B-Cell in that radius. Hiding it goes against pillar 3. |
-| Fever | Configured global damage with self-harm | Kept as is. It fits pillar 1: it is the defender's authored rule, and it costs them too. |
+| Fever | Configured global damage with self-harm | **Removed from the plan** and parked in [FUTURE_FEATURES.md](FUTURE_FEATURES.md). |
 | Mucous Membrane trap | Roots `small` units | Kept, and it counts as innate. |
 | Parasite burrow and spores | Miner plus Golem | **Deprioritized.** It copies Clash directly. If it is built, burrowing should avoid *analysis* (untargetable, so it builds no exposure), not only walls. |
 
@@ -175,7 +175,8 @@ The existing single-battle sandbox stays as **Lab** mode: no scoring, memory can
 | Amino Acid `levels` upgrades | **Cut or shrink** | Flat HP and damage levels go against pillar 1. If upgrades are kept, they unlock *breadth* (another memory slot, faster analysis), not size |
 | DNA/Plasmids and the Mutation Lab | **Reframe** | They unlock strain variants (section 4.4), not stat upgrades |
 | Async raids (Phase 3) | Keep, and memory makes them deeper | Every defended raid updates the defender's memory. **Popular strains become less effective on their own**, because more bases remember them. The meta rebalances itself with no global rule (see below) |
-| Lymph Node (clan castle) | **Reframe as vaccination** | Clanmates donate memory of strains they've seen to your base, up to 1 level per strain. It is the clan version of immunization, not a box of donated troops |
+| Coevolution (epic #141) | **Add** | Antigens, receptors and fitness-weighted mating for the five fighting types. It is the *genetic* layer under memory: memory tracks the strain the player picked, and breeding tracks what the population evolves. Defenders breed too, so both sides adapt. The `populations` snapshot block is the multiplayer hook. |
+| Lymph Node (clan castle) | **Reframe as vaccination, and it replaces the Nucleus as HQ (Phase 4)** | Clanmates donate memory of strains they've seen to your base, up to 1 level per strain. It is the clan version of immunization, not a box of donated troops |
 | Gene transfer (donations) | Keep, and it now fits | Donating a *variant* for the requester's next raid is how plasmids really work |
 | Patient Zero (Phase 5a) | **Reframe** | The boss base's memory builds up across every clan member's attack in the 48 h window. The clan has to coordinate strain rotation, which is a coordination problem no Clash mode poses |
 | Herd Immunity (Phase 5b) | Keep the name and make it literal | Memory spreads between neighbouring bases in the clan network |
@@ -198,8 +199,12 @@ Each item is a GitHub issue under epic #85 (item 1 is #86, through item 8 as #93
 | 6 | Biofilm (plan section 9) | `battle_sim.gd`, union-find helper in core | `biofilm` |
 | 7 | Bacteriophage hijack (plan section 9) | `battle_sim.gd`, `StatusEffects.DISABLED` | `phage_hijack` |
 | 8 | Balance sim: flags, strains and memory as inputs, multi-generation runs. Telemetry report: the section 8 metrics split by flag set | `tools/balance_sim.gd`, `tools/telemetry_report.py` | — |
+| 9 | Coevolution CE-01: `Genome`, `BreedPool`, match math, mating, `coevolution` JSON block (#142) | `src/core`, `game_config.gd`, `game_rules.json` | `coevolution` |
+| 10 | CE-02: assign genomes at spawn, receptor-vs-antigen damage, fitness recording, `G:` hash lines (#143) | `battle_sim.gd`, `battle_setup.gd` | `coevolution` |
+| 11 | CE-03: breed after a finished raid, populations on the session and snapshot (#144) | `infection_phase.gd`, `session.gd`, `snapshot_io.gd` | `coevolution` |
+| 12 | CE-04: read-only Coevolution panel, Results summary, this doc (#145) | UI, `results_phase` | `coevolution` |
 
-Suggested order: 1, then 2, then 3 and 4 together, then 5. Items 6 and 7 are independent and can run alongside. Item 1 is a small change and fixes the loop's missing goal on its own.
+Suggested order: 1, then 2, then 3 and 4 together, then 5. Items 6 and 7 are independent and can run alongside. Items 9 to 12 are a chain (CE-01, then CE-02, then CE-03, then CE-04, with CE-03 needing both CE-01 and CE-02) and can start after item 4 lands, because breeding reuses the post-raid hook that memory adds. **Bred antigens never raise B-Cell analysis and never change the strain key**, so the two bonuses can't stack. Item 1 is a small change and fixes the loop's missing goal on its own.
 
 ---
 
@@ -213,6 +218,7 @@ These add to the playtest metrics in plan section 5. Each is compared with the f
 | Does the loop have a goal? | Share of sessions where defense spend is above 20% of the budget | At least 70% with `raid_score` on (today's dominant strategy is 0%) |
 | Does memory create an arms race? | Outbreak run length; how often the army changes between generations | Median run of at least 3 generations; strain mix changes in at least 60% of generations |
 | Is it still readable? | Prediction accuracy (plan section 5, question 2); survey question "I understood why my B-Cells got stronger" | Prediction accuracy stays at 60% or above; median survey answer 4 or above |
+| Does breeding add a second arms race without hiding the first? | Receptor hit rate by generation; a prediction-accuracy check and the survey question "I understood why my towers got stronger" with `coevolution` on and off | Hit rate rises across generations 0 to 5 for both sides. Prediction accuracy stays at 60% or above. Median survey answer 4 or above |
 | Is it fun? | Pivot rating and a new "one more generation" rating | Both medians at 3.5 or above |
 
 If `bcell_analysis` and `immune_memory` don't beat the flag-off baseline, the identity doesn't work as designed. Don't start Phase 2 until that is solved.
@@ -230,7 +236,9 @@ If `bcell_analysis` and `immune_memory` don't beat the flag-off baseline, the id
 | 11 Extended roster | Dendritic Cell becomes the antigen presenter (visible). Parasite is deprioritized. |
 | 12 Async multiplayer | Memory is part of the defended snapshot and is updated by the server's re-simulated result. |
 | 13 Clans | Lymph Node becomes vaccination. Patient Zero gets boss-base memory. |
-| 14 Roadmap | Phase 1.5 grows to about 3–4 weeks. Its gate is section 8 above. |
+| 14 Roadmap | Phase 1.5 grows to about 3–4 weeks, plus about 1–2 weeks for coevolution (#141). Its gate is section 8 above. |
+| 8 Full vision fit, 11 Extended roster | Coevolution joins Phase 1.5. New Phase 2 units join the breeding set through `coevolution.types`. Spores inherit the parent's genome index. The Dendritic Cell presents antigens. The Mucous trap is not scaled by match. |
+| 12 Async multiplayer, 13 Clans | The server breeds from the re-simulated result. Gene transfer can donate a receptor for one raid. Patient Zero's boss pools breed across attacks. Herd Immunity spreads genomes between neighbouring bases. |
 
 ---
 
@@ -243,13 +251,16 @@ If `bcell_analysis` and `immune_memory` don't beat the flag-off baseline, the id
 | **Degenerate mutation.** One variant dominates. | Every variant has a real downside. The balance sim sweeps strain mixes. |
 | **Scope creep.** Phase 1.5 grows. | Item 1 ships first on its own. Everything else sits behind flags and can be cut item by item. |
 | **Determinism.** New state breaks replay or hash checks. | Exposure counters and multipliers are integers. Memory is part of the snapshot. `state_hash()` covers the new fields, with tests. |
+| **Two stacking bonuses.** Strain memory and bred antigens both reward adapting, so a base could become unbeatable. | They are kept separate by rule (item 9 to 12 note). Bred antigens do not touch analysis or the strain key. The balance sim sweeps both at once. The floor of 1% and the limited receptor slots bound the multiplier. |
+| **Opaque breeding.** Players can't see why a pool got better. | CE-04's panel and Results summary show parent counts, mutations and generation. Generation 0 is wild, so early raids look the same as today. |
+| **Client-forged genomes (Phase 3).** A client submits pools that match the defender perfectly. | The server owns breeding and checks submitted pools against its own. |
 | **Biological accuracy.** The mechanics drift into fantasy. | Keep the mapping honest (memory B-cells, antigenic drift and shift, plasmids, biofilms). The how-to-play text names the real process. |
 
 ---
 
 ## 11. Open questions for design
 
-1. Is the per-tower analysis (section 4.2) correct, or should analysis belong to the whole base? The plan's open question 7 also asks this. This proposal answers "per tower, shared by Dendritic Cells".
+1. Is the per-tower analysis (section 4.2) correct, or should analysis belong to the whole base? The plan's open question 7 also asks this. **Decided:** per tower, with Dendritic Cells sharing analysis and antigens only (not genomes).
 2. Should Macrophages gain a small innate bonus against strains in memory (trained immunity), or stay fixed?
 3. Should memory be visible to the attacker in async raids (current proposal: yes, pillar 3), or should it be scouted?
 4. Outbreak scoring: ATP value of the whole base (proposed), or only the value of structures destroyed?
