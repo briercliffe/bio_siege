@@ -294,3 +294,17 @@ func test_strain_deploy_records_strain() -> void:
 	assert_eq(army.deployments[0]["strain"], "antigenic_masking")
 	army.refund_all(wallet)
 	assert_true(army.strain_by_type.has("rhinovirus"))
+
+
+func test_discard_all_drops_units_without_refunding() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	var army := Army.new(cfg)
+	var wallet := Wallet.new({"atp": 100})
+	assert_true(army.buy("rhinovirus", wallet))
+	assert_true(army.buy("rhinovirus", wallet))
+	assert_eq(wallet.get_amount("atp"), 80)
+	watch_signals(army)
+	army.discard_all()
+	assert_eq(army.total_count(), 0)
+	assert_eq(wallet.get_amount("atp"), 80)
+	assert_signal_emitted(army, "changed")

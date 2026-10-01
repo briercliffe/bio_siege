@@ -289,7 +289,11 @@ func _abandon(reason: String, to: GameStateMachine.Phase) -> void:
 		runner.paused = true
 		runner.is_running = false
 	if session != null and session.army != null:
-		session.army.refund_all(session.wallet)
+		if session.mode == Session.Mode.LIVING_BASE:
+			# Living Base: the army of a launched raid is spent, win, lose or abandon.
+			session.army.discard_all()
+		else:
+			session.army.refund_all(session.wallet)
 	var log_node: Node = logger if logger != null else SessionLogger
 	if log_node != null and log_node.has_method("log_event"):
 		log_node.call("log_event", "battle_abandoned", {"reason": reason, "tick": tick})
@@ -430,16 +434,19 @@ func _on_battle_finished(sim: BattleSim) -> void:
 		if session.config != null and session.config.flag("bcell_analysis"):
 			session.last_result["analyzed_strains"] = sim.analyzed_strain_keys()
 
-		if session.config != null and session.config.memory_enabled():
-			var defender_mem: ImmuneMemory = session.defender_memory()
-			var mem_changes: Array[Dictionary] = defender_mem.update_after_raid(sim.seen_strain_keys(), sim.analyzed_strain_keys(), session.config)
-			session.last_result["memory_changes"] = mem_changes
-			session.last_result["memory"] = defender_mem.to_dict()
-			if SessionLogger != null and SessionLogger.has_method("log_event"):
-				SessionLogger.log_event("memory_updated", {"raids": defender_mem.raids, "changes": mem_changes})
+		if session.living_flow != null and session.living_flow.has_raid_target():
+			_finish_living_base_raid(sim)
+		else:
+			if session.config != null and session.config.memory_enabled():
+				var defender_mem: ImmuneMemory = session.defender_memory()
+				var mem_changes: Array[Dictionary] = defender_mem.update_after_raid(sim.seen_strain_keys(), sim.analyzed_strain_keys(), session.config)
+				session.last_result["memory_changes"] = mem_changes
+				session.last_result["memory"] = defender_mem.to_dict()
+				if SessionLogger != null and SessionLogger.has_method("log_event"):
+					SessionLogger.log_event("memory_updated", {"raids": defender_mem.raids, "changes": mem_changes})
 
-		if session.config != null and session.config.coevolution_enabled():
-			breed_after_raid(session, sim)
+			if session.config != null and session.config.coevolution_enabled():
+				breed_after_raid(session, sim)
 
 		if session.config != null and session.config.flag("biofilm"):
 			session.last_result["biofilm_max_group"] = _biofilm_max_group
@@ -469,6 +476,30 @@ func _on_battle_finished(sim: BattleSim) -> void:
 
 	if fsm != null:
 		fsm.request_transition(GameStateMachine.Phase.RESULTS)
+
+
+## Living Base: RaidResolver applies loot, the AI base's learning and its replacement; the Results screen
+## reads the same keys as in Lab, plus last_result["living_base"].
+func _finish_living_base_raid(sim: BattleSim) -> void:
+	var cfg: GameConfig = session.config
+	var res: Dictionary = session.living_flow.finish_raid(sim)
+	session.last_result["living_base"] = res
+	if cfg.memory_enabled():
+		session.last_result["memory_changes"] = res.get("memory_changes", [])
+		session.last_result["memory"] = session.defender_memory().to_dict()
+	if cfg.coevolution_enabled():
+		session.last_result["evolution"] = res.get("evolution", [])
+		var pools_out: Dictionary = {}
+		for type_id: String in cfg.coevo_types:
+			pools_out[type_id] = session.pool_for(type_id).to_dict()
+		session.last_result["populations"] = pools_out
+	if SessionLogger != null and SessionLogger.has_method("log_event"):
+		SessionLogger.log_event("living_base_raid", {
+			"opponent": session.attack_opponent_id,
+			"outcome": str(res.get("outcome", "")),
+			"atp_looted": int(res.get("atp_looted", 0)),
+			"amino": int(res.get("amino_attacker", 0)),
+		})
 
 
 ## Coevolution: scores the finished raid onto the pools and breeds them (RaidResolver.breed_after_battle).

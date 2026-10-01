@@ -82,6 +82,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 			hud_build.quit_requested.connect(_on_quit_requested)
 		if not hud_build.test_in_lab_requested.is_connected(_on_test_in_lab_requested):
 			hud_build.test_in_lab_requested.connect(_on_test_in_lab_requested)
+		if not hud_build.raid_requested.is_connected(_on_raid_requested):
+			hud_build.raid_requested.connect(_on_raid_requested)
 
 	_update_grid_layout()
 
@@ -189,6 +191,13 @@ func _on_help_requested() -> void:
 func _on_settings_requested() -> void:
 	if fsm != null and fsm.screen_stack != null:
 		fsm.screen_stack.push("settings")
+
+## Living Base: the Raid button opens the opponent picker over Synthesis.
+func _on_raid_requested() -> void:
+	_sync_living_base()
+	if fsm != null and fsm.screen_stack != null:
+		fsm.screen_stack.push("opponents")
+
 
 func _on_test_in_lab_requested() -> void:
 	if session == null or session.living_flow == null:

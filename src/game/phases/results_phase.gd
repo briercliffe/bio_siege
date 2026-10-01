@@ -75,6 +75,7 @@ var badge: PanelContainer = null
 var title_label: Label = null
 var reason_label: Label = null
 var score_label: Label = null
+var loot_label: Label = null
 var memory_label: Label = null
 var evolution_label: Label = null
 
@@ -189,6 +190,10 @@ func _build_left_column() -> void:
 	score_label.name = "ScoreLabel"
 	score_label.visible = false
 	extras.add_child(score_label)
+	loot_label = HudParts.wrapping(HudParts.label("", 14, 700, KICKER_ATTACKER))
+	loot_label.name = "LootLabel"
+	loot_label.visible = false
+	extras.add_child(loot_label)
 	memory_label = HudParts.wrapping(HudParts.label("", 14, 400, _muted))
 	memory_label.name = "MemoryLabel"
 	memory_label.visible = false
@@ -367,7 +372,7 @@ func _populate() -> void:
 	badge.visible = is_timeout
 	title_label.text = TITLE_ATTACKER if is_attacker_win else TITLE_DEFENDER
 	if end_reason == "nucleus_destroyed" or (is_attacker_win and end_reason.is_empty()):
-		reason_label.text = "Your army broke through your own defense in %s." % format_time(battle_s)
+		reason_label.text = ("Your army broke through the enemy base in %s." if is_living_base() else "Your army broke through your own defense in %s.") % format_time(battle_s)
 	elif is_timeout:
 		reason_label.text = "The %s timer ran out with the Nucleus at %d HP." % [format_time(_timeout_s(res, battle_s)), nucleus_hp]
 	else:
@@ -404,10 +409,14 @@ func _populate() -> void:
 
 	_populate_final_state(res, first_id, first_type)
 	_populate_score(res, is_attacker_win)
+	_populate_loot(res)
 	_populate_memory(res)
 	_populate_evolution(res)
 	_populate_atp_split()
-	_update_new_base_label()
+	if is_living_base():
+		_configure_living_base_buttons()
+	else:
+		_update_new_base_label()
 	_populate_survey()
 
 
@@ -519,7 +528,10 @@ static func build_final_grid(cfg: GameConfig, layout: Array, alive_ids: Array, f
 func _populate_memory(res: Dictionary) -> void:
 	var text: String = ""
 	if session != null and session.config != null and session.config.memory_enabled() and res.has("memory_changes"):
-		text = memory_changes_text(res.get("memory_changes", []), session.config)
+		if is_living_base():
+			text = base_learned_text(res.get("memory_changes", []), session.config)
+		else:
+			text = memory_changes_text(res.get("memory_changes", []), session.config)
 	memory_label.text = text
 	memory_label.visible = not text.is_empty()
 	if not text.is_empty():
@@ -530,7 +542,10 @@ func _populate_memory(res: Dictionary) -> void:
 func _populate_evolution(res: Dictionary) -> void:
 	var text: String = ""
 	if session != null and session.config != null and session.config.coevolution_enabled() and res.has("evolution"):
-		text = evolution_line(res.get("evolution", []), session.config)
+		if is_living_base():
+			text = base_evolved_text(res.get("evolution", []), session.config)
+		else:
+			text = evolution_line(res.get("evolution", []), session.config)
 	evolution_label.text = text
 	evolution_label.visible = not text.is_empty()
 	if not text.is_empty():
@@ -550,6 +565,71 @@ static func evolution_line(entries: Array, config: GameConfig) -> String:
 	if parts.is_empty():
 		return ""
 	return "Populations: " + " · ".join(parts)
+
+
+## True in a Living Base session; the Results screen then talks about the AI base.
+func is_living_base() -> bool:
+	return session != null and session.mode == Session.Mode.LIVING_BASE and session.living_flow != null
+
+
+## "+120 ATP · +30 Amino Acids" (and "· +5 DNA" when any). Empty when nothing was won.
+static func loot_text(res: Dictionary) -> String:
+	var parts: Array[String] = []
+	if int(res.get("atp_looted", 0)) > 0:
+		parts.append("+%d ATP" % int(res.get("atp_looted", 0)))
+	if int(res.get("amino_attacker", 0)) > 0:
+		parts.append("+%d Amino Acids" % int(res.get("amino_attacker", 0)))
+	if int(res.get("dna_attacker", 0)) > 0:
+		parts.append("+%d DNA" % int(res.get("dna_attacker", 0)))
+	return " · ".join(parts)
+
+
+func _populate_loot(res: Dictionary) -> void:
+	var text: String = ""
+	if is_living_base() and res.has("living_base"):
+		text = loot_text(res["living_base"] as Dictionary)
+	loot_label.text = text
+	loot_label.visible = not text.is_empty()
+	if not text.is_empty():
+		stats["loot"] = text
+
+
+## Raid again (same opponent while it still stands) and Back to base replace the Lab choices.
+func _configure_living_base_buttons() -> void:
+	var still_there: bool = session.living_flow.has_raid_target()
+	_set_button(btn_re_raid, "Raid again" if still_there else "New target", "Same base, new army" if still_there else "Pick another base", RE_RAID_WIDTH)
+	_set_button(btn_edit_base, "Back to base", "Home", EDIT_WIDTH)
+	btn_new_base.visible = false
+
+
+## "The base learned: Rhinovirus (wild) level 2 · Staphylococcus (wild) forgotten"
+static func base_learned_text(changes: Array, config: GameConfig) -> String:
+	var parts: Array[String] = []
+	for c_val: Variant in changes:
+		if not (c_val is Dictionary):
+			continue
+		var c: Dictionary = c_val
+		var label: String = MemoryPanel.strain_label(str(c.get("strain_key", "")), config)
+		var reason: String = str(c.get("reason", ""))
+		if reason == "forgotten":
+			parts.append("%s forgotten" % label)
+		elif reason == "evicted":
+			parts.append("%s evicted" % label)
+		else:
+			parts.append("%s level %d" % [label, int(c.get("to", 0))])
+	if parts.is_empty():
+		return ""
+	return "The base learned: " + " · ".join(parts)
+
+
+## "The base evolved: B-Cell parent 5/8". Only the AI base's own (structure) pools are listed.
+static func base_evolved_text(entries: Array, config: GameConfig) -> String:
+	var own: Array = []
+	for e_val: Variant in entries:
+		if e_val is Dictionary and config.structures.has(str((e_val as Dictionary).get("type_id", ""))):
+			own.append(e_val)
+	var line: String = evolution_line(own, config)
+	return line.replace("Populations:", "The base evolved:")
 
 
 ## "Immune memory: Rhinovirus (wild) 1→2 · Staphylococcus (wild) forgotten"
@@ -654,7 +734,11 @@ func get_atp_split_widths() -> Dictionary:
 	return split_widths.duplicate()
 
 
-func make_choice(choice: String) -> void:
+func make_choice(p_choice: String) -> void:
+	var choice: String = p_choice
+	if is_living_base():
+		# The first two buttons keep their slots; in Living Base they mean Raid again and Back to base.
+		choice = {"re_raid": "raid_again", "edit_base": "back_to_base"}.get(p_choice, p_choice)
 	_log("results_choice", {"choice": choice})
 	choice_made.emit(choice)
 	apply_choice(choice, session, fsm)
@@ -698,6 +782,16 @@ static func apply_choice(choice: String, session: Session, fsm: GameStateMachine
 		return
 
 	match choice:
+		"raid_again":
+			# Living Base: the army was spent. Same opponent if it still exists, else back to the base.
+			var aimed: bool = session.living_flow != null and session.living_flow.raid_again()
+			if fsm != null:
+				fsm.request_transition(GameStateMachine.Phase.INCUBATION if aimed else GameStateMachine.Phase.SYNTHESIS)
+		"back_to_base":
+			if session.living_flow != null:
+				session.living_flow.end_raid()
+			if fsm != null:
+				fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
 		"re_raid":
 			if session.army != null:
 				session.army.refund_all(session.wallet)

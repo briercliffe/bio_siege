@@ -137,6 +137,12 @@ func refund_all(wallet: Wallet) -> void:
 	deployments.clear()
 	changed.emit()
 
+## Drops every unit without refunding it (Living Base: the army of a launched raid is spent).
+func discard_all() -> void:
+	reserve.clear()
+	deployments.clear()
+	changed.emit()
+
 func reserve_count(type_id: String) -> int:
 	return int(reserve.get(type_id, 0))
 

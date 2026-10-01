@@ -120,6 +120,8 @@ func _on_deployed(_type_id: String, _cell: Vector2i) -> void:
 	Sfx.play("deploy")
 
 func _on_back_requested() -> void:
+	if session != null and session.living_flow != null:
+		session.clear_attack_target()
 	if fsm != null:
 		fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
 

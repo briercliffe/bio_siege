@@ -17,7 +17,9 @@ var last_clock_unix: int = 0         # last time advance_clock ran
 var memory: Dictionary = {}          # ImmuneMemory.to_dict() of the player's base
 var populations: Dictionary = {}     # type_id -> BreedPool.to_dict(): player's pathogen AND tower pools
 var upgrades: Dictionary = {}        # upgrade id -> level (filled by LB-15)
-var opponents: Array[Dictionary] = []          # AI bases (filled by LB-08)
+## AI bases: {id, tier, seed, layout, memory, populations, stored_atp, raids}. Layout origins are [x, y].
+var opponents: Array[Dictionary] = []
+var opponent_counter: int = 0        # AI bases generated so far; drives their seeds and ids
 var ai_army_populations: Dictionary = {}       # pools of AI raiders (filled by LB-10)
 var raid_counter: int = 0            # raids the player has launched
 var ai_raid_counter: int = 0         # AI raids resolved against the player
@@ -55,6 +57,50 @@ func collect() -> int:
 	wallet["atp"] = int(wallet.get("atp", 0)) + amount
 	stored_atp = 0
 	return amount
+
+## Fills the opponent slots, one per tier in order, until `ai_opponents_shown` are present.
+func ensure_opponents(cfg: GameConfig) -> void:
+	while opponents.size() < mini(cfg.ai_opponents_shown, cfg.ai_tiers.size()):
+		opponents.append(_new_opponent(cfg, str(cfg.ai_tiers[opponents.size()]["id"])))
+
+## Regenerates one slot (same tier) with the next counter. Returns false for an unknown id.
+func replace_opponent(id: String, cfg: GameConfig) -> bool:
+	var index: int = opponent_index(id)
+	if index < 0:
+		return false
+	opponents[index] = _new_opponent(cfg, str(opponents[index]["tier"]))
+	return true
+
+## Index into `opponents` for an id, or -1.
+func opponent_index(id: String) -> int:
+	for i: int in range(opponents.size()):
+		if str(opponents[i].get("id", "")) == id:
+			return i
+	return -1
+
+func _new_opponent(cfg: GameConfig, tier_id: String) -> Dictionary:
+	var n: int = opponent_counter
+	opponent_counter += 1
+	var opp_seed: int = seed + 7919 * n
+	var gen: Dictionary = AiBaseGenerator.generate(cfg, tier_id, opp_seed)
+	var layout: Array = []
+	for entry: Dictionary in gen["layout"]:
+		var o: Vector2i = _origin_of(entry)
+		layout.append({"type": str(entry["type"]), "origin": [o.x, o.y]})
+	var stored: int = 0
+	for t: Dictionary in cfg.ai_tiers:
+		if str(t["id"]) == tier_id:
+			stored = int(t["stored_atp"])
+	return {
+		"id": "%s-%d" % [tier_id, n],
+		"tier": tier_id,
+		"seed": opp_seed,
+		"layout": layout,
+		"memory": {},
+		"populations": {},
+		"stored_atp": stored,
+		"raids": 0,
+	}
 
 ## Player raided an AI base: the looted ATP, Amino Acids and DNA go straight to the wallet.
 func apply_raid_result(res: Dictionary) -> void:
@@ -95,6 +141,7 @@ func to_dict() -> Dictionary:
 		"populations": populations.duplicate(true),
 		"upgrades": upgrades.duplicate(true),
 		"opponents": opponents.duplicate(true),
+		"opponent_counter": opponent_counter,
 		"ai_army_populations": ai_army_populations.duplicate(true),
 		"raid_counter": raid_counter,
 		"ai_raid_counter": ai_raid_counter,
@@ -122,6 +169,7 @@ static func from_dict(d: Dictionary, cfg: GameConfig) -> Dictionary:
 	p.raid_counter = maxi(0, _int_of(d, "raid_counter", 0))
 	p.ai_raid_counter = maxi(0, _int_of(d, "ai_raid_counter", 0))
 	p.last_ai_raid_unix = maxi(0, _int_of(d, "last_ai_raid_unix", 0))
+	p.opponent_counter = maxi(0, _int_of(d, "opponent_counter", 0))
 
 	# Layout: drop unknown or disabled types, then prove the rest loads.
 	var kept: Array = []
