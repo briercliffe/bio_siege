@@ -1,8 +1,7 @@
 extends Node
 
 @onready var normal_ui: Control = $NormalUI
-@onready var error_panel: Panel = $ErrorPanel
-@onready var error_label: RichTextLabel = $ErrorPanel/MarginContainer/VBoxContainer/ErrorLabel
+@onready var data_error_screen: DataErrorScreen = $DataErrorScreen
 @onready var fsm: GameStateMachine = $GameStateMachine
 @onready var debug_overlay: DebugOverlay = $DebugOverlay
 @onready var dev_banner: DevBanner = $DevBanner
@@ -38,7 +37,7 @@ func _ready() -> void:
 
 ## SettingsApply.GROUP hook: the Settings screen saved a change.
 func on_settings_changed() -> void:
-	if error_panel == null or not error_panel.visible:
+	if data_error_screen == null or not data_error_screen.visible:
 		SettingsApply.apply_debug_overlay(debug_overlay, settings_path)
 
 func _on_screen_opened(_id: String) -> void:
@@ -71,6 +70,9 @@ func _show_how_to_play_on_first_launch() -> void:
 		screen_stack.push("how_to_play")
 
 func _on_config_reload_failed(errors: PackedStringArray) -> void:
+	# The Data error screen lists the new errors itself; the banner is for hot reloads while playing.
+	if data_error_screen != null and data_error_screen.visible:
+		return
 	dev_banner.show_errors(errors)
 
 func _on_config_applied(summary: Dictionary) -> void:
@@ -96,10 +98,8 @@ func check_config_errors() -> void:
 func _show_config_error_ui() -> void:
 	if normal_ui != null:
 		normal_ui.visible = false
-	if error_panel != null:
-		error_panel.visible = true
-	if error_label != null:
-		error_label.text = "\n".join(GameData.load_errors)
+	if data_error_screen != null:
+		data_error_screen.show_errors(GameData.load_errors)
 	if fsm != null and fsm.phase_root != null:
 		fsm.phase_root.visible = false
 	if screen_stack != null:
@@ -110,8 +110,8 @@ func _show_config_error_ui() -> void:
 func _show_normal_ui() -> void:
 	if normal_ui != null:
 		normal_ui.visible = true
-	if error_panel != null:
-		error_panel.visible = false
+	if data_error_screen != null:
+		data_error_screen.visible = false
 	if fsm != null and fsm.phase_root != null:
 		fsm.phase_root.visible = true
 	if screen_stack != null:
