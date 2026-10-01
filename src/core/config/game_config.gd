@@ -29,6 +29,9 @@ var file_feature_flags: Dictionary = {}
 ## The debug overrides that were applied (flag name -> bool). Empty in release builds.
 var flag_overrides: Dictionary = {}
 var memory_max_level: int = 0
+var lb_start_wallet: Dictionary = {} # Living Base starting wallet (#156)
+var lb_max_offline_s: int = 0
+var lb_defense_log_size: int = 0
 var memory_seed_pct_per_level: int = 0
 var memory_decay_raids: int = 0
 var memory_slots: int = 0
@@ -227,6 +230,7 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 			applied_overrides = apply_flag_overrides(rules_data, flag_overrides)
 			_validate_rules(rules_data, errors)
 			_validate_immune_memory(rules_data, errors)
+			_validate_living_base(rules_data, errors)
 
 	var structures_data: Dictionary = {}
 	if err_structures == OK:
@@ -289,6 +293,16 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 		config.memory_decay_raids = int(mem.get("decay_raids", 0))
 		config.memory_slots = int(mem.get("slots", 0))
 		config.memory_drift_pct = int(mem.get("drift_pct", 0))
+
+	var lb_raw: Variant = rules_data.get("living_base", null)
+	if typeof(lb_raw) == TYPE_DICTIONARY:
+		var lb: Dictionary = lb_raw
+		var lb_wallet: Variant = lb.get("start_wallet", {})
+		if typeof(lb_wallet) == TYPE_DICTIONARY:
+			for lb_cur: Variant in (lb_wallet as Dictionary).keys():
+				config.lb_start_wallet[str(lb_cur)] = int((lb_wallet as Dictionary)[lb_cur])
+		config.lb_max_offline_s = int(lb.get("max_offline_hours", 0)) * 3600
+		config.lb_defense_log_size = int(lb.get("defense_log_size", 0))
 
 	var coevo_raw: Variant = rules_data.get("coevolution", null)
 	if typeof(coevo_raw) == TYPE_DICTIONARY:
@@ -624,7 +638,7 @@ static func _validate_rules(data: Dictionary, errors: PackedStringArray) -> void
 		"battle_timeout_s", "max_path_recalcs_per_tick", "empty_path_weight",
 		"deploy_hold_interval_s", "default_seed", "feature_flags"
 	]
-	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution"]
+	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution", "living_base"]
 	for k_var: Variant in data.keys():
 		var k: String = str(k_var)
 		if not k.begins_with("_") and not allowed_keys.has(k) and not optional_rule_keys.has(k):
@@ -800,6 +814,56 @@ static func _validate_immune_memory(data: Dictionary, errors: PackedStringArray)
 			errors.append("game_rules.json: immune_memory.%s: must be >= %d (got %s)" % [key, lo, _format_val(v)])
 		elif hi >= 0 and int(v) > hi:
 			errors.append("game_rules.json: immune_memory.%s: must be <= %d (got %s)" % [key, hi, _format_val(v)])
+
+static func _validate_living_base(data: Dictionary, errors: PackedStringArray) -> void:
+	var flags_val: Variant = data.get("feature_flags", null)
+	var flag_on: bool = false
+	if typeof(flags_val) == TYPE_DICTIONARY:
+		flag_on = (flags_val as Dictionary).get("living_base", false) == true
+	if not data.has("living_base"):
+		if flag_on:
+			errors.append("game_rules.json: living_base: required when feature_flags.living_base is true (got null)")
+		return
+	var b_val: Variant = data["living_base"]
+	if typeof(b_val) != TYPE_DICTIONARY:
+		errors.append("game_rules.json: living_base: must be a JSON object (got %s)" % [_format_val(b_val)])
+		return
+	var b: Dictionary = b_val
+	var spec: Dictionary = {"max_offline_hours": [1, 168], "defense_log_size": [1, 100]}
+	for bk_var: Variant in b.keys():
+		var bk: String = str(bk_var)
+		if not bk.begins_with("_") and not spec.has(bk) and bk != "start_wallet":
+			errors.append("game_rules.json: living_base.%s: unknown key (got %s)" % [bk, bk])
+	if not b.has("start_wallet"):
+		errors.append("game_rules.json: living_base.start_wallet: missing required field (got null)")
+	else:
+		var w_val: Variant = b["start_wallet"]
+		if typeof(w_val) != TYPE_DICTIONARY:
+			errors.append("game_rules.json: living_base.start_wallet: must be a JSON object (got %s)" % [_format_val(w_val)])
+		else:
+			var w: Dictionary = w_val
+			for cur_var: Variant in w.keys():
+				var cur: String = str(cur_var)
+				if not KNOWN_CURRENCIES.has(cur):
+					errors.append("game_rules.json: living_base.start_wallet.%s: unknown currency (got %s)" % [cur, cur])
+				var amt: Variant = w[cur_var]
+				if not _is_whole_number(amt):
+					errors.append("game_rules.json: living_base.start_wallet.%s: must be an integer (got %s)" % [cur, _format_val(amt)])
+				elif int(amt) < 0:
+					errors.append("game_rules.json: living_base.start_wallet.%s: must be >= 0 (got %s)" % [cur, _format_val(amt)])
+	for key_var: Variant in spec.keys():
+		var key: String = str(key_var)
+		var range_arr: Array = spec[key]
+		if not b.has(key):
+			errors.append("game_rules.json: living_base.%s: missing required field (got null)" % [key])
+			continue
+		var v: Variant = b[key]
+		if not _is_whole_number(v):
+			errors.append("game_rules.json: living_base.%s: must be an integer (got %s)" % [key, _format_val(v)])
+		elif int(v) < int(range_arr[0]):
+			errors.append("game_rules.json: living_base.%s: must be >= %d (got %s)" % [key, int(range_arr[0]), _format_val(v)])
+		elif int(v) > int(range_arr[1]):
+			errors.append("game_rules.json: living_base.%s: must be <= %d (got %s)" % [key, int(range_arr[1]), _format_val(v)])
 
 static func _validate_coevolution(data: Dictionary, structures_data: Dictionary, pathogens_data: Dictionary, errors: PackedStringArray) -> void:
 	var flags_val: Variant = data.get("feature_flags", null)

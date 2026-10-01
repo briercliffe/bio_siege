@@ -859,3 +859,45 @@ func test_generator_validation_errors() -> void:
 	assert_true(_contains_error(r3.errors, "structures.json: mitochondria.generator.atp_per_hour: missing required field"))
 	var r4: ConfigLoadResult = _load_with_analysis(func(d: Dictionary) -> void: d["mitochondria"]["generator"]["atp_per_hour"] = 1.5)
 	assert_true(_contains_error(r4.errors, "structures.json: mitochondria.generator.atp_per_hour: must be an integer"))
+
+
+# -----------------------------------------------------------------------------
+# living_base rule block (#156)
+# -----------------------------------------------------------------------------
+
+func _load_with_rules(mutate: Callable) -> ConfigLoadResult:
+	var rules: Dictionary = JSON.parse_string(default_rules_str)
+	mutate.call(rules)
+	return GameConfig.load_from_strings(JSON.stringify(rules), default_structures_str, default_pathogens_str)
+
+func test_living_base_block_default_data() -> void:
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
+	assert_eq(cfg.lb_start_wallet, {"atp": 1000, "amino_acids": 0, "dna": 0})
+	assert_eq(cfg.lb_max_offline_s, 86400)
+	assert_eq(cfg.lb_defense_log_size, 20)
+
+func test_living_base_block_optional_unless_flag_on() -> void:
+	var r1: ConfigLoadResult = _load_with_rules(func(d: Dictionary) -> void: d.erase("living_base"))
+	assert_true(r1.is_ok())
+	var r2: ConfigLoadResult = _load_with_rules(func(d: Dictionary) -> void:
+		d.erase("living_base")
+		d["feature_flags"]["living_base"] = true)
+	assert_true(_contains_error(r2.errors, "game_rules.json: living_base: required when feature_flags.living_base is true"))
+
+func test_living_base_block_validation_errors() -> void:
+	var r1: ConfigLoadResult = _load_with_rules(func(d: Dictionary) -> void: d["living_base"]["max_offline_hours"] = 0)
+	assert_true(_contains_error(r1.errors, "game_rules.json: living_base.max_offline_hours: must be >= 1 (got 0)"))
+	var r2: ConfigLoadResult = _load_with_rules(func(d: Dictionary) -> void: d["living_base"]["max_offline_hours"] = 169)
+	assert_true(_contains_error(r2.errors, "game_rules.json: living_base.max_offline_hours: must be <= 168"))
+	var r3: ConfigLoadResult = _load_with_rules(func(d: Dictionary) -> void: d["living_base"]["defense_log_size"] = 101)
+	assert_true(_contains_error(r3.errors, "game_rules.json: living_base.defense_log_size: must be <= 100"))
+	var r4: ConfigLoadResult = _load_with_rules(func(d: Dictionary) -> void: d["living_base"]["start_wallet"]["gold"] = 1)
+	assert_true(_contains_error(r4.errors, "game_rules.json: living_base.start_wallet.gold: unknown currency (got gold)"))
+	var r5: ConfigLoadResult = _load_with_rules(func(d: Dictionary) -> void: d["living_base"]["start_wallet"]["atp"] = -1)
+	assert_true(_contains_error(r5.errors, "game_rules.json: living_base.start_wallet.atp: must be >= 0 (got -1)"))
+	var r6: ConfigLoadResult = _load_with_rules(func(d: Dictionary) -> void: d["living_base"]["bogus"] = 1)
+	assert_true(_contains_error(r6.errors, "game_rules.json: living_base.bogus: unknown key (got bogus)"))
+	var r7: ConfigLoadResult = _load_with_rules(func(d: Dictionary) -> void: d["living_base"].erase("defense_log_size"))
+	assert_true(_contains_error(r7.errors, "game_rules.json: living_base.defense_log_size: missing required field (got null)"))
+	var r8: ConfigLoadResult = _load_with_rules(func(d: Dictionary) -> void: d["living_base"]["max_offline_hours"] = 1.5)
+	assert_true(_contains_error(r8.errors, "game_rules.json: living_base.max_offline_hours: must be an integer"))
