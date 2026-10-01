@@ -6,7 +6,6 @@ extends Node
 @onready var fsm: GameStateMachine = $GameStateMachine
 @onready var debug_overlay: DebugOverlay = $DebugOverlay
 @onready var dev_banner: DevBanner = $DevBanner
-@onready var how_to_play: HowToPlay = $HowToPlay
 @onready var screen_stack: ScreenStack = $ScreenStack
 
 ## Player preferences file. Tests set it before adding Main to the tree.
@@ -15,9 +14,6 @@ var settings_path: String = GameSettings.DEFAULT_PATH
 func _ready() -> void:
 	add_to_group(SettingsApply.GROUP)
 	SettingsApply.apply_all(debug_overlay, settings_path)
-	how_to_play.settings_path = settings_path
-	# The legacy overlay stands in for the How to play screen until #75 adds its scene.
-	screen_stack.fallbacks["how_to_play"] = how_to_play.open
 	screen_stack.screen_opened.connect(_on_screen_opened)
 	if fsm != null:
 		fsm.screen_stack = screen_stack
@@ -42,9 +38,13 @@ func on_settings_changed() -> void:
 		SettingsApply.apply_debug_overlay(debug_overlay, settings_path)
 
 func _on_screen_opened(_id: String) -> void:
-	var settings: SettingsScreen = screen_stack.top_screen() as SettingsScreen
+	var top: Control = screen_stack.top_screen()
+	var settings: SettingsScreen = top as SettingsScreen
 	if settings != null and settings.settings_path != settings_path:
 		settings.setup(settings_path)
+	var how_to_play: HowToPlayScreen = top as HowToPlayScreen
+	if how_to_play != null:
+		how_to_play.setup(settings_path, fsm)
 
 func _on_phase_changed(_from: GameStateMachine.Phase, _to: GameStateMachine.Phase) -> void:
 	screen_stack.clear()
@@ -52,7 +52,7 @@ func _on_phase_changed(_from: GameStateMachine.Phase, _to: GameStateMachine.Phas
 func _show_how_to_play_on_first_launch() -> void:
 	if fsm == null or fsm.phase != GameStateMachine.Phase.TITLE:
 		return
-	if HowToPlay.should_show_on_launch(settings_path):
+	if HowToPlayScreen.should_show_on_launch(settings_path):
 		screen_stack.push("how_to_play")
 
 func _on_config_reload_failed(errors: PackedStringArray) -> void:

@@ -27,10 +27,6 @@ const TITLES: Dictionary = {
 ## Per-instance copy of SCREENS so tests can point an id at another path.
 var scene_paths: Dictionary = SCREENS.duplicate()
 
-## Opens `id` through a Callable instead of the placeholder while its scene file is missing.
-## Used to keep the legacy How to play overlay until #75 builds the screen.
-var fallbacks: Dictionary = {}
-
 var _ids: Array[String] = []
 var _screens: Array[Control] = []
 
@@ -56,9 +52,6 @@ func push(id: String) -> void:
 			if screen == null and node != null:
 				node.free()
 				push_warning("ScreenStack: scene root of '%s' is not a Control: %s" % [id, path])
-	elif fallbacks.has(id):
-		(fallbacks[id] as Callable).call()
-		return
 	if screen == null:
 		screen = PlaceholderScreen.new(str(TITLES.get(id, id)))
 	screen.set_anchors_preset(Control.PRESET_FULL_RECT)

@@ -173,9 +173,8 @@ func test_main_uses_its_settings_path() -> void:
 	var overlay: Control = main_node.get_node_or_null("DebugOverlay") as Control
 	if overlay != null and not overlay.is_queued_for_deletion():
 		assert_true(overlay.visible)
-	var how_to_play: Control = main_node.get_node("HowToPlay") as Control
-	assert_false(how_to_play.visible, "How to play was already seen in this settings file")
 	var stack: ScreenStack = main_node.get_node("ScreenStack") as ScreenStack
+	assert_false(stack.is_open(), "How to play was already seen in this settings file")
 	stack.push("settings")
 	var screen: SettingsScreen = stack.top_screen() as SettingsScreen
 	assert_eq(screen.settings_path, TEST_PATH)
@@ -230,10 +229,10 @@ func test_logger_without_consent_writes_nothing() -> void:
 
 func test_reset_shows_the_tips_again() -> void:
 	GameSettings.set_bool(GameSettings.SECTION_GAME, GameSettings.KEY_SEEN_HOW_TO_PLAY, true, TEST_PATH)
-	assert_false(HowToPlay.should_show_on_launch(TEST_PATH))
+	assert_false(HowToPlayScreen.should_show_on_launch(TEST_PATH))
 	var screen := _make_screen()
 	screen.reset_button.pressed.emit()
-	assert_true(HowToPlay.should_show_on_launch(TEST_PATH))
+	assert_true(HowToPlayScreen.should_show_on_launch(TEST_PATH))
 	assert_eq(screen.toast.last_message, "Tips will show again")
 
 

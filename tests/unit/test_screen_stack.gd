@@ -108,15 +108,6 @@ func test_placeholder_titles() -> void:
 	assert_eq((stack.top_screen() as PlaceholderScreen).title_label.text, "Settings")
 
 
-func test_fallback_replaces_placeholder_while_scene_is_missing() -> void:
-	var stack := _make_stack()
-	var calls: Array[int] = [0]
-	stack.fallbacks["how_to_play"] = func() -> void: calls[0] += 1
-	stack.push("how_to_play")
-	assert_eq(calls[0], 1)
-	assert_false(stack.is_open(), "the fallback opens its own overlay, not a stack entry")
-
-
 func test_clear_closes_every_screen() -> void:
 	var stack := _make_stack()
 	stack.push("settings")
