@@ -61,13 +61,21 @@ func attack_grid() -> GridModel:
 		return grid
 	if _attack_grid == null:
 		_attack_grid = GridModel.new(config)
-		_attack_grid.load_layout(attack_layout, LivingBaseProfile.unlimited_wallet())
+		var err: GridModel.PlaceError = _attack_grid.load_layout(attack_layout, LivingBaseProfile.unlimited_wallet())
+		if err != GridModel.PlaceError.OK:
+			push_warning("attack_layout did not load cleanly (error %d); the target grid is partial" % int(err))
 	return _attack_grid
 
 
 ## The memory of the base being attacked (seeds the defence against the raiding strains).
+## With an attack target and no memory set, the target gets a fresh empty one (kept, so records stick);
+## the player's own memory is only the defender's in a self-raid.
 func defender_memory() -> ImmuneMemory:
-	return attack_memory if attack_memory != null else memory
+	if attack_memory == null:
+		if not has_attack_target():
+			return memory
+		attack_memory = ImmuneMemory.new()
+	return attack_memory
 
 
 func clear_attack_target() -> void:
