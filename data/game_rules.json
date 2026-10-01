@@ -29,6 +29,11 @@
     "living_base": false,
     "intent_lines_default": true
   },
+  "living_base": {
+    "start_wallet": { "atp": 1000, "amino_acids": 0, "dna": 0 },
+    "max_offline_hours": 24,
+    "defense_log_size": 20
+  },
   "immune_memory": { "max_level": 3, "seed_pct_per_level": 25, "decay_raids": 2, "slots": 3, "drift_pct": 50 },
   "coevolution": {
     "pool_size": 8,

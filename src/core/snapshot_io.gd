@@ -121,7 +121,7 @@ static func battle_to_dict(config: GameConfig, setup: BattleSetup, sim: BattleSi
 	return battle
 
 
-static func _sort_keys_recursive(val: Variant) -> Variant:
+static func sort_keys(val: Variant) -> Variant:
 	if val is Dictionary:
 		var d: Dictionary = val as Dictionary
 		var keys: Array = d.keys()
@@ -130,13 +130,13 @@ static func _sort_keys_recursive(val: Variant) -> Variant:
 		)
 		var sorted_d: Dictionary = {}
 		for k: Variant in keys:
-			sorted_d[k] = _sort_keys_recursive(d[k])
+			sorted_d[k] = sort_keys(d[k])
 		return sorted_d
 	elif val is Array:
 		var arr: Array = val as Array
 		var sorted_arr: Array = []
 		for item: Variant in arr:
-			sorted_arr.append(_sort_keys_recursive(item))
+			sorted_arr.append(sort_keys(item))
 		return sorted_arr
 	elif val is Vector2i:
 		var v: Vector2i = val as Vector2i
@@ -146,7 +146,7 @@ static func _sort_keys_recursive(val: Variant) -> Variant:
 
 
 static func to_json(d: Dictionary) -> String:
-	var sorted: Variant = _sort_keys_recursive(d)
+	var sorted: Variant = sort_keys(d)
 	return JSON.stringify(sorted)
 
 
