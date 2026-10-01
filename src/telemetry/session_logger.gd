@@ -50,14 +50,17 @@ func _init_session_file() -> void:
 		return
 
 	var config_hash: String = ""
+	var flag_overrides: Dictionary = {}
 	var gd = get_node_or_null("/root/GameData")
 	if gd != null and "config" in gd and gd.config != null:
 		config_hash = str(gd.config.content_hash)
+		flag_overrides = (gd.config.flag_overrides as Dictionary).duplicate()
 
 	var build_str: String = BuildInfo.read()
 
 	log_event("session_start", {
 		"config_hash": config_hash,
+		"flag_overrides": flag_overrides,
 		"platform": OS.get_name(),
 		"build": build_str
 	})

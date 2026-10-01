@@ -24,6 +24,10 @@ var deploy_hold_interval_s: float = 0.1
 var start_wallet: Dictionary = {}
 var default_seed: int = 0
 var feature_flags: Dictionary = {}
+## The feature_flags exactly as data/game_rules.json ships them, before any debug override (#217).
+var file_feature_flags: Dictionary = {}
+## The debug overrides that were applied (flag name -> bool). Empty in release builds.
+var flag_overrides: Dictionary = {}
 var memory_max_level: int = 0
 var memory_seed_pct_per_level: int = 0
 var memory_decay_raids: int = 0
@@ -101,7 +105,44 @@ func is_breeding_type(type_id: String) -> bool:
 func move_nucleus_enabled() -> bool:
 	return bool(feature_flags.get("move_nucleus", false))
 
-static func load_from_dir(dir_path: String) -> ConfigLoadResult:
+## `flag_overrides` (flag name -> bool) replaces declared feature flags before validation (#217).
+## Writes the overrides into rules_data.feature_flags and returns the ones that applied, keys sorted.
+## Only flags the file declares can be overridden, and only with a bool. Anything else is ignored, so a
+## stale override file never breaks loading.
+static func apply_flag_overrides(rules_data: Dictionary, overrides: Dictionary) -> Dictionary:
+	var applied: Dictionary = {}
+	var flags_val: Variant = rules_data.get("feature_flags", null)
+	if typeof(flags_val) != TYPE_DICTIONARY or overrides.is_empty():
+		return applied
+	var flags: Dictionary = flags_val
+	var keys: Array = overrides.keys()
+	keys.sort()
+	for k: Variant in keys:
+		var flag_name: String = str(k)
+		var val: Variant = overrides[k]
+		if typeof(val) != TYPE_BOOL or not flags.has(flag_name):
+			continue
+		flags[flag_name] = val
+		applied[flag_name] = val
+	return applied
+
+
+## Hash of the data files. Applied flag overrides are folded in, so battle logs recorded with overrides
+## only verify against the same overrides. With no overrides it equals the plain file hash.
+static func content_hash_for(rules_str: String, structures_str: String, pathogens_str: String,
+		overrides: Dictionary = {}) -> String:
+	var text: String = rules_str + structures_str + pathogens_str
+	if not overrides.is_empty():
+		var parts: PackedStringArray = PackedStringArray()
+		var keys: Array = overrides.keys()
+		keys.sort()
+		for k: Variant in keys:
+			parts.append("%s=%s" % [str(k), "true" if bool(overrides[k]) else "false"])
+		text += "|flag_overrides:" + ",".join(parts)
+	return text.sha256_text()
+
+
+static func load_from_dir(dir_path: String, flag_overrides: Dictionary = {}) -> ConfigLoadResult:
 	var result := ConfigLoadResult.new()
 	var base: String = dir_path
 	if not base.ends_with("/"):
@@ -147,9 +188,10 @@ static func load_from_dir(dir_path: String) -> ConfigLoadResult:
 		result.errors = file_errors
 		return result
 
-	return load_from_strings(rules_str, structures_str, pathogens_str)
+	return load_from_strings(rules_str, structures_str, pathogens_str, flag_overrides)
 
-static func load_from_strings(rules_str: String, structures_str: String, pathogens_str: String) -> ConfigLoadResult:
+static func load_from_strings(rules_str: String, structures_str: String, pathogens_str: String,
+		flag_overrides: Dictionary = {}) -> ConfigLoadResult:
 	var result := ConfigLoadResult.new()
 	var errors: PackedStringArray = PackedStringArray()
 
@@ -169,11 +211,15 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 		errors.append("pathogens.json: JSON parse error at line %d: %s" % [json_pathogens.get_error_line(), json_pathogens.get_error_message()])
 
 	var rules_data: Dictionary = {}
+	var file_flags: Dictionary = {}
+	var applied_overrides: Dictionary = {}
 	if err_rules == OK:
 		if typeof(json_rules.data) != TYPE_DICTIONARY:
 			errors.append("game_rules.json: root: must be a JSON object (got %s)" % [_format_val(json_rules.data)])
 		else:
 			rules_data = json_rules.data
+			file_flags = (rules_data.get("feature_flags", {}) as Dictionary).duplicate(true) if rules_data.get("feature_flags") is Dictionary else {}
+			applied_overrides = apply_flag_overrides(rules_data, flag_overrides)
 			_validate_rules(rules_data, errors)
 			_validate_immune_memory(rules_data, errors)
 
@@ -201,7 +247,9 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 		return result
 
 	var config := GameConfig.new()
-	config.content_hash = (rules_str + structures_str + pathogens_str).sha256_text()
+	config.content_hash = content_hash_for(rules_str, structures_str, pathogens_str, applied_overrides)
+	config.file_feature_flags = file_flags
+	config.flag_overrides = applied_overrides
 	config.source_data = {
 		"game_rules": rules_data,
 		"structures": structures_data,
