@@ -922,3 +922,10 @@ func test_living_base_results_choices() -> void:
 	ResultsPhase.apply_choice("raid_again", session, fsm)
 	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
 	DirAccess.remove_absolute(store.path)
+
+
+func test_kicker_colour_flips_for_a_live_defense() -> void:
+	assert_eq(ResultsPhase.kicker_color(true, false), ResultsPhase.KICKER_ATTACKER)
+	assert_eq(ResultsPhase.kicker_color(false, false), ResultsPhase.KICKER_DEFENDER)
+	assert_eq(ResultsPhase.kicker_color(true, true), ResultsPhase.KICKER_BASE_INFECTED)
+	assert_eq(ResultsPhase.kicker_color(false, true), ResultsPhase.KICKER_ATTACKER)

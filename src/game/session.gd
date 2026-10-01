@@ -20,6 +20,9 @@ var pending_config: GameConfig = null     # hot-reloaded config queued during IN
 enum Mode { LAB, LIVING_BASE }
 var mode: Mode = Mode.LAB
 var profile: LivingBaseProfile = null     # set in LIVING_BASE
+## The away-raid summary until the player has seen it on the Synthesis card, so quitting mid-resolve
+## does not lose it. Empty once seen.
+var unseen_away_summary: Dictionary = {}
 var living_flow: LivingBaseFlow = null    # set in LIVING_BASE: loads, saves and collects the profile
 ## True while an AI raid on the player's base is played live ("Incoming infection"); the player defends.
 var live_defense: bool = false

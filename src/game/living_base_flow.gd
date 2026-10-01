@@ -13,6 +13,9 @@ var notices: Array[String] = []
 var pending_raids: int = 0
 ## What the resolved away-raids did: {"raids", "held", "atp_lost", "amino_gained"}. Empty when none were due.
 var away_summary: Dictionary = {}
+## Live raids started since the last one finished: salts the raid seed so starting "Incoming infection"
+## again without finishing does not replay the same raid.
+var live_raid_counter: int = 0
 
 var _offline_s: int = 0
 var _atp_generated: int = 0
@@ -77,10 +80,11 @@ func resolve_next_raid() -> bool:
 	_load_defender_state_into_session()
 	pending_raids -= 1
 	_raids_done += 1
-	away_summary["raids"] = _raids_done
+	away_summary["raids"] = int(away_summary.get("raids", 0)) + 1
 	away_summary["held"] = int(away_summary.get("held", 0)) + (1 if str(entry["outcome"]) == "defender" else 0)
 	away_summary["atp_lost"] = int(away_summary.get("atp_lost", 0)) + int(entry["atp_lost"])
 	away_summary["amino_gained"] = int(away_summary.get("amino_gained", 0)) + int(entry["amino_gained"])
+	session.unseen_away_summary = away_summary.duplicate()
 	_log("lb_defense_end", {"live": false, "outcome": str(entry["outcome"]), "atp_lost": int(entry["atp_lost"]), "amino_gained": int(entry["amino_gained"])})
 	# Saved after every raid, so an interrupted resolve never repeats a raid.
 	if pending_raids == 0:
@@ -136,7 +140,8 @@ func begin_live_defense() -> bool:
 	sync_profile_from_session()
 	var cfg: GameConfig = session.config
 	var profile: LivingBaseProfile = session.profile
-	session.battle_setup = DefenseRunner.build_setup(cfg, profile, profile.ai_raid_counter)
+	session.battle_setup = DefenseRunner.build_setup(cfg, profile, profile.ai_raid_counter, live_raid_counter)
+	live_raid_counter += 1
 	var layout: Array[Dictionary] = []
 	for entry: Dictionary in profile.layout:
 		layout.append(entry.duplicate(true))
@@ -165,6 +170,7 @@ func finish_live_defense(sim: BattleSim) -> Dictionary:
 	profile.wallet = session.wallet.to_dict()
 	var entry: Dictionary = DefenseRunner.apply_result(cfg, profile, session.battle_setup, sim, profile.ai_raid_counter)
 	entry["live"] = true
+	live_raid_counter = 0
 	_log("lb_defense_end", {"live": true, "outcome": str(entry["outcome"]), "atp_lost": int(entry["atp_lost"]), "amino_gained": int(entry["amino_gained"])})
 	profile.push_defense_log(entry, cfg)
 	_load_defender_state_into_session()
@@ -231,7 +237,8 @@ func _plan_away_raids(now: int) -> void:
 	_raids_total = RaidSchedule.due_count(cfg, profile.last_ai_raid_unix, now)
 	_raids_done = 0
 	pending_raids = _raids_total
-	away_summary = {}
+	# A summary the player never saw (they quit mid-resolve) is carried into the next one.
+	away_summary = session.unseen_away_summary.duplicate()
 
 
 ## After a defense result changed the profile, brings the live session copies up to date.

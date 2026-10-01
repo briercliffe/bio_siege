@@ -11,6 +11,7 @@ signal choice_made(choice: String)
 const KICKER_TEXT: String = "PHASE 4 · RESULTS"
 const KICKER_ATTACKER: Color = Color("#2ecc71")
 const KICKER_DEFENDER: Color = Color("#8fb8ff")
+const KICKER_BASE_INFECTED: Color = Color("#e74c3c")
 const BADGE_FILL: Color = Color("#1f3b66")
 const BADGE_TEXT: String = "Time limit reached"
 const SPLIT_COLOR_BASE: Color = Color("#2e86de")
@@ -361,6 +362,13 @@ static func format_time(seconds: float) -> String:
 	return "%d:%02d" % [minutes, total % 60]
 
 
+## In a live defense the player is the defender: a win for the AI army is bad news, a held base is good.
+static func kicker_color(attacker_won: bool, live_defense: bool) -> Color:
+	if live_defense:
+		return KICKER_BASE_INFECTED if attacker_won else KICKER_ATTACKER
+	return KICKER_ATTACKER if attacker_won else KICKER_DEFENDER
+
+
 func _populate() -> void:
 	var res: Dictionary = session.last_result if session != null else {}
 	var end_reason: String = str(res.get("end_reason", ""))
@@ -371,7 +379,7 @@ func _populate() -> void:
 	var is_timeout: bool = end_reason == "timeout"
 
 	# Header
-	kicker_label.add_theme_color_override("font_color", KICKER_ATTACKER if is_attacker_win else KICKER_DEFENDER)
+	kicker_label.add_theme_color_override("font_color", kicker_color(is_attacker_win, is_live_defense()))
 	badge.visible = is_timeout
 	title_label.text = TITLE_ATTACKER if is_attacker_win else TITLE_DEFENDER
 	if is_live_defense() and is_attacker_win:

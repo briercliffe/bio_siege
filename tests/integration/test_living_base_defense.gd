@@ -358,3 +358,38 @@ func test_every_logged_raid_can_be_replayed_including_upgraded_defenses() -> voi
 		assert_eq(sim.state_hash(), session.replay_expected_hash, "entry %d replays" % i)
 		flow.end_replay()
 	assert_eq((session.profile.defense_log[0]["battle"] as Dictionary)["defender_mods"], {"analysis_threshold_pct": 81})
+
+
+func test_an_unseen_away_summary_survives_leaving_and_shows_on_the_next_visit() -> void:
+	_write_profile(17)
+	var session := Session.new(_cfg)
+	LivingBaseFlow.new(_store).enter(session, true)
+	var first: LivingBaseFlow = session.living_flow
+	assert_true(first.resolve_next_raid())
+	# The player quits to the Title and picks Living Base again before the card is closed.
+	var second := LivingBaseFlow.new(_store)
+	second.enter(session, true)
+	second.resolve_all_pending()
+	assert_eq(int(second.away_summary["raids"]), 2, "the first raid is carried into the summary")
+	var fsm := GameStateMachine.new()
+	fsm.session = session
+	add_child_autoqfree(fsm)
+	var phase: SynthesisPhase = (load("res://src/game/phases/synthesis_phase.tscn") as PackedScene).instantiate() as SynthesisPhase
+	phase.setup(session, fsm)
+	add_child_autofree(phase)
+	assert_not_null(phase.away_card, "the card shows although nothing is pending")
+	phase._process(0.016)
+	assert_true(phase.away_label.text.begins_with("While you were away: 2 raids"))
+	phase.btn_away_ok.pressed.emit()
+	assert_true(session.unseen_away_summary.is_empty())
+
+
+func test_starting_a_live_raid_again_without_finishing_changes_the_raid() -> void:
+	var session := Session.new(_cfg)
+	var flow := LivingBaseFlow.new(_store)
+	flow.enter(session)
+	assert_true(flow.begin_live_defense())
+	var first_seed: int = session.battle_setup.seed
+	assert_true(flow.begin_live_defense())
+	assert_ne(session.battle_setup.seed, first_seed)
+	assert_eq(session.profile.ai_raid_counter, 0, "an unfinished raid uses up nothing")
