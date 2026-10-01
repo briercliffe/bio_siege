@@ -1,6 +1,12 @@
 class_name StressBattle
 extends Control
 
+## Command line, for a scripted run on the desktop (needs a renderer, so not --headless):
+##   godot --path . tests/perf/stress_battle.tscn -- --bench-seconds=12 --bench-out=<absolute path to a .txt>
+## Frames in the first WARMUP_S seconds are skipped; the summary has the same fields as RhinoBench's.
+
+const WARMUP_S: float = 3.0
+
 @onready var infection_phase: InfectionPhase = $InfectionPhase
 @onready var fps_label: Label = $FpsOverlay/MarginContainer/VBoxContainer/FpsLabel
 @onready var pool_label: Label = $FpsOverlay/MarginContainer/VBoxContainer/PoolLabel
@@ -9,6 +15,10 @@ extends Control
 var session: Session = null
 var _fps_history_times: Array[float] = []
 var _fps_history_values: Array[int] = []
+var _clock: float = 0.0
+var _run_s: float = -1.0
+var _out_path: String = ""
+var _kept_ms: Array[float] = []
 
 
 func _ready() -> void:
@@ -29,10 +39,22 @@ func _ready() -> void:
 	if btn_back != null and not btn_back.pressed.is_connected(_on_btn_back_pressed):
 		btn_back.pressed.connect(_on_btn_back_pressed)
 
+	for arg: String in OS.get_cmdline_user_args():
+		if arg.begins_with("--bench-seconds="):
+			_run_s = arg.get_slice("=", 1).to_float()
+		elif arg.begins_with("--bench-out="):
+			_out_path = arg.get_slice("=", 1)
 	_update_overlay()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_clock += delta
+	if _run_s >= 0.0:
+		if _clock >= WARMUP_S:
+			_kept_ms.append(delta * 1000.0)
+		if _clock >= WARMUP_S + _run_s:
+			_finish_cli_run()
+			return
 	var current_fps: int = Engine.get_frames_per_second()
 	var now: float = float(Time.get_ticks_msec()) / 1000.0
 
@@ -76,6 +98,19 @@ func _update_overlay() -> void:
 	if pool_label != null:
 		var nodes: int = infection_phase.unit_layer.get_child_count() if (infection_phase != null and infection_phase.unit_layer != null) else 0
 		pool_label.text = "Draw items: %d\nUnit layer nodes: %d" % [items_drawn, nodes]
+
+
+func _finish_cli_run() -> void:
+	_run_s = -1.0
+	var s: Dictionary = RhinoBench.summarize(_kept_ms)
+	if _out_path != "":
+		var f: FileAccess = FileAccess.open(_out_path, FileAccess.WRITE)
+		if f != null:
+			f.store_string("avg_ms=%.3f\np95_ms=%.3f\nmin_fps=%.2f\nframes=%d\ndraw_calls=%d\n" % [
+				s["avg_ms"], s["p95_ms"], s["min_fps"], s["frames"],
+				int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))])
+			f.close()
+	get_tree().quit()
 
 
 func _on_btn_back_pressed() -> void:
