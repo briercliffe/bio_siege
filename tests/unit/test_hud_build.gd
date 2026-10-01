@@ -658,3 +658,20 @@ func test_import_base_invalid_json() -> void:
 	assert_false(ok)
 	assert_true(hud.import_dialog.error_label.visible)
 
+
+
+func test_undo_button_follows_the_history_and_undoes() -> void:
+	var session: Session = _create_session()
+	var parts: Dictionary = _setup_hud(session)
+	var hud: HudBuild = parts["hud"]
+	var bc: BuildController = parts["controller"]
+	var grid_view: GridView = parts["grid_view"]
+	assert_true(hud.btn_undo.disabled)
+	assert_gte(hud.btn_undo.size.y, 48.0)
+	bc.select_tool("mucous_wall")
+	grid_view.cell_pressed.emit(Vector2i(3, 3))
+	grid_view.cell_released.emit(Vector2i(3, 3))
+	assert_false(hud.btn_undo.disabled)
+	hud.btn_undo.pressed.emit()
+	assert_eq(session.grid.tile_state(Vector2i(3, 3)), GridModel.TileState.EMPTY)
+	assert_true(hud.btn_undo.disabled)
