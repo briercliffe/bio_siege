@@ -116,3 +116,11 @@ func test_coevolution_split_after_a_raid_on_another_base() -> void:
 	assert_false(session.populations.has("macrophage"), "the defender pool does not land in the attacker's pools")
 	assert_eq((session.populations["rhinovirus"] as BreedPool).generation, 1)
 	assert_false(session.attack_populations.has("rhinovirus"))
+
+
+func test_attack_target_without_memory_gets_a_fresh_empty_one() -> void:
+	var session := Session.new(_cfg())
+	session.attack_layout = _other_layout()
+	var mem: ImmuneMemory = session.defender_memory()
+	assert_not_same(mem, session.memory)
+	assert_same(session.defender_memory(), mem, "kept so records stick")
