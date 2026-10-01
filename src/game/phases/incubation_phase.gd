@@ -11,8 +11,21 @@ var deploy_controller: DeployController = null
 var hud_spawn: HudSpawn = null
 var toast: Toast = null
 var side_switch_overlay: SideSwitchOverlay = null
+var background: AmbientBackground = null
+
+## Island area between the HUD cards at 1280x720 (mockups 09 and 10): x 320..960, y 96..616.
+const ISLAND_INSET_X: float = 320.0
+const ISLAND_TOP: float = 96.0
+const ISLAND_BOTTOM_INSET: float = 104.0
 
 func _resolve_nodes() -> void:
+	if background == null:
+		background = AmbientBackground.new()
+		background.name = "Background"
+		background.night = true
+		background.set_anchors_preset(Control.PRESET_FULL_RECT)
+		add_child(background)
+		move_child(background, 0)
 	if grid_view == null:
 		grid_view = get_node_or_null("GridView") as GridView
 	if deploy_controller == null:
@@ -57,6 +70,10 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 			hud_spawn.help_requested.connect(_on_help_requested)
 		if not hud_spawn.library_requested.is_connected(_on_library_requested):
 			hud_spawn.library_requested.connect(_on_library_requested)
+		if not hud_spawn.settings_requested.is_connected(_on_settings_requested):
+			hud_spawn.settings_requested.connect(_on_settings_requested)
+		if not hud_spawn.quit_requested.is_connected(_on_quit_requested):
+			hud_spawn.quit_requested.connect(_on_quit_requested)
 
 	if deploy_controller != null and session != null and grid_view != null and hud_spawn != null:
 		deploy_controller.setup(session, grid_view, hud_spawn, toast, fsm)
@@ -87,6 +104,14 @@ func _on_help_requested() -> void:
 	if fsm != null:
 		fsm.how_to_play_requested.emit()
 
+func _on_settings_requested() -> void:
+	if fsm != null and fsm.screen_stack != null:
+		fsm.screen_stack.push("settings")
+
+func _on_quit_requested() -> void:
+	if fsm != null:
+		fsm.request_transition(GameStateMachine.Phase.TITLE)
+
 func _on_library_requested(kind: String) -> void:
 	if fsm != null:
 		fsm.library_requested.emit(kind)
@@ -112,9 +137,9 @@ func _update_grid_layout() -> void:
 			r = Rect2(0.0, 0.0, 1280.0, 720.0)
 
 	var inset_rect: Rect2 = Rect2(
-		0.0,
-		64.0,
-		maxf(r.size.x, 10.0),
-		maxf(r.size.y - 224.0, 10.0)
+		ISLAND_INSET_X,
+		ISLAND_TOP,
+		maxf(r.size.x - ISLAND_INSET_X * 2.0, 10.0),
+		maxf(r.size.y - ISLAND_TOP - ISLAND_BOTTOM_INSET, 10.0)
 	)
 	grid_view.fit_to_rect(inset_rect)

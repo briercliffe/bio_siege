@@ -43,8 +43,6 @@ func test_remembered_hint_on_strain_card() -> void:
 	var hud := HudSpawn.new()
 	add_child_autofree(hud)
 	hud.setup(session)
-	var found: bool = false
-	for c: HudSpawnCard in hud.cards:
-		if c.type_id == "rhinovirus":
-			found = c.memory_hint_label != null and c.memory_hint_label.visible and c.memory_hint_label.text == "Remembered L3"
-	assert_true(found)
+	hud.get_card("rhinovirus").selected.emit()
+	assert_true(hud.memory_hint_label.visible)
+	assert_eq(hud.memory_hint_label.text, "Remembered L3")

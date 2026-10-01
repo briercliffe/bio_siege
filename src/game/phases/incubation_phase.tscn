@@ -1,7 +1,7 @@
 [gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://src/game/phases/incubation_phase.gd" id="1_incubation"]
-[ext_resource type="Theme" path="res://src/ui/theme_spawn.tres" id="2_theme"]
+[ext_resource type="Theme" path="res://src/ui/theme_night.tres" id="2_theme"]
 [ext_resource type="PackedScene" path="res://src/view/grid_view.tscn" id="3_grid_view"]
 [ext_resource type="Script" path="res://src/game/deploy_controller.gd" id="4_deploy_controller"]
 [ext_resource type="PackedScene" path="res://src/ui/hud_spawn.tscn" id="5_hud_spawn"]

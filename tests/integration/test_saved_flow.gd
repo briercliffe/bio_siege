@@ -90,7 +90,7 @@ func test_hud_import_opens_the_library_on_the_right_tab() -> void:
 	assert_false(stack.is_open(), "a phase change closes the screen")
 	var incubation: IncubationPhase = fsm.current_phase_scene as IncubationPhase
 	assert_eq(incubation.hud_spawn.saves_root, ROOT)
-	incubation.hud_spawn.popup_menu.id_pressed.emit(HudSpawn.MENU_IMPORT)
+	incubation.hud_spawn.menu_button(HudSpawn.MENU_IMPORT).pressed.emit()
 	var screen: SavedScreen = stack.top_screen() as SavedScreen
 	assert_eq(screen.kind, "army")
 	assert_eq(screen.tabs.selected_index, 1)

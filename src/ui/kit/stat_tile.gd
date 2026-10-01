@@ -5,6 +5,9 @@ extends PanelContainer
 
 var night: bool = false:
 	set = set_night
+## Draws the value in the theme accent (the green "10 ATP" cost tile).
+var accent_value: bool = false:
+	set = set_accent_value
 
 var _label: Label = Label.new()
 var _value: Label = Label.new()
@@ -52,6 +55,11 @@ func set_night(value: bool) -> void:
 	_refresh()
 
 
+func set_accent_value(value: bool) -> void:
+	accent_value = value
+	_refresh()
+
+
 func _refresh() -> void:
 	var pal: Dictionary = UiPalette.for_theme(night)
 	var sb: StyleBoxFlat = KitDraw.make_box(pal["chip"] as Color, 16.0)
@@ -61,6 +69,6 @@ func _refresh() -> void:
 	sb.content_margin_bottom = 10.0
 	add_theme_stylebox_override("panel", sb)
 	UiFonts.style_label(_label, 12, 400, pal["muted"] as Color)
-	UiFonts.style_label(_value, 18, 800, pal["ink"] as Color)
+	UiFonts.style_label(_value, 18, 800, (pal["accent"] if accent_value else pal["ink"]) as Color)
 	UiFonts.style_label(_suffix, 14, 400, pal["muted"] as Color)
 	_suffix.size_flags_vertical = Control.SIZE_SHRINK_END

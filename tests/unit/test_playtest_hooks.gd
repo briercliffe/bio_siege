@@ -67,13 +67,14 @@ func test_build_hud_menu_has_help_and_sound_items() -> void:
 	assert_eq(hud.menu_button(HudBuild.MENU_SOUND).text, "Sound: Off")
 
 
-func test_spawn_hud_has_help_and_mute_buttons() -> void:
+func test_spawn_hud_menu_has_help_and_sound_items() -> void:
 	var hud: HudSpawn = (load("res://src/ui/hud_spawn.tscn") as PackedScene).instantiate() as HudSpawn
 	add_child_autofree(hud)
-	_assert_button_ok(hud.btn_help)
-	_assert_button_ok(hud.btn_mute)
+	_assert_button_ok(hud.btn_menu)
+	_assert_button_ok(hud.menu_button(HudSpawn.MENU_HOW_TO_PLAY))
+	_assert_button_ok(hud.menu_button(HudSpawn.MENU_SOUND))
 	watch_signals(hud)
-	hud.btn_help.pressed.emit()
+	hud.menu_button(HudSpawn.MENU_HOW_TO_PLAY).pressed.emit()
 	assert_signal_emit_count(hud, "help_requested", 1)
 
 
@@ -90,8 +91,8 @@ func test_programmatic_huds_also_get_the_buttons() -> void:
 	_assert_button_ok(build.menu_button(HudBuild.MENU_HOW_TO_PLAY))
 	var spawn: HudSpawn = HudSpawn.new()
 	add_child_autofree(spawn)
-	_assert_button_ok(spawn.btn_help)
-	_assert_button_ok(spawn.btn_mute)
+	_assert_button_ok(spawn.btn_menu)
+	_assert_button_ok(spawn.menu_button(HudSpawn.MENU_HOW_TO_PLAY))
 	var combat: HudCombat = HudCombat.new()
 	add_child_autofree(combat)
 	_assert_button_ok(combat.pause_button)
@@ -240,7 +241,7 @@ func test_help_buttons_request_the_overlay_through_the_state_machine() -> void:
 	var incubation: IncubationPhase = (load("res://src/game/phases/incubation_phase.tscn") as PackedScene).instantiate() as IncubationPhase
 	add_child_autofree(incubation)
 	incubation.setup(session, fsm)
-	incubation.hud_spawn.btn_help.pressed.emit()
+	incubation.hud_spawn.menu_button(HudSpawn.MENU_HOW_TO_PLAY).pressed.emit()
 	assert_signal_emit_count(fsm, "how_to_play_requested", 2)
 
 

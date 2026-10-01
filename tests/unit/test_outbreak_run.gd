@@ -44,7 +44,7 @@ func test_hud_badges_follow_outbreak_state() -> void:
 	var hud_off := HudSpawn.new()
 	add_child_autoqfree(hud_off)
 	hud_off.setup(off)
-	assert_null(hud_off.outbreak_badge)
+	assert_false(hud_off.outbreak_pill.visible)
 
 	cfg.feature_flags["outbreak_mode"] = true
 	var on := Session.new(cfg)
@@ -52,6 +52,7 @@ func test_hud_badges_follow_outbreak_state() -> void:
 	var hud_spawn := HudSpawn.new()
 	add_child_autoqfree(hud_spawn)
 	hud_spawn.setup(on)
+	assert_true(hud_spawn.outbreak_pill.visible)
 	assert_eq(hud_spawn.outbreak_badge.text, "Generation 2 · Run 1,480")
 	var hud_build := HudBuild.new()
 	add_child_autoqfree(hud_build)
