@@ -8,6 +8,7 @@ import { CONTENT_HASH } from "./generated/data";
 import { writeTrophies } from "./leaderboard";
 import { amendJob, enqueueJob, getJob, Job, JobOutcome, registerJobHandler } from "./jobs";
 import { clientGuard } from "./guards";
+import { touchRetention } from "./retention";
 import { errResult, okResult, parsePayload, randomInt31 } from "./rpc";
 
 export const PROFILE_COLLECTION: string = "profile";
@@ -139,6 +140,7 @@ export function onProfileJobComplete(nk: nkruntime.Nakama, logger: nkruntime.Log
   const curVersion = cur === null ? "*" : cur.version;
   if (curVersion === expected) {
     try {
+      if (cur === null) touchRetention(profile, nowUnix());
       writeProfileAndSnapshot(nk, userId, profile, snapshot, curVersion);
       // A new player enters the leaderboard with their start trophies.
       if (cur === null && typeof profile.trophies === "number") writeTrophies(nk, logger, userId, profile.trophies);
@@ -188,6 +190,8 @@ export function rpcProfileGet(ctx: nkruntime.Context, _logger: nkruntime.Logger,
   const bad = clientGuard(ctx, nk, req, "read");
   if (bad !== "") return errResult(bad);
   const userId = ctx.userId as string;
+  // Retention: remember when this player was first seen and the days they came back (no-op when unchanged).
+  updateProfile(nk, userId, (p) => touchRetention(p, nowUnix()));
   const prof = readProfile(nk, userId);
   const pending = activeJobId(nk, userId);
   if (pending !== "") return okResult({ profile: prof === null ? null : prof.profile, job_id: pending, busy: true });

@@ -5,6 +5,7 @@ import { nowUnix } from "./clock";
 import { DATA, CONTENT_HASH } from "./generated/data";
 import { writeDefenseLogEntry } from "./defense_log";
 import { writeTrophies } from "./leaderboard";
+import { recordRaid } from "./telemetry";
 import { amendJob, enqueueJob, Job, JobOutcome, registerClaimHook, registerJobHandler } from "./jobs";
 import { BASE_COLLECTION, readProfile, SNAPSHOT_KEY, updateProfile } from "./profile";
 import { clientGuard } from "./guards";
@@ -337,6 +338,7 @@ export function onRaidValidateComplete(nk: nkruntime.Nakama, logger: nkruntime.L
   if (defenderAfter !== null) refreshSnapshot(nk, raid.defender_id, defenderAfter);
   if (attackerAfter !== null) writeTrophies(nk, logger, raid.attacker_id, num(attackerAfter.trophies));
   if (defenderAfter !== null) writeTrophies(nk, logger, raid.defender_id, num(defenderAfter.trophies));
+  recordRaid(nk, logger, raid.attacker_id, raid.defender_id, (result.res as Dict | undefined || {}).outcome === "attacker", (result.telemetry || {}) as Dict);
   const { battle, ...slim } = result;
   amendRaid(nk, raidId, (r) => { r.status = "done"; r.result = slim; return true; });
   releaseRaid(nk, raid);

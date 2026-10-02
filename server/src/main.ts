@@ -4,6 +4,7 @@ import { rpcDefenseLogGet, rpcDefenseLogList, rpcDefenseLogMarkSeen } from "./de
 import { createLeaderboard } from "./leaderboard";
 import { rpcFindOpponent, rpcLeaderboardTop } from "./matchmaking";
 import { rpcPing } from "./ping";
+import { rpcAdminReport } from "./telemetry";
 import { registerRaidHandlers, rpcRaidCancel, rpcRaidStart, rpcRaidSubmit } from "./raids";
 import { registerProfileHandlers, rpcBaseCommit, rpcCollect, rpcMutationUnlock, rpcProfileGet, rpcProfileImport, rpcUpgradeBuy } from "./profile";
 
@@ -39,6 +40,7 @@ export function InitModule(
   initializer.registerRpc("defense_log_get", rpcDefenseLogGet);
   initializer.registerRpc("defense_log_mark_seen", rpcDefenseLogMarkSeen);
   initializer.registerRpc("admin_flagged_list", rpcAdminFlaggedList);
+  initializer.registerRpc("admin_report", rpcAdminReport);
   createLeaderboard(nk, logger);
   logger.info("bio_siege server module loaded");
 }

@@ -170,6 +170,13 @@ static func _raid_validate(cfg: GameConfig, payload: Dictionary) -> Dictionary:
 	var attacker_gens: Dictionary = {}
 	for type_var: Variant in pathogen_pools.keys():
 		attacker_gens[str(type_var)] = int((pathogen_pools[type_var] as Dictionary).get("generation", 0))
+	# Meta telemetry for the server's daily aggregate: ATP fielded per "type/strain" and the pool generations reached.
+	var strain_atp: Dictionary = {}
+	for u: Dictionary in units:
+		var strain_key: String = "%s/%s" % [str(u["type"]), str(u["strain"])]
+		strain_atp[strain_key] = int(strain_atp.get(strain_key, 0)) + int(army_cost(cfg, [u]).get("atp", 0))
+	var generations: Dictionary = defender_gens.duplicate()
+	generations.merge(attacker_gens)
 	var attacker_stats: Dictionary = CheatFlags.updated(cfg, attacker_dict.get("stats", {}), 0, 0, attacker_gens)
 	var defender_stats: Dictionary = CheatFlags.updated(cfg, defender_dict.get("stats", {}), sim.receptor_hits, sim.receptor_checks, defender_gens)
 	var attacker_after: Dictionary = _attacker_after(cfg, attacker_dict, attacker, wallet_delta, pathogen_pools, 1)
@@ -192,6 +199,7 @@ static func _raid_validate(cfg: GameConfig, payload: Dictionary) -> Dictionary:
 			"stats": defender_stats,
 		},
 		"pool_resets": pool_resets,
+		"telemetry": {"strains": strain_atp, "generations": generations},
 		"trophies": trophies,
 		"defense_info": {"army": army_counts, "ticks": sim.tick, "defender_evolution": defender_evolution},
 		"res": res,
