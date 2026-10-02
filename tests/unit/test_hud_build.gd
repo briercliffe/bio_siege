@@ -828,3 +828,18 @@ func test_connection_pill_shows_backend_status_with_the_online_flag_on() -> void
 	assert_eq(hud.connection_pill.shown_status, "online")
 	Net.reset()
 	_clean_lb_dir()
+
+func test_save_pill_is_online_only_and_shows_saving() -> void:
+	var session: Session = _living_base_session()
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	assert_false(hud.btn_save.visible, "offline Living Base has no Save pill")
+	session.living_flow.online = true
+	hud._update_living_base()
+	assert_true(hud.btn_save.visible)
+	assert_eq(hud.btn_save.text, "Save")
+	session.living_flow.saving = true
+	session.living_flow.saving_changed.emit(true)
+	assert_eq(hud.btn_save.text, "Saving...")
+	assert_true(hud.btn_save.disabled)
+	assert_gte(hud.btn_save.custom_minimum_size.y, 48.0)
+	_clean_lb_dir()

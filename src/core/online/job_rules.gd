@@ -17,6 +17,9 @@ static func process(cfg: GameConfig, job: Dictionary) -> Dictionary:
 		ECHO:
 			return {"ok": true, "result": payload.duplicate(true), "error": ""}
 		_:
+			var type: String = str(job.get("type", ""))
+			if ProfileJobs.handles(type):
+				return ProfileJobs.process(cfg, type, payload, int(job.get("created_unix", 0)))
 			return _fail("unknown_job_type")
 
 

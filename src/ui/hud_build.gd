@@ -17,6 +17,7 @@ signal quit_requested
 signal raid_requested
 signal defense_log_requested
 signal upgrades_requested
+signal save_online_requested
 signal test_in_lab_requested
 ## Living Base: play an AI raid on the player's base now (LB-10).
 signal incoming_infection_requested
@@ -179,6 +180,8 @@ var lb_buttons: VBoxContainer = null
 var btn_incoming: PillButton = null
 var btn_defense_log: PillButton = null
 var btn_upgrades: PillButton = null
+## Online only: commits the edited base to the server and reads "Saving..." while that job runs.
+var btn_save: PillButton = null
 var spent_block: VBoxContainer = null
 var lb_timer: Timer = null
 ## Read-only Offline / Connecting / Online / Update required chip, shown in Living Base with the `online` flag.
@@ -233,6 +236,7 @@ var saves_root: String = SaveLibrary.DEFAULT_ROOT
 var last_toast_message: String = ""
 
 var _atp_tween: Tween = null
+var import_offer_dialog: ConfirmationPopup = null
 var _ink: Color = UiPalette.color(false, "ink")
 var _muted: Color = UiPalette.color(false, "muted")
 
@@ -535,7 +539,8 @@ func _on_lb_timer() -> void:
 func _on_collect_pressed() -> void:
 	if not is_living_base():
 		return
-	var amount: int = session.living_flow.collect()
+	var amount: int = await session.living_flow.collect_async() if session.living_flow.is_online() \
+			else session.living_flow.collect()
 	if amount > 0:
 		_show_toast("Collected %d ATP" % amount)
 	_update_living_base()
@@ -573,6 +578,61 @@ func _update_living_base() -> void:
 	_layout_wallet_pills()
 
 
+## The Save pill exists only online. It shows "Saving..." while a commit runs and is disabled meanwhile.
+func _sync_save_button(lb: bool) -> void:
+	var flow: LivingBaseFlow = session.living_flow if session != null else null
+	var online: bool = lb and flow != null and flow.is_online()
+	btn_save.visible = online
+	if not online:
+		return
+	if not flow.saving_changed.is_connected(_on_saving_changed):
+		flow.saving_changed.connect(_on_saving_changed)
+	_on_saving_changed(flow.saving)
+
+
+func _on_saving_changed(saving: bool) -> void:
+	btn_save.text = "Saving..." if saving else "Save"
+	btn_save.disabled = saving
+	btn_save.queue_redraw()
+
+
+func _on_save_online_pressed() -> void:
+	if is_living_base() and session.living_flow.is_online():
+		await session.living_flow.commit_base()
+		_update_living_base()
+
+
+## "Bring your offline base online?" Yes imports the local layout and memory; Start fresh keeps the new base.
+func offer_import_online() -> void:
+	if not is_living_base():
+		return
+	if import_offer_dialog == null:
+		import_offer_dialog = ConfirmationPopup.new()
+		import_offer_dialog.name = "ImportOfferDialog"
+		import_offer_dialog.confirmed.connect(_on_import_offer_answered.bind(true))
+		import_offer_dialog.canceled.connect(_on_import_offer_answered.bind(false))
+		add_child(import_offer_dialog)
+	import_offer_dialog.set_kicker("ONLINE BASE")
+	import_offer_dialog.set_title("Bring your offline base online?")
+	import_offer_dialog.set_body("Your base layout and what it has learned move to the server. Your offline wallet and raids stay behind.")
+	import_offer_dialog.set_tiles([])
+	import_offer_dialog.set_warning("")
+	import_offer_dialog.set_buttons("Start fresh", "Yes")
+	import_offer_dialog.popup_centered()
+
+
+func _on_import_offer_answered(yes: bool) -> void:
+	if not is_living_base():
+		return
+	if not yes:
+		session.living_flow.decline_import()
+		return
+	var res: Dictionary = await session.living_flow.import_local_base()
+	if bool(res.get("ok", false)):
+		_show_toast("Your offline base is online")
+	_update_living_base()
+
+
 ## The connection pill follows the shared backend; with the `online` flag off it stays hidden and nothing connects.
 func _sync_connection_pill(lb: bool) -> void:
 	var online: bool = lb and Net.is_online_enabled(session.config)
@@ -591,6 +651,7 @@ func _sync_lb_buttons() -> void:
 	var upgrades: bool = lb and session.config.flag("amino_upgrades")
 	btn_defense_log.visible = lb
 	btn_upgrades.visible = upgrades
+	_sync_save_button(lb)
 	lb_buttons.visible = lb
 
 
@@ -1234,6 +1295,8 @@ func _build_right_card() -> void:
 	lb_buttons.visible = false
 	btn_defense_log = _lb_button("BtnDefenseLog", "Defense log", defense_log_requested)
 	btn_upgrades = _lb_button("BtnUpgrades", "Upgrades", upgrades_requested)
+	btn_save = _lb_button("BtnSave", "Save", save_online_requested)
+	save_online_requested.connect(_on_save_online_pressed)
 	status_box.add_child(lb_buttons)
 
 

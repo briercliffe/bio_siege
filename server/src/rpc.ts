@@ -20,3 +20,8 @@ export function parsePayload(payload: string): { [key: string]: unknown } | null
   }
   return null;
 }
+
+/** A random non-negative 31-bit int from the server's crypto-random uuid (seeds for profiles and raids). */
+export function randomInt31(nk: nkruntime.Nakama): number {
+  return parseInt(nk.uuidv4().replace(/-/g, "").slice(0, 8), 16) % 0x80000000;
+}

@@ -72,6 +72,7 @@ var fsm: GameStateMachine = null
 var build_info_path: String = BuildInfo.DEFAULT_PATH
 ## Where the Living Base profile lives; tests point this at a temp file.
 var living_base_path: String = LivingBaseStore.DEFAULT_PATH
+var toast: Toast = null
 
 var demo_grid: GridModel = null
 
@@ -387,11 +388,34 @@ func choose_mode(mode: Session.Mode) -> void:
 	if mode == Session.Mode.LIVING_BASE:
 		var store := LivingBaseStore.new()
 		store.path = living_base_path
-		LivingBaseFlow.new(store).enter(session, true)
+		var flow := LivingBaseFlow.new(store)
+		if Net.is_online_enabled(session.config):
+			_enter_living_base_online(flow)
+			return
+		flow.enter(session, true)
 	else:
 		LivingBaseFlow.reset_to_lab(session)
 	if fsm != null:
 		fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
+
+
+## Online Living Base: loads the server profile first. A failure stays on the Title with a readable message.
+func _enter_living_base_online(flow: LivingBaseFlow) -> void:
+	var res: Dictionary = await flow.enter_online(session)
+	if not bool(res.get("ok", false)):
+		_show_message(NetCopy.error_text(str(res.get("error", ""))))
+		return
+	if fsm != null:
+		fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
+
+
+func _show_message(text: String) -> void:
+	if toast == null:
+		toast = Toast.new()
+		toast.name = "Toast"
+		toast.set_anchors_preset(Control.PRESET_FULL_RECT)
+		add_child(toast)
+	toast.show_message(text)
 
 
 func _build_mode_sheet() -> void:

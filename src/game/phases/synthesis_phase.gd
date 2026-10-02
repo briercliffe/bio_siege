@@ -74,6 +74,7 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 		hud_build.saves_root = saves_root
 
 	_show_living_base_notices()
+	_connect_online_flow()
 	_begin_away_raids()
 
 	if hud_build != null and session != null and build_controller != null:
@@ -114,6 +115,25 @@ func _notification(what: int) -> void:
 func _sync_living_base() -> void:
 	if session != null and session.living_flow != null:
 		session.living_flow.sync_profile_from_session()
+		if session.living_flow.is_online():
+			# Fire and forget: the flow outlives this phase and reports a rejection through its message signal.
+			session.living_flow.commit_if_dirty()
+
+
+## Online: server messages (a rejected save) become toasts, and the first online visit may offer the offline base.
+func _connect_online_flow() -> void:
+	if session == null or session.living_flow == null or not session.living_flow.is_online():
+		return
+	var flow: LivingBaseFlow = session.living_flow
+	if not flow.message.is_connected(_on_flow_message):
+		flow.message.connect(_on_flow_message)
+	if flow.import_offer_pending and hud_build != null:
+		hud_build.offer_import_online()
+
+
+func _on_flow_message(text: String) -> void:
+	if toast != null:
+		toast.show_message(text)
 
 
 ## Shows what loading the profile reported (a reset or trimmed save), once.
