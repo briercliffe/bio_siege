@@ -20,3 +20,12 @@ fi
 
 echo "Running GUT tests..."
 godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit
+
+if [ -f server/package.json ]; then
+    if command -v node >/dev/null 2>&1; then
+        echo "Running server tests..."
+        (cd server && { [ -d node_modules ] || npm ci; } && npm test)
+    else
+        echo "SKIP: node not installed, server tests not run."
+    fi
+fi
