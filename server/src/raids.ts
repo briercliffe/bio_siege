@@ -3,6 +3,7 @@
 // (src/core/online/raid_jobs.gd); the patches applied here only add, subtract and replace values it returned.
 import { nowUnix } from "./clock";
 import { DATA, CONTENT_HASH } from "./generated/data";
+import { writeDefenseLogEntry } from "./defense_log";
 import { writeTrophies } from "./leaderboard";
 import { amendJob, enqueueJob, Job, JobOutcome, registerClaimHook, registerJobHandler } from "./jobs";
 import { BASE_COLLECTION, readProfile, SNAPSHOT_KEY, updateProfile } from "./profile";
@@ -11,7 +12,6 @@ import { errResult, okResult, parsePayload, randomInt31 } from "./rpc";
 import { clientCompat } from "./version";
 
 export const RAIDS_COLLECTION: string = "raids";
-export const DEFENSE_LOG_COLLECTION: string = "defense_log";
 export const SYSTEM_USER: string = "00000000-0000-0000-0000-000000000000";
 export const RAID_SECONDS: number = 600;
 const MAX_ARMY_UNITS: number = 300;
@@ -343,12 +343,7 @@ export function onRaidValidateComplete(nk: nkruntime.Nakama, logger: nkruntime.L
   const { battle, ...slim } = result;
   amendRaid(nk, raidId, (r) => { r.status = "done"; r.result = slim; return true; });
   releaseRaid(nk, raid);
-  // The full defense-log entry arrives with AM-09 (#183); until then the raw result is stored for the defender.
-  nk.storageWrite([{
-    collection: DEFENSE_LOG_COLLECTION, key: raidId, userId: raid.defender_id,
-    value: { raid_id: raidId, attacker_id: raid.attacker_id, created_unix: nowUnix(), result: slim, battle: battle || null, seen: false },
-    permissionRead: 1, permissionWrite: 0,
-  }]);
+  writeDefenseLogEntry(nk, logger, raidId, raid.attacker_id, raid.defender_id, slim, battle);
 }
 
 export function onArmySpendComplete(nk: nkruntime.Nakama, _logger: nkruntime.Logger, job: Job, outcome: JobOutcome): void {

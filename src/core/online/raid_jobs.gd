@@ -141,6 +141,13 @@ static func _raid_validate(cfg: GameConfig, payload: Dictionary) -> Dictionary:
 	var now: int = _int_of(payload, "now_unix", 0)
 	var trophies: Dictionary = Trophies.settle(cfg, _int_of(attacker_dict, "trophies", 0), _int_of(defender_dict, "trophies", 0),
 			str(res.get("outcome", "")) == "attacker")
+	var army_counts: Dictionary = {}
+	for u: Dictionary in units:
+		army_counts[str(u["type"])] = int(army_counts.get(str(u["type"]), 0)) + 1
+	var defender_evolution: Array = []
+	for e: Variant in res.get("evolution", []) as Array:
+		if e is Dictionary and cfg.structures.has(str((e as Dictionary).get("type_id", ""))):
+			defender_evolution.append(e)
 	var attacker_after: Dictionary = _attacker_after(cfg, attacker_dict, attacker, wallet_delta, pathogen_pools, 1)
 	attacker_after["trophies"] = int(trophies["attacker_after"])
 	var server_hash: String = sim.state_hash()
@@ -158,6 +165,7 @@ static func _raid_validate(cfg: GameConfig, payload: Dictionary) -> Dictionary:
 			"shield_until_unix": now + cfg.pvp_shield_hours * 3600,
 		},
 		"trophies": trophies,
+		"defense_info": {"army": army_counts, "ticks": sim.tick, "defender_evolution": defender_evolution},
 		"res": res,
 		"army_cost": cost,
 		"server_final_hash": server_hash,

@@ -79,7 +79,7 @@ func test_enter_online_shows_the_stored_copy() -> void:
 	assert_eq(_flow.store.path, DIR + "/online.json", "the offline base file is never written")
 	assert_eq(_flow.pending_raids, 0, "no local away raids online")
 	assert_false(_flow.layout_dirty())
-	assert_eq(_backend.call_names(), ["profile_get"] as Array[String])
+	assert_eq(_backend.call_names(), ["profile_get", "defense_log_list"] as Array[String], "entering also looks for unseen raids")
 	assert_eq(_backend.calls[0]["payload"]["config_hash"], _cfg.content_hash)
 
 
