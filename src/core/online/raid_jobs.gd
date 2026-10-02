@@ -138,18 +138,26 @@ static func _raid_validate(cfg: GameConfig, payload: Dictionary) -> Dictionary:
 	_add(wallet_delta, "atp", int(res.get("atp_looted", 0)))
 	_add(wallet_delta, "amino_acids", int(res.get("amino_attacker", 0)))
 	_add(wallet_delta, "dna", int(res.get("dna_attacker", 0)))
+	var now: int = _int_of(payload, "now_unix", 0)
+	var trophies: Dictionary = Trophies.settle(cfg, _int_of(attacker_dict, "trophies", 0), _int_of(defender_dict, "trophies", 0),
+			str(res.get("outcome", "")) == "attacker")
 	var attacker_after: Dictionary = _attacker_after(cfg, attacker_dict, attacker, wallet_delta, pathogen_pools, 1)
+	attacker_after["trophies"] = int(trophies["attacker_after"])
 	var server_hash: String = sim.state_hash()
 	var client_hash: String = str(submission.get("client_final_hash", ""))
 	return {"ok": true, "error": "", "result": {
 		"attacker_profile": attacker_after,
-		"attacker_patch": {"wallet_delta": wallet_delta, "pathogen_pools": pathogen_pools, "raid_counter_inc": 1},
+		"attacker_patch": {"wallet_delta": wallet_delta, "pathogen_pools": pathogen_pools, "raid_counter_inc": 1,
+				"trophies_delta": int(trophies["attacker_delta"])},
 		"defender_patch": {
 			"atp_lost": int(res.get("atp_looted", 0)),
 			"amino_gained": int(res.get("amino_defender", 0)),
 			"memory": memory.to_dict(),
 			"structure_pools": structure_pools,
+			"trophies_delta": int(trophies["defender_delta"]),
+			"shield_until_unix": now + cfg.pvp_shield_hours * 3600,
 		},
+		"trophies": trophies,
 		"res": res,
 		"army_cost": cost,
 		"server_final_hash": server_hash,

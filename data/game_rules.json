@@ -40,6 +40,17 @@
     "max_offline_hours": 24,
     "defense_log_size": 20
   },
+  "pvp": {
+    "start_trophies": 100,
+    "band": 100,
+    "band_widen_steps": 3,
+    "trophy_base": 20,
+    "trophy_min": 5,
+    "trophy_max": 40,
+    "trophy_diff_divisor": 20,
+    "shield_hours": 12,
+    "recent_opponent_hours": 24
+  },
   "loot": {
     "atp_from_mitochondria_pct": 50,
     "amino_per_structure_pct": 20,

@@ -82,7 +82,7 @@ Every response also has `ok` and `error`. "Common" errors that any client RPC ca
 | `raid_start` | client | `{defender_id}` | `{raid_id, seed, defender_snapshot, expires_unix}` | `raid_in_progress`, `self_raid`, `shielded`, `under_attack`, `unknown_player`, `no_profile` | #180 |
 | `raid_submit` | client | `{raid_id, army: [{type, cell, strain}], client_final_hash}` | `{job_id}` | `unknown_raid`, `not_open`, `expired` | #180 |
 | `raid_cancel` | client | `{raid_id, army?}` | `{job_id?}` | `unknown_raid`, `not_open` | #180 |
-| `find_opponent` | client | `{}` | `{defender_id, preview}` or `{ai: true}` | | #181 |
+| `find_opponent` | client | `{}` | `{defender_id, preview, trophies}` or `{ai: true}` | `no_profile`, `rate_limited` | #181 |
 | `leaderboard_top` | client | `{}` | `{records: [{rank, user_id, name, trophies}], me: {rank, trophies}}` | | #181 |
 | `defense_log_list` | client | `{cursor?}` | `{entries, cursor}` (no `battle`, newest first, 20 per page) | | #183 |
 | `defense_log_get` | client | `{raid_id}` | `{entry}` | `unknown_entry` | #183 |
@@ -131,6 +131,15 @@ The worker (`src/core/online/raid_jobs.gd`) checks the army (pathogen types, kno
 - A rejected validation marks the raid `rejected`, clears the locks and enqueues `army_spend` with the submitted army, so a retry is never free.
 - `raid_cancel` (before submit only) ends the raid. The server never sees an army before `raid_submit`, so the army is charged only when the client reports it in `army`; an expired raid costs nothing.
 - Expiry is lazy: `raid_start` / `raid_submit` expire the caller's and the target's stale raid, and `worker_claim` sweeps at most 50 open raids.
+
+### Trophies, matchmaking and shield
+
+- The `pvp` block of `data/game_rules.json` (placeholders) is bundled with the server; the client only displays it. It is required when the `online` flag is on.
+- `profile_new` starts a player at `pvp.start_trophies`; the leaderboard `trophies` (descending, `set`, created in `InitModule`, server-written only) gets a record when the profile is first stored and whenever a raid changes trophies.
+- `raid_validate` returns `trophies` (`Trophies.settle`: `delta = clamp(base + (defender - attacker) / divisor, min, max)`; an attacker win moves `delta`, a defender win moves `delta / 2` the other way; nobody drops below 0), `trophies_delta` in both patches and `shield_until_unix = now + shield_hours * 3600` in the defender patch. The server only adds the deltas (floored at 0) and sets the shield.
+- `raid_start` ends the attacker's own shield (`shield_until_unix = 0`) and records `recent_opponents[defender_id] = now` on the attacker's profile (entries older than 7 days are dropped).
+- `find_opponent` uses `leaderboardRecordsHaystack` (100 records around the caller). Candidates must be within `±band`, widening x2 up to `band_widen_steps` times, and not be the caller, shielded, under attack or a recent opponent. It picks one with server randomness and does not lock; `raid_start` locks. With no candidate it returns `{ai: true}`.
+- `leaderboard_top` returns the top 50 and the caller's rank. Nakama 3.41 returns `ownerRecords[].rank` as 0, so the rank is taken from the top list or from a one-record haystack.
 
 ## Versioning
 

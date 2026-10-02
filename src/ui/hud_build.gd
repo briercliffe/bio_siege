@@ -18,6 +18,7 @@ signal raid_requested
 signal defense_log_requested
 signal upgrades_requested
 signal save_online_requested
+signal leaderboard_requested
 signal test_in_lab_requested
 ## Living Base: play an AI raid on the player's base now (LB-10).
 signal incoming_infection_requested
@@ -182,6 +183,8 @@ var btn_defense_log: PillButton = null
 var btn_upgrades: PillButton = null
 ## Online only: commits the edited base to the server and reads "Saving..." while that job runs.
 var btn_save: PillButton = null
+## Online only: opens the trophies leaderboard.
+var btn_leaderboard: PillButton = null
 var spent_block: VBoxContainer = null
 var lb_timer: Timer = null
 ## Read-only Offline / Connecting / Online / Update required chip, shown in Living Base with the `online` flag.
@@ -583,6 +586,7 @@ func _sync_save_button(lb: bool) -> void:
 	var flow: LivingBaseFlow = session.living_flow if session != null else null
 	var online: bool = lb and flow != null and flow.is_online()
 	btn_save.visible = online
+	btn_leaderboard.visible = online
 	if not online:
 		return
 	if not flow.saving_changed.is_connected(_on_saving_changed):
@@ -1296,6 +1300,7 @@ func _build_right_card() -> void:
 	btn_defense_log = _lb_button("BtnDefenseLog", "Defense log", defense_log_requested)
 	btn_upgrades = _lb_button("BtnUpgrades", "Upgrades", upgrades_requested)
 	btn_save = _lb_button("BtnSave", "Save", save_online_requested)
+	btn_leaderboard = _lb_button("BtnLeaderboard", "Leaderboard", leaderboard_requested)
 	save_online_requested.connect(_on_save_online_pressed)
 	status_box.add_child(lb_buttons)
 

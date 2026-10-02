@@ -52,6 +52,16 @@ func raid_cancel(raid_id: String, army: Array = []) -> Dictionary:
 	return await rpc("raid_cancel", payload)
 
 
+## One matchmade player to raid: {"defender_id", "preview": snapshot, "trophies"}, or {"ai": true} when none qualifies.
+func find_opponent() -> Dictionary:
+	return await rpc("find_opponent", {})
+
+
+## The top 50 and the caller's rank: {"records": [{rank, user_id, name, trophies}], "me": {rank, trophies}}.
+func leaderboard_top() -> Dictionary:
+	return await rpc("leaderboard_top", {})
+
+
 ## Calls the server's `ping` and compares its content hash with ours (docs/SERVER_PLAN.md, Versioning).
 ## A mismatch sets "update_required"; a good ping sets "online".
 func verify_server(local_content_hash: String) -> Dictionary:

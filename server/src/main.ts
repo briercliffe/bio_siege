@@ -1,4 +1,6 @@
 import { rpcDebugEnqueueEcho, rpcJobStatus, rpcWorkerClaim, rpcWorkerComplete } from "./jobs";
+import { createLeaderboard } from "./leaderboard";
+import { rpcFindOpponent, rpcLeaderboardTop } from "./matchmaking";
 import { rpcPing } from "./ping";
 import { registerRaidHandlers, rpcRaidCancel, rpcRaidStart, rpcRaidSubmit } from "./raids";
 import { registerProfileHandlers, rpcBaseCommit, rpcCollect, rpcProfileGet, rpcProfileImport, rpcUpgradeBuy } from "./profile";
@@ -12,7 +14,7 @@ registerRaidHandlers();
 export function InitModule(
   _ctx: nkruntime.Context,
   logger: nkruntime.Logger,
-  _nk: nkruntime.Nakama,
+  nk: nkruntime.Nakama,
   initializer: nkruntime.Initializer
 ): void {
   initializer.registerRpc("ping", rpcPing);
@@ -28,5 +30,8 @@ export function InitModule(
   initializer.registerRpc("raid_start", rpcRaidStart);
   initializer.registerRpc("raid_submit", rpcRaidSubmit);
   initializer.registerRpc("raid_cancel", rpcRaidCancel);
+  initializer.registerRpc("find_opponent", rpcFindOpponent);
+  initializer.registerRpc("leaderboard_top", rpcLeaderboardTop);
+  createLeaderboard(nk, logger);
   logger.info("bio_siege server module loaded");
 }

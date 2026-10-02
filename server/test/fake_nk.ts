@@ -22,6 +22,39 @@ export class FakeNk {
   private versionCounter: number = 0;
   private uuidCounter: number = 0;
 
+  leaderboards: { [id: string]: Map<string, { score: number; username: string }> } = {};
+
+  leaderboardCreate(id: string): void {
+    if (!this.leaderboards[id]) this.leaderboards[id] = new Map();
+  }
+
+  leaderboardRecordWrite(id: string, ownerId: string, username: string, score: number): void {
+    this.leaderboardCreate(id);
+    this.leaderboards[id].set(ownerId, { score, username });
+  }
+
+  private ranked(id: string): { ownerId: string; username: string; score: number; rank: number }[] {
+    const all = Array.from((this.leaderboards[id] || new Map()).entries()).map(([ownerId, v]) => ({ ownerId, username: v.username, score: v.score }));
+    all.sort((a, b) => b.score - a.score || (a.ownerId < b.ownerId ? -1 : 1));
+    return all.map((r, i) => ({ ...r, rank: i + 1 }));
+  }
+
+  leaderboardRecordsHaystack(id: string, ownerId: string, limit: number): { records: any[] } {
+    const r = this.ranked(id);
+    const idx = r.findIndex((x) => x.ownerId === ownerId);
+    const start = Math.max(0, idx - Math.floor(limit / 2));
+    return { records: r.slice(start, start + limit) };
+  }
+
+  leaderboardRecordsList(id: string, owners: string[], limit: number): { records: any[]; ownerRecords: any[] } {
+    const r = this.ranked(id);
+    return { records: r.slice(0, limit), ownerRecords: r.filter((x) => owners.indexOf(x.ownerId) >= 0) };
+  }
+
+  accountGetId(userId: string): { user: { username: string } } {
+    return { user: { username: "name-" + userId } };
+  }
+
   uuidv4(): string {
     this.uuidCounter += 1;
     return "00000000-0000-4000-8000-" + String(this.uuidCounter).padStart(12, "0");

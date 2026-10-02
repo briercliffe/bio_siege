@@ -40,6 +40,16 @@ var loot_atp_pct: int = 0 # share of a destroyed Mitochondria's stored ATP the r
 var loot_amino_structure_pct: int = 0
 var loot_amino_kill_pct: int = 0
 var loot_dna_per_win: int = 0
+## PvP (data/game_rules.json "pvp", AM-07). Placeholders for owner sign-off; the server only reads the bundled copy.
+var pvp_start_trophies: int = 0
+var pvp_band: int = 0
+var pvp_band_widen_steps: int = 0
+var pvp_trophy_base: int = 0
+var pvp_trophy_min: int = 0
+var pvp_trophy_max: int = 0
+var pvp_trophy_diff_divisor: int = 1
+var pvp_shield_hours: int = 0
+var pvp_recent_opponent_hours: int = 0
 var presenter_record_interval_ticks: int = 20 # Dendritic Cells record antigens once per second (#167)
 ## Amino Acid base upgrades (#168, #169): id -> {display_name, costs: Array[Dictionary], per_level}.
 var upgrade_defs: Dictionary = {}
@@ -250,6 +260,11 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 			_validate_rules(rules_data, errors)
 			_validate_immune_memory(rules_data, errors)
 			_validate_living_base(rules_data, errors)
+			_validate_int_block(rules_data, "pvp", "online", {
+				"start_trophies": [0, -1], "band": [1, -1], "band_widen_steps": [0, 10], "trophy_base": [0, -1],
+				"trophy_min": [0, -1], "trophy_max": [1, -1], "trophy_diff_divisor": [1, -1],
+				"shield_hours": [0, 168], "recent_opponent_hours": [0, 168]
+			}, errors)
 			_validate_int_block(rules_data, "loot", "living_base", {
 				"atp_from_mitochondria_pct": [0, 100], "amino_per_structure_pct": [0, 100],
 				"amino_per_kill_pct": [0, 100], "dna_per_win": [0, -1]
@@ -330,6 +345,19 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 				config.lb_start_wallet[str(lb_cur)] = int((lb_wallet as Dictionary)[lb_cur])
 		config.lb_max_offline_s = int(lb.get("max_offline_hours", 0)) * 3600
 		config.lb_defense_log_size = int(lb.get("defense_log_size", 0))
+
+	var pvp_raw: Variant = rules_data.get("pvp", null)
+	if typeof(pvp_raw) == TYPE_DICTIONARY:
+		var pvp: Dictionary = pvp_raw
+		config.pvp_start_trophies = int(pvp.get("start_trophies", 0))
+		config.pvp_band = int(pvp.get("band", 0))
+		config.pvp_band_widen_steps = int(pvp.get("band_widen_steps", 0))
+		config.pvp_trophy_base = int(pvp.get("trophy_base", 0))
+		config.pvp_trophy_min = int(pvp.get("trophy_min", 0))
+		config.pvp_trophy_max = int(pvp.get("trophy_max", 0))
+		config.pvp_trophy_diff_divisor = maxi(1, int(pvp.get("trophy_diff_divisor", 1)))
+		config.pvp_shield_hours = int(pvp.get("shield_hours", 0))
+		config.pvp_recent_opponent_hours = int(pvp.get("recent_opponent_hours", 0))
 
 	var loot_raw: Variant = rules_data.get("loot", null)
 	if typeof(loot_raw) == TYPE_DICTIONARY:
@@ -816,7 +844,7 @@ static func _validate_rules(data: Dictionary, errors: PackedStringArray) -> void
 		"battle_timeout_s", "max_path_recalcs_per_tick", "empty_path_weight",
 		"deploy_hold_interval_s", "default_seed", "feature_flags"
 	]
-	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution", "living_base", "loot", "ai_bases", "ai_raids", "upgrades"]
+	var optional_rule_keys: Array[String] = ["immune_memory", "coevolution", "living_base", "loot", "ai_bases", "ai_raids", "upgrades", "pvp"]
 	for k_var: Variant in data.keys():
 		var k: String = str(k_var)
 		if not k.begins_with("_") and not allowed_keys.has(k) and not optional_rule_keys.has(k):
