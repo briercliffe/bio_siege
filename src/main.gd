@@ -45,6 +45,9 @@ func _on_screen_opened(_id: String) -> void:
 	var settings: SettingsScreen = top as SettingsScreen
 	if settings != null and settings.settings_path != settings_path:
 		settings.setup(settings_path)
+	if settings != null:
+		settings.fsm = fsm
+		settings.refresh_raid_debug()
 	var how_to_play: HowToPlayScreen = top as HowToPlayScreen
 	if how_to_play != null:
 		how_to_play.setup(settings_path, fsm)

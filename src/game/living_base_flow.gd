@@ -15,6 +15,8 @@ const BUSY_RETRIES: int = 6
 ## A toast-worthy message that arrived outside a button press (a rejected commit, for example).
 signal message(text: String)
 signal saving_changed(saving: bool)
+## A PvP raid's worker verdict arrived ({"ok", "error", "result"}); the Results screen shows only these numbers.
+signal pvp_result_ready(result: Dictionary)
 
 var store: LivingBaseStore = null
 var session: Session = null
@@ -25,6 +27,7 @@ var local_base_path: String = LivingBaseStore.DEFAULT_PATH
 var import_answered_path: String = IMPORT_ANSWERED_PATH
 var api: ProfileApi = null
 var saving: bool = false
+var last_pvp_result: Dictionary = {}
 ## True right after the server created a brand-new profile while an offline base exists and was not answered yet.
 var import_offer_pending: bool = false
 ## The layout the server last confirmed, normalised; a different grid layout means unsaved edits.
@@ -241,6 +244,84 @@ func reload_from_server() -> bool:
 		return false
 	_adopt_server_profile(got["profile"] as Dictionary, true)
 	return true
+
+
+## Starts a PvP raid on `defender_id`: the server freezes the defender's base and issues the seed. On success the
+## session is aimed at that snapshot with the server's seed (the battle plays locally, for show only).
+func begin_pvp_raid(defender_id: String) -> Dictionary:
+	if not is_online():
+		return {"ok": false, "error": "offline"}
+	var committed: Dictionary = await commit_if_dirty()
+	if not bool(committed.get("ok", false)):
+		return committed
+	var res: Dictionary = await api.backend.raid_start(defender_id)
+	if not bool(res.get("ok", false)):
+		message.emit(NetCopy.error_text(str(res.get("error", "network_error"))))
+		return res
+	var cfg: GameConfig = session.config
+	var snap: Dictionary = res.get("defender_snapshot", {}) as Dictionary
+	var layout: Array[Dictionary] = []
+	for entry: Variant in snap.get("layout", []) as Array:
+		layout.append(entry as Dictionary)
+	session.clear_attack_target()
+	session.attack_layout = layout
+	session.attack_memory = ImmuneMemory.from_dict(snap.get("memory", {}) as Dictionary, cfg)
+	var pops: Dictionary = snap.get("populations", {}) as Dictionary
+	for type_id: Variant in pops.keys():
+		var tid: String = str(type_id)
+		if cfg.is_breeding_type(tid) and cfg.structures.has(tid) and pops[type_id] is Dictionary:
+			session.attack_populations[tid] = BreedPool.from_dict(pops[type_id] as Dictionary, tid, cfg)
+	session.pvp_raid_id = str(res.get("raid_id", ""))
+	session.pvp_expires_unix = int(res.get("expires_unix", 0))
+	session.battle_seed_override = int(res.get("seed", 0))
+	session.army = Army.new(cfg)
+	session.live_defense = false
+	session.replay_mode = false
+	session.last_result = {}
+	session.last_launch = {}
+	return res
+
+
+func has_pvp_raid() -> bool:
+	return is_online() and session.pvp_raid_id != ""
+
+
+## The battle ended: send the deployments and the final hash (never a result), wait for the worker's verdict and
+## reload the server profile. Returns {"ok", "error", "result"}; `result` holds the server's numbers.
+func submit_pvp_raid(sim: BattleSim) -> Dictionary:
+	if not has_pvp_raid():
+		return {"ok": false, "error": "no_raid", "result": {}}
+	var raid_id: String = session.pvp_raid_id
+	var army: Array = []
+	for dep: Dictionary in session.army.deployments:
+		var cell: Vector2i = dep.get("cell", Vector2i.ZERO) as Vector2i
+		army.append({"type": str(dep.get("type", "")), "cell": [cell.x, cell.y], "strain": str(dep.get("strain", "wild"))})
+	var sent: Dictionary = await api.backend.raid_submit(raid_id, army, sim.state_hash())
+	var done: Dictionary = {"ok": false, "error": str(sent.get("error", "network_error")), "result": {}}
+	if bool(sent.get("ok", false)):
+		done = await api.wait_job(str(sent.get("job_id", "")))
+	last_pvp_result = done
+	pvp_result_ready.emit(done)
+	if not bool(done.get("ok", false)):
+		message.emit(NetCopy.error_text(str(done.get("error", "network_error"))))
+	if is_active():
+		await reload_from_server()
+	return done
+
+
+## Gives up before the battle: the server frees the defender; the army (if any) is still spent.
+func cancel_pvp_raid() -> Dictionary:
+	if not has_pvp_raid():
+		return {"ok": false, "error": "no_raid"}
+	var army: Array = []
+	for dep: Dictionary in session.army.deployments:
+		var cell: Vector2i = dep.get("cell", Vector2i.ZERO) as Vector2i
+		army.append({"type": str(dep.get("type", "")), "cell": [cell.x, cell.y], "strain": str(dep.get("strain", "wild"))})
+	var res: Dictionary = await api.backend.raid_cancel(session.pvp_raid_id, army)
+	session.clear_attack_target()
+	if is_active():
+		await reload_from_server()
+	return res
 
 
 func _reject(res: Dictionary) -> void:

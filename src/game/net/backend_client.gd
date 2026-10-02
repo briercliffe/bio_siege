@@ -34,6 +34,24 @@ func _set_status(new_status: String) -> void:
 	status_changed.emit(new_status)
 
 
+## Raid lifecycle wrappers (docs/SERVER_PLAN.md). Each is one RPC; results arrive as worker jobs (see ProfileApi.wait_job).
+func raid_start(defender_id: String) -> Dictionary:
+	return await rpc("raid_start", {"defender_id": defender_id})
+
+
+## `army` is [{"type", "cell": [x, y], "strain"}]; the client sends its deployments and its final hash, never results.
+func raid_submit(raid_id: String, army: Array, client_final_hash: String) -> Dictionary:
+	return await rpc("raid_submit", {"raid_id": raid_id, "army": army, "client_final_hash": client_final_hash})
+
+
+## Cancels a raid that was not submitted. Pass the army so the server can still charge it.
+func raid_cancel(raid_id: String, army: Array = []) -> Dictionary:
+	var payload: Dictionary = {"raid_id": raid_id}
+	if not army.is_empty():
+		payload["army"] = army
+	return await rpc("raid_cancel", payload)
+
+
 ## Calls the server's `ping` and compares its content hash with ours (docs/SERVER_PLAN.md, Versioning).
 ## A mismatch sets "update_required"; a good ping sets "online".
 func verify_server(local_content_hash: String) -> Dictionary:

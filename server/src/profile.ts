@@ -36,6 +36,29 @@ export function readProfile(nk: nkruntime.Nakama, userId: string): StoredProfile
   return { profile: objs[0].value as Dict, version: objs[0].version };
 }
 
+/**
+ * Read-modify-write the stored profile with OCC (3 tries). `mutate` returns whether it changed anything.
+ * Returns the profile as stored afterwards, or null when there is none or it stayed contended.
+ * Writing bumps the storage version, so an in-flight profile job re-enqueues itself on completion.
+ */
+export function updateProfile(nk: nkruntime.Nakama, userId: string, mutate: (profile: Dict) => boolean): Dict | null {
+  for (let i = 0; i < 3; i++) {
+    const cur = readProfile(nk, userId);
+    if (cur === null) return null;
+    if (!mutate(cur.profile)) return cur.profile;
+    try {
+      nk.storageWrite([{
+        collection: PROFILE_COLLECTION, key: PROFILE_KEY, userId, value: cur.profile, version: cur.version,
+        permissionRead: 1, permissionWrite: 0,
+      }]);
+      return cur.profile;
+    } catch (_e) {
+      // contended: retry on a fresh read
+    }
+  }
+  return null;
+}
+
 function readLock(nk: nkruntime.Nakama, userId: string): { lock: Lock; version: string } | null {
   const objs = nk.storageRead([{ collection: LOCK_COLLECTION, key: PROFILE_KEY, userId }]);
   if (objs.length === 0) return null;

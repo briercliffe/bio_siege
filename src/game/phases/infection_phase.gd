@@ -496,6 +496,8 @@ func _on_battle_finished(sim: BattleSim) -> void:
 
 		if session.live_defense and session.living_flow != null:
 			_finish_live_defense(sim)
+		elif session.living_flow != null and session.living_flow.has_pvp_raid():
+			_finish_pvp_raid(sim)
 		elif session.living_flow != null and session.living_flow.has_raid_target():
 			_finish_living_base_raid(sim)
 		else:
@@ -538,6 +540,13 @@ func _on_battle_finished(sim: BattleSim) -> void:
 
 	if fsm != null:
 		fsm.request_transition(GameStateMachine.Phase.RESULTS)
+
+
+## Online PvP raid: nothing is computed here. The deployments and the final hash go to the server, whose worker
+## re-simulates the battle and decides the loot, the trophies and what both bases learn.
+func _finish_pvp_raid(sim: BattleSim) -> void:
+	session.last_result["pvp_pending"] = true
+	session.living_flow.submit_pvp_raid(sim)
 
 
 ## Live AI raid: the result is applied like an offline one and the defense log gets a `live` entry. The

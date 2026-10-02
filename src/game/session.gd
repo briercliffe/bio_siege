@@ -43,6 +43,11 @@ var attack_layout: Array[Dictionary] = []:
 var attack_memory: ImmuneMemory = null
 var attack_populations: Dictionary = {}   # structure-type pools of the defender
 var attack_opponent_id: String = ""       # AI base id, "" for self-raid
+## Online PvP raid (docs/SERVER_PLAN.md): the server's raid id, its expiry and its seed. The seed replaces the
+## session seed when set (>= 0); both are cleared with the attack target.
+var pvp_raid_id: String = ""
+var pvp_expires_unix: int = 0
+var battle_seed_override: int = -1
 var _attack_grid: GridModel = null
 
 func _init(p_config: GameConfig = null, settings_path: String = GameSettings.DEFAULT_PATH) -> void:
@@ -89,6 +94,9 @@ func clear_attack_target() -> void:
 	attack_memory = null
 	attack_populations = {}
 	attack_opponent_id = ""
+	pvp_raid_id = ""
+	pvp_expires_unix = 0
+	battle_seed_override = -1
 	_attack_grid = null
 
 
