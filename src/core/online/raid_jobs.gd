@@ -108,7 +108,20 @@ static func _raid_validate(cfg: GameConfig, payload: Dictionary) -> Dictionary:
 			if not keys.has(key):
 				keys.append(key)
 		memory_seed = memory.seed_map(keys, cfg)
-	var pools: Dictionary = _pools(cfg, _dict(snapshot.get("populations")), _dict(raid.get("attacker_pools")))
+	# Breeding integrity: a pool that is not what honest play could have produced is reset to wild before the raid.
+	var defender_pools_in: Dictionary = _dict(snapshot.get("populations"))
+	var attacker_pools_in: Dictionary = _dict(raid.get("attacker_pools"))
+	var pool_resets: Array[Dictionary] = []
+	if cfg.coevolution_enabled():
+		var d_audit: Dictionary = PoolAudit.audit(cfg, defender_pools_in, PoolAudit.participation(defender_dict))
+		var a_audit: Dictionary = PoolAudit.audit(cfg, attacker_pools_in, PoolAudit.participation(attacker_dict))
+		defender_pools_in = d_audit["pools"] as Dictionary
+		attacker_pools_in = a_audit["pools"] as Dictionary
+		for r: Dictionary in d_audit["resets"] as Array:
+			pool_resets.append({"owner": "defender", "type_id": r["type_id"], "reason": r["reason"]})
+		for r: Dictionary in a_audit["resets"] as Array:
+			pool_resets.append({"owner": "attacker", "type_id": r["type_id"], "reason": r["reason"]})
+	var pools: Dictionary = _pools(cfg, defender_pools_in, attacker_pools_in)
 	var populations: Dictionary = {}
 	for type_id: Variant in pools.keys():
 		populations[type_id] = (pools[type_id] as BreedPool).to_dict()
@@ -150,14 +163,24 @@ static func _raid_validate(cfg: GameConfig, payload: Dictionary) -> Dictionary:
 	for e: Variant in res.get("evolution", []) as Array:
 		if e is Dictionary and cfg.structures.has(str((e as Dictionary).get("type_id", ""))):
 			defender_evolution.append(e)
+	# Anti-cheat stats: the receptors belong to the defender's towers, so the hit counts go to the defender.
+	var defender_gens: Dictionary = {}
+	for type_var: Variant in structure_pools.keys():
+		defender_gens[str(type_var)] = int((structure_pools[type_var] as Dictionary).get("generation", 0))
+	var attacker_gens: Dictionary = {}
+	for type_var: Variant in pathogen_pools.keys():
+		attacker_gens[str(type_var)] = int((pathogen_pools[type_var] as Dictionary).get("generation", 0))
+	var attacker_stats: Dictionary = CheatFlags.updated(cfg, attacker_dict.get("stats", {}), 0, 0, attacker_gens)
+	var defender_stats: Dictionary = CheatFlags.updated(cfg, defender_dict.get("stats", {}), sim.receptor_hits, sim.receptor_checks, defender_gens)
 	var attacker_after: Dictionary = _attacker_after(cfg, attacker_dict, attacker, wallet_delta, pathogen_pools, 1)
 	attacker_after["trophies"] = int(trophies["attacker_after"])
+	attacker_after["stats"] = attacker_stats
 	var server_hash: String = sim.state_hash()
 	var client_hash: String = str(submission.get("client_final_hash", ""))
 	return {"ok": true, "error": "", "result": {
 		"attacker_profile": attacker_after,
 		"attacker_patch": {"wallet_delta": wallet_delta, "pathogen_pools": pathogen_pools, "raid_counter_inc": 1,
-				"trophies_delta": int(trophies["attacker_delta"])},
+				"trophies_delta": int(trophies["attacker_delta"]), "stats": attacker_stats},
 		"defender_patch": {
 			"atp_lost": int(res.get("atp_looted", 0)),
 			"amino_gained": int(res.get("amino_defender", 0)),
@@ -165,7 +188,10 @@ static func _raid_validate(cfg: GameConfig, payload: Dictionary) -> Dictionary:
 			"structure_pools": structure_pools,
 			"trophies_delta": int(trophies["defender_delta"]),
 			"shield_until_unix": now + cfg.pvp_shield_hours * 3600,
+			"defense_counter_inc": 1,
+			"stats": defender_stats,
 		},
+		"pool_resets": pool_resets,
 		"trophies": trophies,
 		"defense_info": {"army": army_counts, "ticks": sim.tick, "defender_evolution": defender_evolution},
 		"res": res,

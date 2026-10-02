@@ -2,9 +2,8 @@
 // with the battle (for replay), the outcome, losses, gains, memory changes and the new pool generation.
 // Collection `defense_log`, key = raid_id, owner = defender, read 1 (owner), write 0 (server only).
 import { nowUnix } from "./clock";
-import { takeToken } from "./ratelimit";
+import { clientGuard } from "./guards";
 import { errResult, okResult, parsePayload } from "./rpc";
-import { clientCompat } from "./version";
 
 export const DEFENSE_LOG_COLLECTION: string = "defense_log";
 export const MAX_ENTRIES: number = 50;
@@ -72,17 +71,10 @@ function trim(nk: nkruntime.Nakama, logger: nkruntime.Logger, userId: string): v
   }
 }
 
-function guard(ctx: nkruntime.Context, nk: nkruntime.Nakama, req: Dict | null, group: "read" | "write"): string {
-  if (!ctx.userId) return "unauthorized";
-  if (req === null) return "bad_request";
-  if (!takeToken(nk, ctx.userId, group)) return "rate_limited";
-  return clientCompat(req);
-}
-
 /** Entries without `battle`, newest first, PAGE_SIZE per page. `cursor` is the offset of the next page. */
 export function rpcDefenseLogList(ctx: nkruntime.Context, _logger: nkruntime.Logger, nk: nkruntime.Nakama, payload: string): string {
   const req = parsePayload(payload);
-  const bad = guard(ctx, nk, req, "read");
+  const bad = clientGuard(ctx, nk, req, "read");
   if (bad !== "") return errResult(bad);
   const offset = typeof req!.cursor === "string" && /^[0-9]+$/.test(req!.cursor) ? parseInt(req!.cursor, 10) : 0;
   const entries = allEntries(nk, ctx.userId as string);
@@ -97,7 +89,7 @@ export function rpcDefenseLogList(ctx: nkruntime.Context, _logger: nkruntime.Log
 /** The full entry (with its battle) for the owner only. */
 export function rpcDefenseLogGet(ctx: nkruntime.Context, _logger: nkruntime.Logger, nk: nkruntime.Nakama, payload: string): string {
   const req = parsePayload(payload);
-  const bad = guard(ctx, nk, req, "read");
+  const bad = clientGuard(ctx, nk, req, "read");
   if (bad !== "") return errResult(bad);
   if (typeof req!.raid_id !== "string") return errResult("bad_request");
   const objs = nk.storageRead([{ collection: DEFENSE_LOG_COLLECTION, key: req!.raid_id as string, userId: ctx.userId as string }]);
@@ -107,7 +99,7 @@ export function rpcDefenseLogGet(ctx: nkruntime.Context, _logger: nkruntime.Logg
 
 export function rpcDefenseLogMarkSeen(ctx: nkruntime.Context, _logger: nkruntime.Logger, nk: nkruntime.Nakama, payload: string): string {
   const req = parsePayload(payload);
-  const bad = guard(ctx, nk, req, "write");
+  const bad = clientGuard(ctx, nk, req, "write");
   if (bad !== "") return errResult(bad);
   if (!Array.isArray(req!.raid_ids) || (req!.raid_ids as unknown[]).length > MAX_ENTRIES) return errResult("bad_request");
   const userId = ctx.userId as string;

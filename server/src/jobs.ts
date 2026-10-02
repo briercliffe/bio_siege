@@ -2,6 +2,7 @@
 // The server only stores and routes jobs; every rule runs in the worker (src/core/online/job_rules.gd).
 import { nowUnix } from "./clock";
 import { CONTENT_HASH } from "./generated/data";
+import { clientGuard } from "./guards";
 import { errResult, okResult, parsePayload } from "./rpc";
 
 export const SYSTEM_USER: string = "00000000-0000-0000-0000-000000000000";
@@ -250,10 +251,11 @@ export function rpcWorkerComplete(ctx: nkruntime.Context, logger: nkruntime.Logg
 }
 
 export function rpcJobStatus(ctx: nkruntime.Context, _logger: nkruntime.Logger, nk: nkruntime.Nakama, payload: string): string {
-  if (!ctx.userId) return errResult("unauthorized");
   const req = parsePayload(payload);
-  if (req === null || typeof req.job_id !== "string") return errResult("bad_request");
-  let entry = readJob(nk, req.job_id);
+  const bad = clientGuard(ctx, nk, req, "read");
+  if (bad !== "") return errResult(bad);
+  if (typeof req!.job_id !== "string") return errResult("bad_request");
+  let entry = readJob(nk, req!.job_id);
   // A job re-enqueued after a storage conflict points at its successor (same owner); follow it.
   for (let hop = 0; hop < 3 && entry !== null && entry.job.result && typeof entry.job.result.requeued_as === "string"; hop++) {
     entry = readJob(nk, entry.job.result.requeued_as as string);

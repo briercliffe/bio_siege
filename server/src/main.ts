@@ -1,4 +1,5 @@
 import { rpcDebugEnqueueEcho, rpcJobStatus, rpcWorkerClaim, rpcWorkerComplete } from "./jobs";
+import { rpcAdminFlaggedList } from "./admin";
 import { rpcDefenseLogGet, rpcDefenseLogList, rpcDefenseLogMarkSeen } from "./defense_log";
 import { createLeaderboard } from "./leaderboard";
 import { rpcFindOpponent, rpcLeaderboardTop } from "./matchmaking";
@@ -37,6 +38,7 @@ export function InitModule(
   initializer.registerRpc("defense_log_list", rpcDefenseLogList);
   initializer.registerRpc("defense_log_get", rpcDefenseLogGet);
   initializer.registerRpc("defense_log_mark_seen", rpcDefenseLogMarkSeen);
+  initializer.registerRpc("admin_flagged_list", rpcAdminFlaggedList);
   createLeaderboard(nk, logger);
   logger.info("bio_siege server module loaded");
 }

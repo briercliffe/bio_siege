@@ -50,6 +50,7 @@ var pvp_trophy_max: int = 0
 var pvp_trophy_diff_divisor: int = 1
 var pvp_shield_hours: int = 0
 var pvp_recent_opponent_hours: int = 0
+var pvp_suspicious_hit_rate_pct: int = 0
 var presenter_record_interval_ticks: int = 20 # Dendritic Cells record antigens once per second (#167)
 ## Amino Acid base upgrades (#168, #169): id -> {display_name, costs: Array[Dictionary], per_level}.
 var upgrade_defs: Dictionary = {}
@@ -263,7 +264,7 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 			_validate_int_block(rules_data, "pvp", "online", {
 				"start_trophies": [0, -1], "band": [1, -1], "band_widen_steps": [0, 10], "trophy_base": [0, -1],
 				"trophy_min": [0, -1], "trophy_max": [1, -1], "trophy_diff_divisor": [1, -1],
-				"shield_hours": [0, 168], "recent_opponent_hours": [0, 168]
+				"shield_hours": [0, 168], "recent_opponent_hours": [0, 168], "suspicious_hit_rate_pct": [1, 100]
 			}, errors)
 			_validate_int_block(rules_data, "loot", "living_base", {
 				"atp_from_mitochondria_pct": [0, 100], "amino_per_structure_pct": [0, 100],
@@ -358,6 +359,7 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 		config.pvp_trophy_diff_divisor = maxi(1, int(pvp.get("trophy_diff_divisor", 1)))
 		config.pvp_shield_hours = int(pvp.get("shield_hours", 0))
 		config.pvp_recent_opponent_hours = int(pvp.get("recent_opponent_hours", 0))
+		config.pvp_suspicious_hit_rate_pct = int(pvp.get("suspicious_hit_rate_pct", 0))
 
 	var loot_raw: Variant = rules_data.get("loot", null)
 	if typeof(loot_raw) == TYPE_DICTIONARY:

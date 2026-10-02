@@ -49,6 +49,13 @@ Leaderboard: `trophies` (descending, `set` operator), created in `InitModule`.
  "defender_snapshot": {}, "attacker_pools": {}, "config_hash": "", "submission": null, "result": null}
 ```
 
+### Breeding integrity and anti-cheat
+
+- **No client genomes.** Every client RPC starts with `clientGuard` (`server/src/guards.ts`): a session, a JSON object, then `rejectForbiddenKeys` (`populations`, `memory`, `wallet`, `trophies`, `unlocked_strains` at the top level answer `forbidden_field`), the rate limit and the version check. The one place a client value reaches the worker is `profile_import`'s `local_profile.layout` and `.memory` (a one-time import into a fresh profile, normalised by `ImmuneMemory.from_dict`); the server forwards nothing else of it.
+- **Pool audit** (`src/core/online/pool_audit.gd`): `raid_validate` audits every pool it is about to use (the attacker's pools from the raid record, the defender's from the snapshot): the genome count is `coevolution.pool_size`, each genome has the declared slot counts (receptors may be widened by up to 4), every allele is a known id, and `generation` is between 0 and the owner's raids (`raid_counter + ai_raid_counter + defense_counter`). A bad pool is reset to wild for the raid; the job result lists it in `pool_resets` and the server logs a warning.
+- **Stats** (`stats` on the profile, written from the worker's patches): `raids`, `receptor_hits`, `receptor_checks` (counted by `BattleSim` while coevolution is on, never hashed; they belong to the defender's towers) and `max_generation` per type. `defense_counter` counts raids against the player.
+- **Flag rule** (`CheatFlags`): `stats.flagged` becomes true (and stays true) when `receptor_hits * 100 >= pvp.suspicious_hit_rate_pct * receptor_checks` over at least 5 raids while no pool passed generation 5. There is no automatic ban; `admin_flagged_list` (http key) lists flagged players.
+
 ### DNA and strain unlocks
 
 - DNA is earned only from PvP wins: `raid_validate` adds `loot.dna_per_win` to the attacker's wallet delta on an attacker win. `debug_dna` stays for Phase 2 AI raids and is ignored while `online` is on.
@@ -95,7 +102,7 @@ Every response also has `ok` and `error`. "Common" errors that any client RPC ca
 | `defense_log_get` | client | `{raid_id}` | `{entry}` | `unknown_entry` | #183 |
 | `defense_log_mark_seen` | client | `{raid_ids}` | `{marked}` | `bad_request`, `conflict` | #183 |
 | `mutation_unlock` | client | `{type, variant}` | `{job_id}` | `busy`, `no_profile`, `bad_request` (job: `unknown_strain`, `already_unlocked`, `insufficient_funds`) | #184 |
-| `admin_flagged_list` | admin | `{}` | `{players}` | | #185 |
+| `admin_flagged_list` | admin | `{}` | `{players: [{user_id, trophies, stats}]}` | `admin_only` | #185 |
 | `admin_report` | admin | `{from, to}` | `{days, retention}` | | #186 |
 
 Job results can carry job-level errors (see [Error codes](#error-codes)): `invalid_layout`, `insufficient_funds`, `maxed`, `unknown_upgrade`, `profile_not_fresh`, `invalid_profile`, `layout_too_expensive`, `invalid_army`, `already_unlocked`, `unknown_strain`, `conflict`.

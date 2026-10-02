@@ -5,9 +5,8 @@ import { nowUnix } from "./clock";
 import { DATA } from "./generated/data";
 import { LEADERBOARD_ID } from "./leaderboard";
 import { BASE_COLLECTION, PROFILE_COLLECTION, PROFILE_KEY, readProfile, SNAPSHOT_KEY } from "./profile";
-import { takeToken } from "./ratelimit";
+import { clientGuard } from "./guards";
 import { errResult, okResult, parsePayload, randomInt31 } from "./rpc";
-import { clientCompat } from "./version";
 
 const HAYSTACK_LIMIT: number = 100;
 const TOP_LIMIT: number = 50;
@@ -39,12 +38,9 @@ function raidable(callerProfile: Dict, userId: string, profile: Dict, now: numbe
 
 export function rpcFindOpponent(ctx: nkruntime.Context, _logger: nkruntime.Logger, nk: nkruntime.Nakama, payload: string): string {
   const req = parsePayload(payload);
-  if (!ctx.userId) return errResult("unauthorized");
-  if (req === null) return errResult("bad_request");
-  if (!takeToken(nk, ctx.userId, "find")) return errResult("rate_limited");
-  const compat = clientCompat(req);
-  if (compat !== "") return errResult(compat);
-  const me = ctx.userId;
+  const bad = clientGuard(ctx, nk, req, "find");
+  if (bad !== "") return errResult(bad);
+  const me = ctx.userId as string;
   const mine = readProfile(nk, me);
   if (mine === null) return errResult("no_profile");
   const now = nowUnix();
@@ -75,20 +71,20 @@ export function rpcFindOpponent(ctx: nkruntime.Context, _logger: nkruntime.Logge
 
 export function rpcLeaderboardTop(ctx: nkruntime.Context, _logger: nkruntime.Logger, nk: nkruntime.Nakama, payload: string): string {
   const req = parsePayload(payload);
-  if (!ctx.userId) return errResult("unauthorized");
-  if (req === null) return errResult("bad_request");
-  if (!takeToken(nk, ctx.userId, "read")) return errResult("rate_limited");
-  const list = nk.leaderboardRecordsList(LEADERBOARD_ID, [ctx.userId], TOP_LIMIT);
+  const bad = clientGuard(ctx, nk, req, "read");
+  if (bad !== "") return errResult(bad);
+  const me = ctx.userId as string;
+  const list = nk.leaderboardRecordsList(LEADERBOARD_ID, [me], TOP_LIMIT);
   const records = (list.records || []).map((r) => ({ rank: r.rank, user_id: r.ownerId, name: r.username, trophies: r.score }));
   const mine = (list.ownerRecords || [])[0];
   if (!mine) return okResult({ records, me: { rank: 0, trophies: 0 } });
   // ownerRecords can come back without a rank (seen on Nakama 3.41): use the top list, then the haystack.
   let rank = mine.rank;
-  const inTop = (list.records || []).filter((r) => r.ownerId === ctx.userId)[0];
+  const inTop = (list.records || []).filter((r) => r.ownerId === me)[0];
   if (!rank && inTop) rank = inTop.rank;
   if (!rank) {
-    const around = nk.leaderboardRecordsHaystack(LEADERBOARD_ID, ctx.userId, 1, "", 0);
-    const self = (around.records || []).filter((r) => r.ownerId === ctx.userId)[0];
+    const around = nk.leaderboardRecordsHaystack(LEADERBOARD_ID, me, 1, "", 0);
+    const self = (around.records || []).filter((r) => r.ownerId === me)[0];
     rank = self ? self.rank : 0;
   }
   return okResult({ records, me: { rank, trophies: mine.score } });

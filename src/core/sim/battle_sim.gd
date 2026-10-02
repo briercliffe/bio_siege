@@ -36,6 +36,10 @@ var _turncoat_on: bool = false
 var _turncoat_hit_tick: Dictionary = {}  # structure id -> last tick it took turncoat damage
 var turncoat_damage_dealt: int = 0
 var _coevo_on: bool = false
+## Anti-cheat telemetry (AM-11): receptors checked against an antigen set and how many bound. Counted only while
+## coevolution is on, and never part of state_hash().
+var receptor_hits: int = 0
+var receptor_checks: int = 0
 var _presenter_on: bool = false
 var _antigen_present_on: bool = false
 ## Dendritic Cells record the antigens of pathogens near them (antigen id -> true). Never touches `analyzed`.
@@ -485,6 +489,9 @@ func _match_pct(attacker_type: String, attacker_index: int, defender_type: Strin
 		return 100
 	if attacker_index < 0 or attacker_index >= a_pool.genomes.size() or defender_index < 0 or defender_index >= d_pool.genomes.size():
 		return 100
+	var counts: Vector2i = a_pool.match_counts(a_pool.genomes[attacker_index], d_pool.genomes[defender_index], config)
+	receptor_hits += counts.x
+	receptor_checks += counts.x + counts.y
 	return a_pool.match_pct(a_pool.genomes[attacker_index], d_pool.genomes[defender_index], config)
 
 
