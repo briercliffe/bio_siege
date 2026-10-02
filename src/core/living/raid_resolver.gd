@@ -27,7 +27,8 @@ static func resolve(cfg: GameConfig, setup: BattleSetup, sim: BattleSim, defende
 	if cfg.coevolution_enabled():
 		evolution = breed_after_battle(cfg, setup, sim, pools)
 	var dna: int = 0
-	if cfg.flag("debug_dna") and sim.outcome == "attacker":
+	# debug_dna is for Phase 2 AI raids only: online, DNA comes from PvP wins alone (RaidJobs awards it).
+	if cfg.flag("debug_dna") and not cfg.flag("online") and sim.outcome == "attacker":
 		dna = cfg.loot_dna_per_win
 	return {
 		"outcome": sim.outcome,

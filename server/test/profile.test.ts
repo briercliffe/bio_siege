@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setClockForTests } from "../src/clock";
 import { CONTENT_HASH } from "../src/generated/data";
-import { registerProfileHandlers, rpcBaseCommit, rpcCollect, rpcProfileGet, rpcProfileImport, rpcUpgradeBuy } from "../src/profile";
+import { registerProfileHandlers, rpcBaseCommit, rpcCollect, rpcMutationUnlock, rpcProfileGet, rpcProfileImport, rpcUpgradeBuy } from "../src/profile";
 import { rpcJobStatus, rpcWorkerClaim, rpcWorkerComplete } from "../src/jobs";
 import { FakeLogger, FakeNk, asLogger, asNk, fakeCtx } from "./fake_nk";
 
@@ -116,6 +116,12 @@ describe("mutating RPCs", () => {
     jobs = workerRun(() => okWith(4));
     expect(jobs[0].type).toBe("upgrade_buy");
     expect(jobs[0].payload.id).toBe("memory_slot");
+
+    expect(call(rpcMutationUnlock, U, { type: "rhinovirus" }).error).toBe("bad_request");
+    call(rpcMutationUnlock, U, { type: "rhinovirus", variant: "rapid_replication" });
+    jobs = workerRun(() => okWith(5));
+    expect(jobs[0].type).toBe("mutation_unlock");
+    expect(jobs[0].payload).toMatchObject({ type: "rhinovirus", variant: "rapid_replication" });
   });
 
   it("validate their request shape", () => {

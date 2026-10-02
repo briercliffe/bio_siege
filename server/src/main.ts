@@ -4,7 +4,7 @@ import { createLeaderboard } from "./leaderboard";
 import { rpcFindOpponent, rpcLeaderboardTop } from "./matchmaking";
 import { rpcPing } from "./ping";
 import { registerRaidHandlers, rpcRaidCancel, rpcRaidStart, rpcRaidSubmit } from "./raids";
-import { registerProfileHandlers, rpcBaseCommit, rpcCollect, rpcProfileGet, rpcProfileImport, rpcUpgradeBuy } from "./profile";
+import { registerProfileHandlers, rpcBaseCommit, rpcCollect, rpcMutationUnlock, rpcProfileGet, rpcProfileImport, rpcUpgradeBuy } from "./profile";
 
 // Nakama runs InitModule in one VM only, but every VM evaluates the script: module state (job handlers) is set up here,
 // at top level, never inside InitModule. Module objects are frozen after load, so no runtime mutation of globals.
@@ -28,6 +28,7 @@ export function InitModule(
   initializer.registerRpc("collect", rpcCollect);
   initializer.registerRpc("upgrade_buy", rpcUpgradeBuy);
   initializer.registerRpc("profile_import", rpcProfileImport);
+  initializer.registerRpc("mutation_unlock", rpcMutationUnlock);
   initializer.registerRpc("raid_start", rpcRaidStart);
   initializer.registerRpc("raid_submit", rpcRaidSubmit);
   initializer.registerRpc("raid_cancel", rpcRaidCancel);

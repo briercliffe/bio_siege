@@ -43,7 +43,7 @@ static func check_army(cfg: GameConfig, army_val: Variant, ring: Array[Vector2i]
 		if pdef == null:
 			return {"ok": false, "units": units, "error": "invalid_army"}
 		var strain_id: String = str(d.get("strain", "wild"))
-		if pdef.strain(strain_id) == null or not _strain_allowed(type_id, strain_id, unlocked):
+		if pdef.strain(strain_id) == null or not _strain_allowed(cfg, type_id, strain_id, unlocked):
 			return {"ok": false, "units": units, "error": "invalid_army"}
 		var cell: Variant = _cell_of(d.get("cell", null))
 		if cell == null or not ring_set.has(cell):
@@ -92,7 +92,7 @@ static func _raid_validate(cfg: GameConfig, payload: Dictionary) -> Dictionary:
 	if grid.load_layout(snapshot.get("layout", []) as Array, LivingBaseProfile.unlimited_wallet()) != GridModel.PlaceError.OK:
 		return _fail("invalid_layout")
 	var checked: Dictionary = check_army(cfg, submission.get("army", null), grid.ring_cells(),
-			attacker_dict.get("unlocked_strains", null), Wallet.new(attacker.wallet))
+			attacker.unlocked_strains, Wallet.new(attacker.wallet))
 	if not bool(checked["ok"]):
 		return _fail(str(checked["error"]))
 	var units: Array[Dictionary] = checked["units"]
@@ -121,6 +121,8 @@ static func _raid_validate(cfg: GameConfig, payload: Dictionary) -> Dictionary:
 	sim.run_to_end()
 	var res: Dictionary = RaidResolver.resolve(cfg, setup, sim, _int_of(snapshot, "stored_atp", 0), memory, pools,
 			slots, BaseUpgrades.memory_decay_raids(cfg, defender_upgrades))
+	# DNA comes from PvP wins alone (decision 1): the debug_dna flag is for Phase 2 AI raids.
+	res["dna_attacker"] = cfg.loot_dna_per_win if str(res.get("outcome", "")) == "attacker" else 0
 
 	var structure_pools: Dictionary = {}
 	var pathogen_pools: Dictionary = {}
@@ -232,10 +234,14 @@ static func _pools(cfg: GameConfig, defender_pools: Dictionary, attacker_pools: 
 	return pools
 
 
-## Until strain unlocks land (AM-10, #184) every known strain is allowed. Then `unlocked` is the attacker's
-## list of "type/variant" keys and a locked strain makes the army illegal.
-static func _strain_allowed(_type_id: String, _strain_id: String, _unlocked: Variant) -> bool:
-	return true
+## Wild always; any other strain needs the `strains` flag and an unlock (`unlocked` is the attacker's list of
+## "type/variant" keys; free variants are unlocked by default). A locked strain makes the army illegal.
+static func _strain_allowed(cfg: GameConfig, type_id: String, strain_id: String, unlocked: Variant) -> bool:
+	if strain_id == "wild":
+		return true
+	if not cfg.flag("strains"):
+		return false
+	return StrainUnlocks.is_unlocked(cfg, unlocked as Array if unlocked is Array else [], type_id, strain_id)
 
 
 static func _cell_of(val: Variant) -> Variant:

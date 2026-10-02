@@ -33,6 +33,8 @@ const TEXT: Dictionary = {
 	"expired": "Raid expired. Your army was spent.",
 	"invalid_army": "The server rejected that army.",
 	"no_raid": "There is no raid in progress.",
+	"already_unlocked": "That variant is already unlocked.",
+	"unknown_strain": "That variant is not available.",
 }
 
 

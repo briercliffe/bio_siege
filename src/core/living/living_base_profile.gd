@@ -17,6 +17,8 @@ var last_clock_unix: int = 0         # last time advance_clock ran
 var memory: Dictionary = {}          # ImmuneMemory.to_dict() of the player's base
 var populations: Dictionary = {}     # type_id -> BreedPool.to_dict(): player's pathogen AND tower pools
 var upgrades: Dictionary = {}        # upgrade id -> level (filled by LB-15)
+## Unlocked strain variants as "type/variant" keys (AM-10). Empty while the `strains` flag is off.
+var unlocked_strains: Array[String] = []
 ## AI bases: {id, tier, seed, layout, memory, populations, stored_atp, raids}. Layout origins are [x, y].
 var opponents: Array[Dictionary] = []
 var opponent_counter: int = 0        # AI bases generated so far; drives their seeds and ids
@@ -35,6 +37,7 @@ static func create_new(cfg: GameConfig, p_seed: int, now_unix: int) -> LivingBas
 	p.wallet = cfg.lb_start_wallet.duplicate()
 	p.last_clock_unix = now_unix
 	p.last_ai_raid_unix = now_unix  # the first AI raid comes one interval after the first launch
+	p.unlocked_strains = StrainUnlocks.normalize(cfg, [])
 	return p
 
 ## Banks ATP generated since the last call. Returns the ATP generated.
@@ -149,6 +152,8 @@ func to_dict() -> Dictionary:
 		"last_ai_raid_unix": last_ai_raid_unix,
 		"defense_log": defense_log.duplicate(true),
 	}
+	if not unlocked_strains.is_empty():
+		d["unlocked_strains"] = unlocked_strains.duplicate()
 	return SnapshotIO.sort_keys(d) as Dictionary
 
 ## Returns {"ok": bool, "profile": LivingBaseProfile, "error": String, "notices": Array[String]}.
@@ -227,6 +232,8 @@ static func from_dict(d: Dictionary, cfg: GameConfig) -> Dictionary:
 			var lv: Variant = (up_val as Dictionary)[k_var]
 			if _is_whole(lv) and int(lv) >= 0:
 				p.upgrades[str(k_var)] = int(lv)
+
+	p.unlocked_strains = StrainUnlocks.normalize(cfg, d.get("unlocked_strains", []))
 
 	var mem_val: Variant = d.get("memory", {})
 	if typeof(mem_val) == TYPE_DICTIONARY:

@@ -61,6 +61,14 @@ func _init(p_config: GameConfig = null, settings_path: String = GameSettings.DEF
 		army = Army.new(config)
 
 
+## Whether the player may field this strain variant. Lab has everything; Living Base needs the unlock (wild and
+## the free variants always count). Without a profile (or with the `strains` flag off) nothing is locked.
+func strain_unlocked(type_id: String, variant_id: String) -> bool:
+	if mode != Mode.LIVING_BASE or profile == null or config == null or not config.flag("strains"):
+		return true
+	return StrainUnlocks.is_unlocked(config, profile.unlocked_strains, type_id, variant_id)
+
+
 ## True when the raid targets a base other than the session's own.
 func has_attack_target() -> bool:
 	return not attack_layout.is_empty()

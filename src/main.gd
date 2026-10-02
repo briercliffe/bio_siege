@@ -61,6 +61,9 @@ func _on_screen_opened(_id: String) -> void:
 	var upgrades: UpgradesScreen = top as UpgradesScreen
 	if upgrades != null and fsm != null:
 		upgrades.setup(fsm.session, fsm)
+	var mutation_lab: MutationLabScreen = top as MutationLabScreen
+	if mutation_lab != null and fsm != null:
+		mutation_lab.setup(fsm.session)
 	var leaderboard: LeaderboardScreen = top as LeaderboardScreen
 	if leaderboard != null and fsm != null:
 		leaderboard.setup(fsm.session)

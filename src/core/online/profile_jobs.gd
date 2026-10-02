@@ -12,8 +12,9 @@ const BASE_COMMIT: String = "base_commit"
 const COLLECT: String = "collect"
 const UPGRADE_BUY: String = "upgrade_buy"
 const PROFILE_IMPORT: String = "profile_import"
+const MUTATION_UNLOCK: String = "mutation_unlock"
 
-const TYPES: Array[String] = [PROFILE_NEW, PROFILE_TICK, BASE_COMMIT, COLLECT, UPGRADE_BUY, PROFILE_IMPORT]
+const TYPES: Array[String] = [PROFILE_NEW, PROFILE_TICK, BASE_COMMIT, COLLECT, UPGRADE_BUY, PROFILE_IMPORT, MUTATION_UNLOCK]
 
 
 static func handles(type: String) -> bool:
@@ -42,6 +43,8 @@ static func process(cfg: GameConfig, type: String, payload: Dictionary, created_
 			return _upgrade_buy(cfg, original, profile, payload)
 		PROFILE_IMPORT:
 			return _profile_import(cfg, original, profile, payload)
+		MUTATION_UNLOCK:
+			return _mutation_unlock(cfg, original, profile, payload)
 		_:
 			return _fail("unknown_job_type")
 
@@ -135,6 +138,21 @@ static func _upgrade_buy(cfg: GameConfig, original: Dictionary, profile: LivingB
 		for type_id: Variant in pools.keys():
 			profile.populations[str(type_id)] = (pools[type_id] as BreedPool).to_dict()
 	return _done(cfg, original, profile, {"id": id, "level": BaseUpgrades.level(profile.upgrades, id), "cost": cost})
+
+
+## Spends DNA to unlock a strain variant (the Mutation Lab). Errors: unknown_strain, already_unlocked, insufficient_funds.
+static func _mutation_unlock(cfg: GameConfig, original: Dictionary, profile: LivingBaseProfile, payload: Dictionary) -> Dictionary:
+	if not cfg.flag("strains"):
+		return _fail(StrainUnlocks.UNKNOWN_STRAIN)
+	var type_id: String = str(payload.get("type", ""))
+	var variant_id: String = str(payload.get("variant", ""))
+	var wallet := Wallet.new(profile.wallet)
+	var res: Dictionary = StrainUnlocks.unlock(cfg, profile.unlocked_strains, wallet, type_id, variant_id)
+	if not bool(res["ok"]):
+		return _fail(str(res["error"]))
+	profile.wallet = wallet.to_dict()
+	profile.unlocked_strains = res["unlocked"]
+	return _done(cfg, original, profile, {"type": type_id, "variant": variant_id, "cost": int(res["cost"])})
 
 
 ## One-time import of an offline base. Only the layout and the memory are taken from `local_profile`.

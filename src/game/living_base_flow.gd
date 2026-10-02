@@ -30,6 +30,8 @@ var import_answered_path: String = IMPORT_ANSWERED_PATH
 var api: ProfileApi = null
 var saving: bool = false
 var last_pvp_result: Dictionary = {}
+## Why the last Mutation Lab purchase failed, as player text.
+var last_error_text: String = ""
 ## True right after the server created a brand-new profile while an offline base exists and was not answered yet.
 var import_offer_pending: bool = false
 ## The layout the server last confirmed, normalised; a different grid layout means unsaved edits.
@@ -248,6 +250,33 @@ func buy_upgrade_async(upgrade_id: String) -> bool:
 	return true
 
 
+## Mutation Lab: unlock a strain variant with DNA. Online it is a worker job; offline the same rule runs here.
+## On a refusal `last_error_text` says why.
+func unlock_strain_async(type_id: String, variant_id: String) -> bool:
+	last_error_text = ""
+	if not is_active():
+		return false
+	if not is_online():
+		var res: Dictionary = StrainUnlocks.unlock(session.config, session.profile.unlocked_strains, session.wallet, type_id, variant_id)
+		if not bool(res["ok"]):
+			last_error_text = NetCopy.error_text(str(res["error"]))
+			return false
+		session.profile.unlocked_strains = res["unlocked"]
+		sync_profile_from_session()
+		return true
+	var committed: Dictionary = await commit_if_dirty()
+	if not bool(committed.get("ok", false)):
+		last_error_text = NetCopy.error_text(str(committed.get("error", "")))
+		return false
+	var job: Dictionary = await _with_busy_retry(func() -> Dictionary: return await api.mutation_unlock(type_id, variant_id))
+	if not bool(job.get("ok", false)):
+		last_error_text = NetCopy.error_text(str(job.get("error", "network_error")))
+		await _reject(job)
+		return false
+	_adopt_server_profile((job["result"] as Dictionary).get("profile", {}) as Dictionary, false)
+	return true
+
+
 ## "Bring your offline base online?" Yes: sends the local base's layout and memory (one profile_import job).
 func import_local_base() -> Dictionary:
 	import_offer_pending = false
@@ -416,6 +445,7 @@ func _adopt_server_profile(server_dict: Dictionary, reload_layout: bool) -> void
 	profile.memory = fresh.memory
 	profile.populations = fresh.populations
 	profile.upgrades = fresh.upgrades
+	profile.unlocked_strains = fresh.unlocked_strains
 	profile.raid_counter = fresh.raid_counter
 	profile.ai_raid_counter = fresh.ai_raid_counter
 	server_layout_key = _layout_key(fresh.layout)

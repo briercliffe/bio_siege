@@ -127,6 +127,9 @@ var unit_tiles: Dictionary = {}
 var unit_desc_label: Label = null
 var strain_button: PillButton = null
 var strain_summary_label: Label = null
+## Living Base: the variants still locked for this pathogen, with a drawn padlock.
+var strain_lock_row: HBoxContainer = null
+var strain_lock_label: Label = null
 var memory_hint_label: Label = null
 
 var right_card: FloatingCard = null
@@ -373,6 +376,12 @@ func _on_card_strain_cycle_requested(type_id: String) -> void:
 	var ids: Array[String] = p_def.strain_ids()
 	var idx: int = ids.find(session.army.strain_of(type_id))
 	var next_id: String = ids[(idx + 1) % ids.size()]
+	# A locked variant cannot be picked: the cycle skips it (unlock it in the Mutation Lab).
+	for step: int in range(ids.size()):
+		var candidate: String = ids[(idx + 1 + step) % ids.size()]
+		if session.strain_unlocked(type_id, candidate):
+			next_id = candidate
+			break
 	if not session.army.set_strain(type_id, next_id):
 		_show_toast("Remove all %ss to change strain" % p_def.display_name)
 
@@ -470,11 +479,22 @@ static func _trim(v: float) -> String:
 	return s.trim_suffix(".0")
 
 
+## Locked variants (Living Base only) are listed under the picker with a padlock; Lab shows none.
+func _update_strain_locks(pdef: PathogenDef) -> void:
+	var locked: Array[String] = []
+	for s: StrainDef in pdef.strains:
+		if not session.strain_unlocked(pdef.id, s.id):
+			locked.append("%s (%d DNA)" % [s.display_name, s.unlock_dna])
+	strain_lock_row.visible = not locked.is_empty()
+	strain_lock_label.text = "Locked: " + ", ".join(locked) if not locked.is_empty() else ""
+
+
 func _update_strain_controls(pdef: PathogenDef) -> void:
 	var on: bool = _strains_enabled()
 	strain_button.visible = on
 	strain_summary_label.visible = on
 	if not on:
+		strain_lock_row.visible = false
 		memory_hint_label.visible = false
 		return
 	var strain: StrainDef = pdef.strain(session.army.strain_of(pdef.id))
@@ -486,6 +506,7 @@ func _update_strain_controls(pdef: PathogenDef) -> void:
 	strain_button.text = strain.display_name
 	strain_button.queue_redraw()
 	strain_summary_label.text = strain.summary()
+	_update_strain_locks(pdef)
 	memory_hint_label.visible = remembered > 0
 	memory_hint_label.text = "Remembered L%d" % remembered if remembered > 0 else ""
 
@@ -835,6 +856,17 @@ func _build_left_card() -> void:
 	strain_summary_label.name = "StrainSummaryLabel"
 	strain_summary_label.visible = false
 	unit_box.add_child(strain_summary_label)
+	strain_lock_row = HBoxContainer.new()
+	strain_lock_row.name = "StrainLockRow"
+	strain_lock_row.visible = false
+	strain_lock_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	strain_lock_row.add_theme_constant_override("separation", 8)
+	strain_lock_row.add_child(LockIcon.new())
+	strain_lock_label = HudParts.wrapping(HudParts.label("", 13, 400, _muted))
+	strain_lock_label.name = "StrainLockLabel"
+	strain_lock_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	strain_lock_row.add_child(strain_lock_label)
+	unit_box.add_child(strain_lock_row)
 	memory_hint_label = HudParts.label("", 14, 700, Color("#48dbfb"))
 	memory_hint_label.name = "MemoryHintLabel"
 	memory_hint_label.visible = false
