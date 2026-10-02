@@ -33,6 +33,7 @@ const MENU_QUIT: int = 5
 const MENU_TEST_IN_LAB: int = 6
 const MENU_TEST_IN_LAB_TEXT: String = "Test in Lab"
 const PILL_GAP: float = 12.0
+const CONNECTION_PILL_TOP: float = 74.0
 const START_INTRO_LAB: String = "You will attack this base yourself next, so build something you would struggle to break."
 const START_INTRO_LIVING_BASE: String = "AI raids will attack this base, so build something they would struggle to break."
 const COLLECT_SIZE: Vector2 = Vector2(120.0, 52.0)
@@ -180,6 +181,8 @@ var btn_defense_log: PillButton = null
 var btn_upgrades: PillButton = null
 var spent_block: VBoxContainer = null
 var lb_timer: Timer = null
+## Read-only Offline / Connecting / Online / Update required chip, shown in Living Base with the `online` flag.
+var connection_pill: ConnectionPill = null
 
 var left_card: FloatingCard = null
 var start_box: VBoxContainer = null
@@ -543,6 +546,7 @@ func _update_living_base() -> void:
 	if btn_collect == null:
 		return
 	var lb: bool = is_living_base()
+	_sync_connection_pill(lb)
 	btn_finalize.visible = not lb
 	btn_raid.visible = lb
 	btn_incoming.visible = lb
@@ -567,6 +571,18 @@ func _update_living_base() -> void:
 	btn_collect.disabled = stored <= 0
 	btn_collect.queue_redraw()
 	_layout_wallet_pills()
+
+
+## The connection pill follows the shared backend; with the `online` flag off it stays hidden and nothing connects.
+func _sync_connection_pill(lb: bool) -> void:
+	var online: bool = lb and Net.is_online_enabled(session.config)
+	connection_pill.visible = online
+	if not online:
+		return
+	var backend: BackendClient = Net.backend(session.config)
+	connection_pill.bind(backend)
+	if backend.status() == BackendClient.STATUS_OFFLINE and backend is NakamaBackend:
+		backend.connect_and_auth()
 
 
 ## Defense log shows in Living Base; Upgrades shows with the amino_upgrades flag.
@@ -912,6 +928,11 @@ func _show_toast(msg: String) -> void:
 
 func _build() -> void:
 	_build_atp_pill()
+	connection_pill = ConnectionPill.new()
+	connection_pill.name = "ConnectionPill"
+	add_child(connection_pill)
+	_anchor_top_center(connection_pill, CONNECTION_PILL_TOP, ConnectionPill.PILL_SIZE)
+	connection_pill.visible = false
 	_build_phase_pill()
 	_build_buttons()
 	_build_left_card()
