@@ -11,6 +11,8 @@ extends RefCounted
 const ONLINE_CACHE_PATH: String = "user://living_base_online.json"
 const IMPORT_ANSWERED_PATH: String = "user://living_base_import_answered.txt"
 const BUSY_RETRIES: int = 6
+## Polls of job_status while a raid is validated (0.5 s each): the Results screen waits this long.
+const PVP_POLLS: int = 60
 
 ## A toast-worthy message that arrived outside a button press (a rejected commit, for example).
 signal message(text: String)
@@ -235,15 +237,23 @@ func decline_import() -> void:
 	_mark_import_answered()
 
 
-## Replaces the session with the server's copy (after a rejection or a conflict).
-func reload_from_server() -> bool:
+## Replaces the session with the server's copy (after a rejection or a conflict). With `reload_layout` false
+## unsaved edits to the island are kept (a late raid verdict must not wipe them).
+func reload_from_server(reload_layout: bool = true) -> bool:
 	if not is_online():
 		return false
 	var got: Dictionary = await api.profile_get(_client_version(), session.config.content_hash)
 	if not bool(got.get("ok", false)) or (got["profile"] as Dictionary).is_empty():
 		return false
-	_adopt_server_profile(got["profile"] as Dictionary, true)
+	_adopt_server_profile(got["profile"] as Dictionary, reload_layout)
 	return true
+
+
+## The backend this flow talks to (OpponentScreen asks it for players).
+func backend() -> BackendClient:
+	if api != null:
+		return api.backend
+	return Net.backend(session.config if session != null else null)
 
 
 ## Starts a PvP raid on `defender_id`: the server freezes the defender's base and issues the seed. On success the
@@ -254,6 +264,7 @@ func begin_pvp_raid(defender_id: String) -> Dictionary:
 	var committed: Dictionary = await commit_if_dirty()
 	if not bool(committed.get("ok", false)):
 		return committed
+	last_pvp_result = {}
 	var res: Dictionary = await api.backend.raid_start(defender_id)
 	if not bool(res.get("ok", false)):
 		message.emit(NetCopy.error_text(str(res.get("error", "network_error"))))
@@ -299,13 +310,14 @@ func submit_pvp_raid(sim: BattleSim) -> Dictionary:
 	var sent: Dictionary = await api.backend.raid_submit(raid_id, army, sim.state_hash())
 	var done: Dictionary = {"ok": false, "error": str(sent.get("error", "network_error")), "result": {}}
 	if bool(sent.get("ok", false)):
-		done = await api.wait_job(str(sent.get("job_id", "")))
+		done = await api.wait_job(str(sent.get("job_id", "")), PVP_POLLS)
 	last_pvp_result = done
 	pvp_result_ready.emit(done)
-	if not bool(done.get("ok", false)):
+	# A timeout is not an error: Results says "Still validating" and the next profile_get picks the result up.
+	if not bool(done.get("ok", false)) and str(done.get("error", "")) != "timeout":
 		message.emit(NetCopy.error_text(str(done.get("error", "network_error"))))
 	if is_active():
-		await reload_from_server()
+		await reload_from_server(false)
 	return done
 
 
@@ -320,7 +332,7 @@ func cancel_pvp_raid() -> Dictionary:
 	var res: Dictionary = await api.backend.raid_cancel(session.pvp_raid_id, army)
 	session.clear_attack_target()
 	if is_active():
-		await reload_from_server()
+		await reload_from_server(false)
 	return res
 
 

@@ -36,6 +36,9 @@ const ISLAND_SIZE: Vector2 = Vector2(230.0, 150.0)
 const TITLE_ATTACKER: String = "Nucleus destroyed"
 const TITLE_DEFENDER: String = "Defense held"
 const TITLE_BASE_INFECTED: String = "Base infected"
+const VALIDATING_TEXT: String = "Validating..."
+const STILL_VALIDATING_TEXT: String = "Still validating. We'll update your base when it finishes."
+const HASH_DIFFERS_TEXT: String = "Server result differs from your replay."
 
 
 ## Holds the final-state island thumbnail and clips it to its frame.
@@ -100,6 +103,10 @@ var base_atp: int = 0
 var army_atp: int = 0
 var unspent_atp: int = 0
 var split_widths: Dictionary = {}
+
+## Online PvP raid: "Validating..." until the worker's verdict, then the server's numbers only.
+var pvp_status_label: Label = null
+var pvp_note_label: Label = null
 
 # Buttons
 var btn_re_raid: PillButton = null
@@ -197,6 +204,14 @@ func _build_left_column() -> void:
 	loot_label.name = "LootLabel"
 	loot_label.visible = false
 	extras.add_child(loot_label)
+	pvp_status_label = HudParts.wrapping(HudParts.label("", 16, 700, _ink))
+	pvp_status_label.name = "PvpStatusLabel"
+	pvp_status_label.visible = false
+	extras.add_child(pvp_status_label)
+	pvp_note_label = HudParts.wrapping(HudParts.label("", 13, 400, _muted))
+	pvp_note_label.name = "PvpNoteLabel"
+	pvp_note_label.visible = false
+	extras.add_child(pvp_note_label)
 	memory_label = HudParts.wrapping(HudParts.label("", 14, 400, _muted))
 	memory_label.name = "MemoryLabel"
 	memory_label.visible = false
@@ -435,6 +450,76 @@ func _populate() -> void:
 	else:
 		_update_new_base_label()
 	_populate_survey()
+	_populate_pvp()
+
+
+## True for the Results of an online PvP raid (the battle was played locally, the numbers are the server's).
+func is_pvp() -> bool:
+	return is_living_base() and session.living_flow.is_online() and bool(session.last_result.get("pvp_pending", false))
+
+
+## An online raid shows no locally computed rewards: only "Validating..." and then the worker's result.
+func _populate_pvp() -> void:
+	if not is_pvp():
+		return
+	var flow: LivingBaseFlow = session.living_flow
+	score_label.visible = false
+	loot_label.visible = false
+	memory_label.visible = false
+	evolution_label.visible = false
+	atp_card.visible = false
+	_set_button(btn_re_raid, "New target", "Pick another player", RE_RAID_WIDTH)
+	_set_button(btn_edit_base, "Back to base", "Home", EDIT_WIDTH)
+	btn_new_base.visible = false
+	if not flow.pvp_result_ready.is_connected(_on_pvp_result):
+		flow.pvp_result_ready.connect(_on_pvp_result)
+	if flow.last_pvp_result.is_empty():
+		pvp_status_label.text = VALIDATING_TEXT
+		pvp_status_label.visible = true
+	else:
+		_on_pvp_result(flow.last_pvp_result)
+
+
+func _on_pvp_result(done: Dictionary) -> void:
+	if not is_inside_tree() and pvp_status_label == null:
+		return
+	pvp_note_label.visible = false
+	if not bool(done.get("ok", false)):
+		var code: String = str(done.get("error", ""))
+		pvp_status_label.text = STILL_VALIDATING_TEXT if code == "timeout" else NetCopy.error_text(code)
+		pvp_status_label.visible = true
+		return
+	var result: Dictionary = done.get("result", {}) as Dictionary
+	var res: Dictionary = result.get("res", {}) as Dictionary
+	var cfg: GameConfig = session.config
+	var lines: Array[String] = []
+	var loot: String = loot_text(res)
+	lines.append(("Loot: " + loot) if not loot.is_empty() else "No loot this time")
+	var trophies: Dictionary = result.get("trophies", {}) as Dictionary
+	if not trophies.is_empty():
+		lines.append(trophies_text(int(trophies.get("attacker_delta", 0))))
+	pvp_status_label.text = " · ".join(lines)
+	pvp_status_label.visible = true
+	var theirs: Array[String] = []
+	var learned: String = base_learned_text(res.get("memory_changes", []) as Array, cfg)
+	if not learned.is_empty():
+		theirs.append(learned.replace("The base learned", "Their base learned"))
+	var evolved: String = base_evolved_text(res.get("evolution", []) as Array, cfg)
+	if not evolved.is_empty():
+		theirs.append(evolved.replace("The base evolved", "Their base evolved"))
+	memory_label.text = "\n".join(theirs)
+	memory_label.visible = not theirs.is_empty()
+	var attacker_won: bool = str(res.get("outcome", "")) == "attacker"
+	title_label.text = TITLE_ATTACKER if attacker_won else TITLE_DEFENDER
+	kicker_label.add_theme_color_override("font_color", kicker_color(attacker_won, false))
+	if not bool(result.get("hash_match", true)):
+		pvp_note_label.text = HASH_DIFFERS_TEXT
+		pvp_note_label.visible = true
+
+
+## "+20 trophies" / "-10 trophies" / "0 trophies".
+static func trophies_text(delta: int) -> String:
+	return "%s%d trophies" % ["+" if delta > 0 else "", delta]
 
 
 func _timeout_s(res: Dictionary, battle_s: float) -> float:
@@ -826,7 +911,8 @@ static func apply_choice(choice: String, session: Session, fsm: GameStateMachine
 	match choice:
 		"raid_again":
 			# Living Base: the army was spent. Same opponent if it still exists, else the opponent picker.
-			var aimed: bool = session.living_flow != null and session.living_flow.raid_again()
+			# An online raid is over once submitted: a new target is picked on the opponent screen.
+			var aimed: bool = session.living_flow != null and not session.living_flow.has_pvp_raid() and session.living_flow.raid_again()
 			if fsm != null:
 				if aimed:
 					fsm.request_transition(GameStateMachine.Phase.INCUBATION)

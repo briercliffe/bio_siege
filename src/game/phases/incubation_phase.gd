@@ -12,6 +12,17 @@ var hud_spawn: HudSpawn = null
 var toast: Toast = null
 var side_switch_overlay: SideSwitchOverlay = null
 var background: AmbientBackground = null
+## Online PvP raid: "Raid expires in 9:41" until the server's expiry, then back to base with the army spent.
+const EXPIRY_TEXT: String = "Raid expires in %d:%02d"
+const EXPIRED_TEXT: String = "Raid expired. Your army was spent."
+const EXPIRY_TOP: float = 74.0
+const EXPIRY_SIZE: Vector2 = Vector2(240.0, 36.0)
+var expiry_pill: PanelContainer = null
+var expiry_label: Label = null
+## Tests set this to fake the clock; -1 reads the system clock.
+var now_unix_override: int = -1
+var _expiry_timer: Timer = null
+var _expired: bool = false
 
 ## Island area between the HUD cards at 1280x720 (mockups 09 and 10): x 320..960, y 96..616.
 const ISLAND_INSET_X: float = 320.0
@@ -82,6 +93,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 
 	_update_grid_layout()
 
+	_setup_expiry()
+
 	if fsm != null and fsm.previous_phase == GameStateMachine.Phase.SYNTHESIS:
 		if side_switch_overlay != null:
 			var remaining_atp: int = session.wallet.get_amount("atp") if (session != null and session.wallet != null) else 0
@@ -89,6 +102,72 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 	else:
 		if side_switch_overlay != null:
 			side_switch_overlay.visible = false
+
+## The countdown pill and its one-second timer exist only for an online PvP raid.
+func _setup_expiry() -> void:
+	_expired = false
+	var online_raid: bool = session != null and session.living_flow != null and session.living_flow.has_pvp_raid()
+	if expiry_pill != null:
+		expiry_pill.visible = online_raid
+	if _expiry_timer != null:
+		_expiry_timer.stop()
+	if not online_raid:
+		return
+	if expiry_pill == null:
+		expiry_pill = PanelContainer.new()
+		expiry_pill.name = "ExpiryPill"
+		expiry_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		expiry_pill.anchor_left = 0.5
+		expiry_pill.anchor_right = 0.5
+		expiry_pill.offset_left = -EXPIRY_SIZE.x * 0.5
+		expiry_pill.offset_right = EXPIRY_SIZE.x * 0.5
+		expiry_pill.offset_top = EXPIRY_TOP
+		expiry_pill.offset_bottom = EXPIRY_TOP + EXPIRY_SIZE.y
+		var pal: Dictionary = UiPalette.for_theme(true)
+		expiry_pill.add_theme_stylebox_override("panel", KitDraw.make_box(pal["panel"] as Color, EXPIRY_SIZE.y * 0.5, 2, pal["panel_border"] as Color))
+		expiry_label = Label.new()
+		expiry_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		expiry_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		UiFonts.style_label(expiry_label, 15, 700, pal["ink"] as Color)
+		expiry_pill.add_child(expiry_label)
+		add_child(expiry_pill)
+	if _expiry_timer == null:
+		_expiry_timer = Timer.new()
+		_expiry_timer.wait_time = 1.0
+		_expiry_timer.one_shot = false
+		_expiry_timer.autostart = true  # the phase may not be in the tree yet when setup() runs
+		_expiry_timer.timeout.connect(update_expiry)
+		add_child(_expiry_timer)
+	elif _expiry_timer.is_inside_tree():
+		_expiry_timer.start()
+	update_expiry()
+
+
+func _now_unix() -> int:
+	return now_unix_override if now_unix_override >= 0 else int(Time.get_unix_time_from_system())
+
+
+## Refreshes the countdown; at zero the raid is over: the army is reported (and spent) and the player goes home.
+func update_expiry() -> void:
+	if _expired or session == null or session.living_flow == null or not session.living_flow.has_pvp_raid():
+		return
+	var remaining: int = session.pvp_expires_unix - _now_unix()
+	if remaining > 0:
+		expiry_label.text = EXPIRY_TEXT % [remaining / 60, remaining % 60]
+		return
+	_expired = true
+	expiry_label.text = EXPIRED_TEXT
+	if _expiry_timer != null:
+		_expiry_timer.stop()
+	if toast != null:
+		toast.show_message(EXPIRED_TEXT)
+	var flow: LivingBaseFlow = session.living_flow
+	flow.cancel_pvp_raid()
+	if session.army != null:
+		session.army.discard_all()
+	if fsm != null:
+		fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
+
 
 ## Called by GameStateMachine after a config hot reload was applied (#27).
 func on_config_changed(_summary: Dictionary) -> void:

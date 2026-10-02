@@ -332,6 +332,20 @@ func _abandon(reason: String, to: GameStateMachine.Phase) -> void:
 			else:
 				fsm.request_transition(to)
 		return
+	if session != null and session.living_flow != null and session.living_flow.has_pvp_raid():
+		# Online raid: quitting means submitting what is done. The inputs were complete at launch, so the battle
+		# runs to the end headlessly and the server re-simulates it.
+		if runner != null and runner.sim != null:
+			if not runner.sim.finished:
+				runner.sim.run_to_end()
+			session.living_flow.submit_pvp_raid(runner.sim)
+		session.army.discard_all()
+		var log_pvp: Node = logger if logger != null else SessionLogger
+		if log_pvp != null and log_pvp.has_method("log_event"):
+			log_pvp.call("log_event", "battle_abandoned", {"reason": reason, "tick": tick})
+		if fsm != null:
+			fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
+		return
 	if session != null and session.army != null:
 		if session.mode == Session.Mode.LIVING_BASE:
 			# Living Base: the army of a launched raid is spent, win, lose or abandon.
