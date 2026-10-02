@@ -1,0 +1,19 @@
+{
+  "name": "bio-siege-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nakama TypeScript runtime for Bio Siege online raids. Never implements game rules (see docs/SERVER_PLAN.md).",
+  "scripts": {
+    "gen": "node scripts/gen_data.mjs",
+    "build": "npm run gen && tsc --noEmit && node scripts/build.mjs",
+    "test": "npm run gen && vitest run",
+    "lint": "npm run gen && tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "esbuild": "0.28.2",
+    "nakama-runtime": "github:heroiclabs/nakama-common#v1.48.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}

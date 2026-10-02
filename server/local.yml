@@ -1,0 +1,13 @@
+# Local development config only. These keys are public dev defaults, never use them in production.
+name: bio_siege_local
+data_dir: "/nakama/data/"
+logger:
+  level: "INFO"
+runtime:
+  js_entrypoint: "index.js"
+  http_key: "bio_siege_dev_http_key"
+socket:
+  server_key: "defaultkey"
+  max_message_size_bytes: 4096
+session:
+  token_expiry_sec: 7200
