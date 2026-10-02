@@ -808,3 +808,23 @@ func test_getting_started_copy_matches_the_mode() -> void:
 	var hud: HudBuild = _setup_hud(session)["hud"]
 	assert_eq(hud.start_intro_label.text, HudBuild.START_INTRO_LIVING_BASE)
 	_clean_lb_dir()
+
+func test_connection_pill_is_hidden_with_the_online_flag_off() -> void:
+	var session: Session = _living_base_session()
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	assert_false(session.config.flag("online"))
+	assert_false(hud.connection_pill.visible)
+	assert_true(Net.backend(session.config) is OfflineBackend)
+	_clean_lb_dir()
+
+func test_connection_pill_shows_backend_status_with_the_online_flag_on() -> void:
+	var session: Session = _living_base_session()
+	session.config.feature_flags["online"] = true
+	var fake := OfflineBackend.new()
+	fake.set_status_for_tests("online")
+	Net.set_backend_for_tests(fake)
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	assert_true(hud.connection_pill.visible)
+	assert_eq(hud.connection_pill.shown_status, "online")
+	Net.reset()
+	_clean_lb_dir()

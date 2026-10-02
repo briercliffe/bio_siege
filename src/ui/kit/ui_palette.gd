@@ -40,6 +40,9 @@ const DAY: Dictionary = {
 	"cell_fill": Color(1.0, 1.0, 1.0, 0.45),
 	"cell_ring": Color(0.549, 0.7255, 0.8824, 0.55),
 	"vignette": Color(0.1569, 0.3529, 0.5882, 0.18),
+	"status_online": Color("#1f8f4e"),
+	"status_connecting": Color("#c27a00"),
+	"status_update": Color("#b3261e"),
 }
 
 const NIGHT: Dictionary = {
@@ -78,6 +81,9 @@ const NIGHT: Dictionary = {
 	"cell_fill": Color(0.4706, 0.1373, 0.1961, 0.22),
 	"cell_ring": Color(1.0, 1.0, 1.0, 0.05),
 	"vignette": Color(0.0, 0.0, 0.0, 0.45),
+	"status_online": Color("#2ecc71"),
+	"status_connecting": Color("#ffb347"),
+	"status_update": Color("#ff8a7e"),
 }
 
 const PLUS_DISABLED_FILL: Color = Color("#4a2a30")
