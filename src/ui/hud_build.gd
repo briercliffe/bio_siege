@@ -33,6 +33,8 @@ const MENU_QUIT: int = 5
 const MENU_TEST_IN_LAB: int = 6
 const MENU_TEST_IN_LAB_TEXT: String = "Test in Lab"
 const PILL_GAP: float = 12.0
+const START_INTRO_LAB: String = "You will attack this base yourself next, so build something you would struggle to break."
+const START_INTRO_LIVING_BASE: String = "AI raids will attack this base, so build something they would struggle to break."
 const COLLECT_SIZE: Vector2 = Vector2(120.0, 52.0)
 const LB_BUTTON_HEIGHT: float = 52.0
 const MENU_SAVE_TEXT: String = "Save base…"
@@ -182,6 +184,7 @@ var lb_timer: Timer = null
 var left_card: FloatingCard = null
 var start_box: VBoxContainer = null
 var start_title_label: Label = null
+var start_intro_label: Label = null
 var selection_box: VBoxContainer = null
 var icon_disc: IconDisc = null
 var selection_name_label: Label = null
@@ -238,6 +241,7 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	resized.connect(_layout_wallet_pills)
 	_update_all()
 
 
@@ -574,10 +578,25 @@ func _sync_lb_buttons() -> void:
 	lb_buttons.visible = lb
 
 
+## True when the Amino Acid and DNA pills would run into the centred phase pill on this width.
+func wallet_pills_wrapped() -> bool:
+	if aa_pill == null or not aa_pill.visible or size.x <= 0.0:
+		return false
+	var right: float = atp_pill.position.x + atp_pill.size.x + PILL_GAP + aa_pill.size.x
+	if dna_pill.visible:
+		right += PILL_GAP + dna_pill.size.x
+	return right > size.x * 0.5 - PillPanel.PHASE_SIZE.x * 0.5 - PILL_GAP
+
+
+## The extra wallet pills sit beside the ATP pill, or on a second row (pushing the left card down) when narrow.
 func _layout_wallet_pills() -> void:
-	var x: float = atp_pill.position.x + atp_pill.size.x + PILL_GAP
-	aa_pill.position = Vector2(x, ATP_POS.y)
-	dna_pill.position = Vector2(x + aa_pill.size.x + PILL_GAP, ATP_POS.y)
+	var wrapped: bool = wallet_pills_wrapped()
+	var x: float = ATP_POS.x if wrapped else atp_pill.position.x + atp_pill.size.x + PILL_GAP
+	var y: float = ATP_POS.y + (PILL_HEIGHT + PILL_GAP if wrapped else 0.0)
+	aa_pill.position = Vector2(x, y)
+	dna_pill.position = Vector2(x + aa_pill.size.x + PILL_GAP, y)
+	if left_card != null:
+		left_card.position.y = CARD_TOP + (PILL_HEIGHT + PILL_GAP if wrapped else 0.0)
 
 
 func _update_atp_label(amount: int, pulse: bool) -> void:
@@ -601,6 +620,8 @@ func _current_tool() -> String:
 
 
 func _update_left_card() -> void:
+	if start_intro_label != null:
+		start_intro_label.text = START_INTRO_LIVING_BASE if is_living_base() else START_INTRO_LAB
 	var tool_id: String = _current_tool()
 	var cfg: GameConfig = session.config if session != null else null
 	var is_tool: bool = tool_id == "sell" or tool_id == BuildController.TOOL_MOVE_NUCLEUS
@@ -1030,8 +1051,8 @@ func _build_left_card() -> void:
 	start_box.add_child(_kicker("GETTING STARTED", _muted))
 	start_title_label = _wrapping(_label("Protect the Nucleus.", 24, 800, _ink))
 	start_box.add_child(start_title_label)
-	start_box.add_child(_wrapping(_label(
-			"You will attack this base yourself next, so build something you would struggle to break.", 15, 400, _muted)))
+	start_intro_label = _wrapping(_label(START_INTRO_LAB, 15, 400, _muted))
+	start_box.add_child(start_intro_label)
 	var steps: VBoxContainer = _vbox(12)
 	for i: int in range(START_STEPS.size()):
 		var row: HBoxContainer = _hbox(12)

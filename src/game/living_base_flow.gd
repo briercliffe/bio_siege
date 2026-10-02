@@ -45,6 +45,7 @@ func enter(p_session: Session, defer_raids: bool = false) -> void:
 	_atp_generated = profile.advance_clock(cfg, now)
 	_session_start_logged = false
 	profile.ensure_opponents(cfg)
+	_stash_lab(session)
 	session.mode = Session.Mode.LIVING_BASE
 	session.profile = profile
 	session.living_flow = self
@@ -458,14 +459,43 @@ static func reset_to_lab(p_session: Session) -> void:
 	p_session.living_flow = null
 	p_session.live_defense = false
 	p_session.clear_attack_target()
-	p_session.grid.reset_with_nucleus()
-	p_session.army = Army.new(cfg)
-	p_session.wallet.reset(cfg.start_wallet)
-	p_session.memory = ImmuneMemory.new()
-	p_session.reset_populations()
+	if not p_session.lab_stash.is_empty():
+		var stash: Dictionary = p_session.lab_stash
+		p_session.grid = stash["grid"]
+		p_session.army = stash["army"]
+		p_session.wallet = stash["wallet"]
+		p_session.memory = stash["memory"]
+		p_session.populations = stash["populations"]
+		p_session.lab_stash = {}
+	else:
+		p_session.grid.reset_with_nucleus()
+		p_session.army = Army.new(cfg)
+		p_session.wallet.reset(cfg.start_wallet)
+		p_session.memory = ImmuneMemory.new()
+		p_session.reset_populations()
 	p_session.prediction_structure_id = 0
 	p_session.last_result = {}
 	p_session.last_launch = {}
+
+
+## Sets the Lab base aside (and gives the session fresh objects for the profile to fill in) so picking
+## Lab again brings it back. Only a Lab session is stashed; a repeat enter() keeps the first stash.
+static func _stash_lab(p_session: Session) -> void:
+	if p_session.mode != Session.Mode.LAB:
+		return
+	p_session.lab_stash = {
+		"grid": p_session.grid,
+		"army": p_session.army,
+		"wallet": p_session.wallet,
+		"memory": p_session.memory,
+		"populations": p_session.populations,
+	}
+	p_session.grid = GridModel.new(p_session.config)
+	p_session.grid.reset_with_nucleus()
+	p_session.army = Army.new(p_session.config)
+	p_session.wallet = Wallet.new(p_session.config.start_wallet)
+	p_session.memory = ImmuneMemory.new()
+	p_session.populations = {}
 
 
 func _apply_profile_to_session() -> void:
