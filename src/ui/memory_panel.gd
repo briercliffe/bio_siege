@@ -126,6 +126,34 @@ static func strain_label(strain_key: String, config: GameConfig) -> String:
 	return "%s (%s)" % [p_name, variant_id]
 
 
+## Compact read-only rows for another base's memory (the opponent picker): one "strain  pips" line per
+## strain, strongest first, or `empty_text` when it remembers nothing.
+static func fill_compact(into: Container, memory: ImmuneMemory, cfg: GameConfig, empty_text: String, ink: Color, muted: Color) -> void:
+	var keys: Array[String] = []
+	for k: Variant in memory.entries.keys():
+		keys.append(str(k))
+	keys.sort()
+	if keys.is_empty():
+		var empty := Label.new()
+		empty.text = empty_text
+		empty.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		UiFonts.style_label(empty, 14, 400, muted)
+		into.add_child(empty)
+		return
+	for key: String in keys:
+		var row := HBoxContainer.new()
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_theme_constant_override("separation", 8)
+		var name_label := Label.new()
+		name_label.text = strain_label(key, cfg)
+		name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		UiFonts.style_label(name_label, 14, 400, ink)
+		row.add_child(name_label)
+		row.add_child(PipRow.new(int(memory.entries[key]["level"]), cfg.memory_max_level))
+		into.add_child(row)
+
+
 ## "3 / 4 slots" for the player's own base once it has a memory-slot upgrade.
 func _refresh_slots(cfg: GameConfig, mem: ImmuneMemory) -> void:
 	slots_label.visible = false

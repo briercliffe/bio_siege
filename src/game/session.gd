@@ -163,6 +163,12 @@ func apply_new_config(new_config: GameConfig) -> Dictionary:
 			if new_config.is_breeding_type(tid):
 				rebuilt[tid] = BreedPool.from_dict((populations[type_id] as BreedPool).to_dict(), tid, new_config)
 		populations = rebuilt
+		var rebuilt_attack: Dictionary = {}
+		for type_id: Variant in attack_populations.keys():
+			var tid: String = str(type_id)
+			if new_config.is_breeding_type(tid) and attack_populations[type_id] is BreedPool:
+				rebuilt_attack[tid] = BreedPool.from_dict((attack_populations[type_id] as BreedPool).to_dict(), tid, new_config)
+		attack_populations = rebuilt_attack
 	if grid == null or wallet == null or army == null:
 		summary["message"] = _reload_message(int(summary["changed_values"]), notices)
 		return summary

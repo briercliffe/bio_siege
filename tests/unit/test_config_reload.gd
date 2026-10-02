@@ -908,3 +908,23 @@ func test_reload_recovers_from_invalid_startup_config() -> void:
 	assert_true(gd.reload_config())
 	assert_not_null(gd.config)
 	assert_true(gd.load_errors.is_empty())
+
+
+func test_reload_rebuilds_the_attack_pools_like_the_own_pools() -> void:
+	var cfg: GameConfig = _variant(func(r: Dictionary, _s: Dictionary, _p: Dictionary) -> void:
+		r["feature_flags"]["coevolution"] = true
+	)
+	var session := Session.new(cfg)
+	var structure_type: String = ""
+	for t: String in cfg.coevo_types:
+		if cfg.structures.has(t):
+			structure_type = t
+	assert_ne(structure_type, "", "the shipped data has a breeding structure type")
+	var old_pool: BreedPool = BreedPool.wild_pool(structure_type, cfg)
+	session.attack_populations = {structure_type: old_pool}
+	var next: GameConfig = _variant(func(r: Dictionary, _s: Dictionary, _p: Dictionary) -> void:
+		r["feature_flags"]["coevolution"] = true
+	)
+	session.apply_new_config(next)
+	assert_true(session.attack_populations[structure_type] is BreedPool)
+	assert_not_same(session.attack_populations[structure_type], old_pool, "rebuilt against the new config")
