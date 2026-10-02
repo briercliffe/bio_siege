@@ -3,6 +3,7 @@
 // (src/core/online/raid_jobs.gd); the patches applied here only add, subtract and replace values it returned.
 import { nowUnix } from "./clock";
 import { DATA, CONTENT_HASH } from "./generated/data";
+import { writeTrophies } from "./leaderboard";
 import { amendJob, enqueueJob, Job, JobOutcome, registerClaimHook, registerJobHandler } from "./jobs";
 import { BASE_COLLECTION, readProfile, SNAPSHOT_KEY, updateProfile } from "./profile";
 import { takeToken } from "./ratelimit";
@@ -15,6 +16,8 @@ export const SYSTEM_USER: string = "00000000-0000-0000-0000-000000000000";
 export const RAID_SECONDS: number = 600;
 const MAX_ARMY_UNITS: number = 300;
 const SWEEP_SCAN_LIMIT: number = 50;
+/** recent_opponents entries older than this are dropped (the matchmaking window is shorter). */
+const RECENT_KEEP_SECONDS: number = 7 * 24 * 3600;
 
 type Dict = { [key: string]: unknown };
 
@@ -171,7 +174,16 @@ export function rpcRaidStart(ctx: nkruntime.Context, _logger: nkruntime.Logger, 
     result: null,
   };
   writeRaid(nk, raid, "*");
-  updateProfile(nk, attackerId, (p) => { p.open_raid_id = raid.raid_id; return true; });
+  updateProfile(nk, attackerId, (p) => {
+    p.open_raid_id = raid.raid_id;
+    p.shield_until_unix = 0; // attacking someone ends your own shield
+    const recent = (p.recent_opponents || {}) as Dict;
+    const keep = now - RECENT_KEEP_SECONDS;
+    for (const id of Object.keys(recent)) if (num(recent[id]) < keep) delete recent[id];
+    recent[defenderId] = now;
+    p.recent_opponents = recent;
+    return true;
+  });
   return okResult({ raid_id: raid.raid_id, seed: raid.seed, defender_snapshot: raid.defender_snapshot, expires_unix: raid.expires_unix });
 }
 
@@ -262,6 +274,7 @@ function applyAttackerPatch(p: Dict, patch: Dict): boolean {
   for (const t of Object.keys(pools)) pops[t] = pools[t];
   p.populations = pops;
   p.raid_counter = num(p.raid_counter) + num(patch.raid_counter_inc);
+  if (patch.trophies_delta !== undefined) p.trophies = Math.max(0, num(p.trophies) + num(patch.trophies_delta));
   return true;
 }
 
@@ -276,6 +289,8 @@ function applyDefenderPatch(p: Dict, patch: Dict): boolean {
   const pools = (patch.structure_pools || {}) as Dict;
   for (const t of Object.keys(pools)) pops[t] = pools[t];
   p.populations = pops;
+  if (patch.trophies_delta !== undefined) p.trophies = Math.max(0, num(p.trophies) + num(patch.trophies_delta));
+  if (patch.shield_until_unix !== undefined) p.shield_until_unix = num(patch.shield_until_unix);
   return true;
 }
 
@@ -285,6 +300,7 @@ function refreshSnapshot(nk: nkruntime.Nakama, userId: string, profile: Dict): v
   const snap = objs[0].value as Dict;
   snap.memory = profile.memory;
   snap.stored_atp = profile.stored_atp;
+  snap.trophies = profile.trophies;
   const pops = (snap.populations || {}) as Dict;
   const all = (profile.populations || {}) as Dict;
   for (const t of Object.keys(pops)) if (all[t] !== undefined) pops[t] = all[t];
@@ -319,9 +335,11 @@ export function onRaidValidateComplete(nk: nkruntime.Nakama, logger: nkruntime.L
   if (result.hash_match === false) logger.warn("raid %s: client hash differs from the server re-simulation", raidId);
   const attackerPatch = (result.attacker_patch || {}) as Dict;
   const defenderPatch = (result.defender_patch || {}) as Dict;
-  updateProfile(nk, raid.attacker_id, (p) => applyAttackerPatch(p, attackerPatch));
+  const attackerAfter = updateProfile(nk, raid.attacker_id, (p) => applyAttackerPatch(p, attackerPatch));
   const defenderAfter = updateProfile(nk, raid.defender_id, (p) => applyDefenderPatch(p, defenderPatch));
   if (defenderAfter !== null) refreshSnapshot(nk, raid.defender_id, defenderAfter);
+  if (attackerAfter !== null) writeTrophies(nk, logger, raid.attacker_id, num(attackerAfter.trophies));
+  if (defenderAfter !== null) writeTrophies(nk, logger, raid.defender_id, num(defenderAfter.trophies));
   const { battle, ...slim } = result;
   amendRaid(nk, raidId, (r) => { r.status = "done"; r.result = slim; return true; });
   releaseRaid(nk, raid);

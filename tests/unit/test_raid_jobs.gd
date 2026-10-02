@@ -192,11 +192,11 @@ func test_army_spend_charges_the_army_and_never_goes_negative() -> void:
 
 func test_server_extras_survive() -> void:
 	var attacker: Dictionary = _profile(_cfg, 1)
-	attacker["trophies"] = 77
+	attacker["shield_until_unix"] = 77
 	attacker["unlocked_strains"] = ["rhinovirus/capsid_hardening"]
 	var res: Dictionary = _validate(_cfg, _payload(_cfg, _army(), attacker))
 	var after: Dictionary = (res["result"] as Dictionary)["attacker_profile"] as Dictionary
-	assert_eq(int(after["trophies"]), 77)
+	assert_eq(int(after["shield_until_unix"]), 77)
 	assert_eq(after["unlocked_strains"], ["rhinovirus/capsid_hardening"])
 
 
@@ -210,3 +210,21 @@ func test_a_bad_snapshot_or_profile_is_rejected() -> void:
 	var r: Dictionary = _payload(_cfg, _army())
 	((r["raid"] as Dictionary)["defender_snapshot"] as Dictionary)["layout"] = [{"type": "nucleus", "origin": [99, 99]}]
 	assert_eq(_validate(_cfg, r)["error"], "invalid_layout")
+
+
+func test_trophies_and_shield_come_from_the_worker() -> void:
+	var cfg: GameConfig = _load({"online": true})
+	var attacker: Dictionary = _profile(cfg, 1)
+	attacker["trophies"] = 500
+	var defender: Dictionary = _profile(cfg, 2, [{"type": "mitochondria", "origin": [10, 10]}])
+	defender["trophies"] = 600
+	var result: Dictionary = _validate(cfg, _payload(cfg, _army(8), attacker, defender))["result"] as Dictionary
+	var won: bool = (result["res"] as Dictionary)["outcome"] == "attacker"
+	var t: Dictionary = Trophies.settle(cfg, 500, 600, won)
+	assert_eq(result["trophies"], t)
+	var a_patch: Dictionary = result["attacker_patch"] as Dictionary
+	var d_patch: Dictionary = result["defender_patch"] as Dictionary
+	assert_eq(int(a_patch["trophies_delta"]), int(t["attacker_delta"]))
+	assert_eq(int(d_patch["trophies_delta"]), int(t["defender_delta"]))
+	assert_eq(int(d_patch["shield_until_unix"]), T0 + 12 * 3600)
+	assert_eq(int((result["attacker_profile"] as Dictionary)["trophies"]), int(t["attacker_after"]))

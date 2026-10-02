@@ -61,6 +61,9 @@ func _on_screen_opened(_id: String) -> void:
 	var upgrades: UpgradesScreen = top as UpgradesScreen
 	if upgrades != null and fsm != null:
 		upgrades.setup(fsm.session, fsm)
+	var leaderboard: LeaderboardScreen = top as LeaderboardScreen
+	if leaderboard != null and fsm != null:
+		leaderboard.setup(fsm.session)
 	var defense_log: DefenseLogScreen = top as DefenseLogScreen
 	if defense_log != null and fsm != null:
 		defense_log.setup(fsm.session, fsm)

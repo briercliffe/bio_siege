@@ -61,7 +61,7 @@ func test_profile_new_creates_a_start_profile_with_server_extras() -> void:
 	assert_eq(int(p["last_clock_unix"]), T0)
 	assert_eq(int((p["wallet"] as Dictionary)["atp"]), 1000)
 	assert_eq(p["config_hash"], _cfg.content_hash)
-	assert_eq(int(p["trophies"]), 0)
+	assert_eq(int(p["trophies"]), 100, "pvp.start_trophies")
 	assert_eq(p["unlocked_strains"], [])
 	assert_eq(int(p["shield_until_unix"]), 0)
 

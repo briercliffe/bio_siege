@@ -215,6 +215,46 @@ describe("raid results", () => {
   });
 });
 
+describe("trophies and shield", () => {
+  const verdict = {
+    attacker_patch: { wallet_delta: {}, pathogen_pools: {}, raid_counter_inc: 1, trophies_delta: 20 },
+    defender_patch: { atp_lost: 0, amino_gained: 0, memory: {}, structure_pools: {}, trophies_delta: -20, shield_until_unix: 1_800_000_000 + 12 * 3600 },
+    res: { outcome: "attacker" }, army_cost: {}, hash_match: true, server_final_hash: "h", battle: {},
+  };
+
+  it("applies the worker trophy deltas, floors at 0, sets the shield and updates the leaderboard", () => {
+    putProfile(A, { trophies: 100 });
+    putProfile(D, { trophies: 15 });
+    const r = call(rpcRaidStart, A, { defender_id: D });
+    call(rpcRaidSubmit, A, { raid_id: r.raid_id, army: ARMY });
+    putProfile(D, { trophies: 15, under_attack_until_unix: now + RAID_SECONDS, under_attack_raid_id: r.raid_id });
+    complete(claim()[0].job_id, true, verdict);
+    expect(profile(A).trophies).toBe(120);
+    expect(profile(D).trophies).toBe(0);
+    expect(profile(D).shield_until_unix).toBe(now + 12 * 3600);
+    expect(snapshot(D).trophies).toBe(0);
+    expect(nk.leaderboards.trophies.get(A)?.score).toBe(120);
+    expect(nk.leaderboards.trophies.get(D)?.score).toBe(0);
+  });
+
+  it("starting a raid ends the attacker own shield and records the recent opponent", () => {
+    putProfile(A, { shield_until_unix: now + 3600 });
+    call(rpcRaidStart, A, { defender_id: D });
+    expect(profile(A).shield_until_unix).toBe(0);
+    expect(profile(A).recent_opponents[D]).toBe(now);
+  });
+
+  it("a shielded defender cannot be raided until the shield ends", () => {
+    const r = call(rpcRaidStart, A, { defender_id: D });
+    call(rpcRaidSubmit, A, { raid_id: r.raid_id, army: ARMY });
+    putProfile(D, { under_attack_until_unix: now + RAID_SECONDS, under_attack_raid_id: r.raid_id });
+    complete(claim()[0].job_id, true, verdict);
+    expect(call(rpcRaidStart, E, { defender_id: D }).error).toBe("shielded");
+    now += 12 * 3600 + 1;
+    expect(call(rpcRaidStart, E, { defender_id: D }).ok).toBe(true);
+  });
+});
+
 describe("raid_cancel", () => {
   it("ends an open raid, frees the locks and spends the reported army", () => {
     const r = call(rpcRaidStart, A, { defender_id: D });

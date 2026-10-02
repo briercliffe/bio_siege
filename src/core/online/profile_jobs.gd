@@ -49,7 +49,7 @@ static func process(cfg: GameConfig, type: String, payload: Dictionary, created_
 ## The server-side extras a new profile starts with (the keys docs/SERVER_PLAN.md lists next to LivingBaseProfile).
 static func new_profile_extras(cfg: GameConfig) -> Dictionary:
 	return {
-		"trophies": 0,
+		"trophies": cfg.pvp_start_trophies,
 		"unlocked_strains": [],
 		"shield_until_unix": 0,
 		"under_attack_until_unix": 0,

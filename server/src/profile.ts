@@ -5,6 +5,7 @@
 // "busy" (the client retries); profile_get never fails with busy, it returns the stored copy and the pending job id.
 import { nowUnix } from "./clock";
 import { CONTENT_HASH } from "./generated/data";
+import { writeTrophies } from "./leaderboard";
 import { amendJob, enqueueJob, getJob, Job, JobOutcome, registerJobHandler } from "./jobs";
 import { takeToken } from "./ratelimit";
 import { errResult, okResult, parsePayload, randomInt31 } from "./rpc";
@@ -140,6 +141,8 @@ export function onProfileJobComplete(nk: nkruntime.Nakama, logger: nkruntime.Log
   if (curVersion === expected) {
     try {
       writeProfileAndSnapshot(nk, userId, profile, snapshot, curVersion);
+      // A new player enters the leaderboard with their start trophies.
+      if (cur === null && typeof profile.trophies === "number") writeTrophies(nk, logger, userId, profile.trophies);
       releaseLock(nk, userId, job.job_id);
       return;
     } catch (_e) {
