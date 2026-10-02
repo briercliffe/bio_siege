@@ -1,0 +1,143 @@
+# Server Plan (Phase 3, Online Raids)
+
+Contract for epic #174 (AM-01 to AM-12). Every later Phase 3 to 5 issue implements this document. If an issue and this file disagree, fix the file in the same PR and say so in the PR body.
+
+Anchors: [Principles](#principles) · [Storage](#storage-collections) · [RPCs](#rpc-list) · [Job protocol](#job-protocol) · [Versioning](#versioning) · [Security](#security) · [Error codes](#error-codes)
+
+## Principles
+
+- **One rule engine.** Every game rule (placement, costs, generation, sim, loot, memory, breeding) exists **only in GDScript** in `src/core`. The TypeScript server never re-implements a rule. It authenticates, stores, locks, queues **jobs**, and applies the worker's results.
+- **The server owns time and randomness.** Job timestamps and raid seeds come from the server.
+- **Clients are never trusted.** A client sends intents (a layout, an army, an input log). The worker validates and computes outcomes. Populations, memory and wallets from a client are never accepted.
+- **Data parity.** The worker and the client must run the same `data/*.json`. Every job carries the client's `GameConfig.content_hash`. A mismatch is rejected with `"update_required"`.
+- Feature flag `online` (default `false`). With it off, Living Base stays local exactly as Phase 2.
+- Server code: TypeScript in `server/`, strict mode, built to a single `build/index.js` for Nakama. Client networking only in `src/game/net/**`. Pure job rules in `src/core/online/**` (no network, no `Time`).
+- Auth: anonymous **device** authentication only (no passwords, no email). Account linking is out of scope.
+- Values in new JSON blocks are placeholders for owner sign-off.
+- Every server RPC returns `{"ok": bool, "error": String, ...}`. Error codes are lowercase snake_case strings listed in [Error codes](#error-codes).
+
+```
+Godot client (src/game/net) --RPC over HTTPS/WSS--> Nakama (TypeScript runtime, server/) --> Postgres / CockroachDB
+Headless Godot worker (tools/worker) --claim/complete jobs (RPC, http_key)--> Nakama
+Worker and client both use src/core (GridModel, BattleSim, RaidResolver)
+```
+
+## Storage collections
+
+Nakama storage objects. Permissions use Nakama numbers: read 0 = none, 1 = owner, 2 = public; write 0 = server only.
+
+| Collection / key | Owner | Read / write perms | Content |
+|---|---|---|---|
+| `profile` / `main` | user | read 1, write 0 | `LivingBaseProfile.to_dict()` plus `trophies`, `unlocked_strains`, `shield_until_unix`, `under_attack_until_unix`, `config_hash`, and later `recent_opponents`, `stats`, `first_seen_unix`, `last_seen_days` |
+| `base` / `snapshot` | user | read 2 (public), write 0 | The defended snapshot: `layout`, `memory`, structure-type `populations`, `stored_atp`, `trophies`, `updated_unix` |
+| `raids` / `<raid_id>` | system | read 0, write 0 | Raid record (see [Raid record](#raid-record), #180) |
+| `jobs` / `<job_id>` | system | read 0, write 0 | Job record ([Job protocol](#job-protocol)) |
+| `defense_log` / `<entry_id>` | user | read 1, write 0 | Defense-log entry (key = `raid_id`, see [defense log](#defense-log-entry)) |
+| `telemetry_daily` / `<yyyy-mm-dd>` | system | read 0, write 0 | Aggregates (see [telemetry](#telemetry-daily)) |
+
+Leaderboard: `trophies` (descending, `set` operator), created in `InitModule`.
+
+### Raid record
+
+`raids/<raid_id>`:
+
+```json
+{"raid_id": "", "attacker_id": "", "defender_id": "", "seed": 0, "created_unix": 0, "expires_unix": 0,
+ "status": "open|submitted|done|expired|rejected",
+ "defender_snapshot": {}, "attacker_pools": {}, "config_hash": "", "submission": null, "result": null}
+```
+
+### Defense log entry
+
+```json
+{"raid_id": "", "attacker_id": "", "attacker_name": "", "created_unix": 0, "outcome": "",
+ "trophies_delta": 0, "atp_lost": 0, "amino_gained": 0, "memory_changes": [], "evolution": [],
+ "battle": {}, "seen": false}
+```
+
+At most 50 per user; the oldest is deleted on write.
+
+### Telemetry daily
+
+`telemetry_daily/<yyyy-mm-dd>`: `raids`, `attacker_wins`, per strain key `{used_raids, used_atp, wins}`, per type `{max_generation_seen}`, `active_users` (list of `nk.sha256Hash` of user ids, capped at 10 000).
+
+## RPC list
+
+Callers: **client** (user session), **worker** (http_key, rejects any call with a user context), **admin** (http_key, for tests and ops).
+Every response also has `ok` and `error`. "Common" errors that any client RPC can return: `rate_limited`, `update_required`, `forbidden_field`, `bad_request`.
+
+| RPC | Caller | Request | Response | Errors | Issue |
+|---|---|---|---|---|---|
+| `worker_claim` | worker | `{config_hash, max?}` (max default 4) | `{jobs: [job]}` | `worker_only` | #178 |
+| `worker_complete` | worker | `{job_id, ok, result, error}` | `{}` | `worker_only`, `unknown_job` | #178 |
+| `job_status` | client | `{job_id}` | `{status, result}` | `unknown_job` (also for other users' jobs) | #178 |
+| `debug_enqueue_echo` | admin | `{payload}` | `{job_id}` | | #178 |
+| `profile_get` | client | `{client_version, config_hash}` | `{profile?, job_id}` | `update_required` | #179 |
+| `base_commit` | client | `{layout}` | `{job_id}` | `busy` | #179 |
+| `collect` | client | `{}` | `{job_id}` | `busy` | #179 |
+| `upgrade_buy` | client | `{id}` | `{job_id}` | `busy` | #179 |
+| `profile_import` | client | `{local_profile}` (only `layout`, `memory` are read) | `{job_id}` | `busy` | #179 |
+| `raid_start` | client | `{defender_id}` | `{raid_id, seed, defender_snapshot, expires_unix}` | `raid_in_progress`, `self_raid`, `shielded`, `under_attack`, `unknown_player` | #180 |
+| `raid_submit` | client | `{raid_id, army: [{type, cell, strain}], client_final_hash}` | `{job_id}` | `unknown_raid`, `not_open`, `expired` | #180 |
+| `raid_cancel` | client | `{raid_id}` | `{}` | `unknown_raid`, `not_open` | #180 |
+| `find_opponent` | client | `{}` | `{defender_id, preview}` or `{ai: true}` | | #181 |
+| `leaderboard_top` | client | `{}` | `{records: [{rank, user_id, name, trophies}], me: {rank, trophies}}` | | #181 |
+| `defense_log_list` | client | `{cursor?}` | `{entries, cursor}` (no `battle`, newest first, 20 per page) | | #183 |
+| `defense_log_get` | client | `{raid_id}` | `{entry}` | `unknown_entry` | #183 |
+| `defense_log_mark_seen` | client | `{raid_ids}` | `{}` | | #183 |
+| `mutation_unlock` | client | `{type, variant}` | `{job_id}` | `busy` | #184 |
+| `admin_flagged_list` | admin | `{}` | `{players}` | | #185 |
+| `admin_report` | admin | `{from, to}` | `{days, retention}` | | #186 |
+
+Job results can carry job-level errors (see [Error codes](#error-codes)): `invalid_layout`, `insufficient_funds`, `maxed`, `layout_too_expensive`, `invalid_army`, `already_unlocked`, `unknown_strain`, `conflict`.
+
+Client RPCs must be wrapped by `rejectForbiddenKeys(payload, ["populations", "memory", "wallet", "trophies", "unlocked_strains"])` (#185), except that `profile_import` reads only `layout` and `memory` from `local_profile` and drops everything else.
+
+## Job protocol
+
+Job record in collection `jobs`, key `job_id` (`nk.uuidv4()`):
+
+```json
+{"job_id": "", "type": "echo", "status": "queued|claimed|done|failed",
+ "created_unix": 0, "claimed_unix": 0, "attempts": 0,
+ "config_hash": "", "payload": {}, "result": null, "error": ""}
+```
+
+- `enqueueJob(nk, type, payload, configHash) -> job_id`: helper for other server modules. Payloads that belong to a user carry `payload.user_id`.
+- `worker_claim` returns up to `max` queued jobs, oldest first, whose `config_hash` matches the worker's, and sets them `claimed`. Storage versions (OCC) stop two workers claiming one job. A job claimed more than 60 s ago is re-queued with `attempts + 1`. After 3 attempts it is `failed`.
+- `worker_complete` sets `done` or `failed` and calls the type's `onComplete` handler (a registry map type to function).
+- The worker runs `JobRules.process(cfg, job)` (`src/core/online/job_rules.gd`), which is pure: no network, files or `Time`. `now_unix` is the job's server-supplied timestamp. It returns `{"ok", "result", "error"}`. Unknown type returns `unknown_job_type`; a config-hash mismatch returns `config_mismatch`.
+- Job types: `echo`, `profile_new`, `profile_tick`, `base_commit`, `collect`, `upgrade_buy`, `profile_import`, `raid_validate`, `army_spend`, `mutation_unlock`.
+- The worker never trusts itself with state: every job payload includes the data it needs (profile copies, raid record) and the result is applied by the server.
+
+## Versioning
+
+- **`config_hash` parity.** `GameConfig.content_hash` is computed from `data/*.json`. The server bundles the same data (#176). A client, job or worker whose hash differs from the server's is rejected with `update_required`.
+- **Profile format.** `LivingBaseProfile.to_dict()` carries `format` / `version`. The worker migrates old profiles on load; the server stores whatever the worker returns.
+- **Client version.** The client sends `client_version` (from `project.godot` `application/config/version`) with `profile_get`.
+- **Minimum version.** The server holds a minimum client version; older clients get `update_required`.
+
+## Security
+
+- **Device auth only.** Clients authenticate with Nakama anonymous device auth. No passwords, email or social login.
+- **Worker access.** The worker uses the server's `http_key` through `/v2/rpc/<id>?http_key=&unwrap` (server-to-server), never a user session. Worker RPCs reject calls that have a user context (`ctx.userId` set) with `worker_only`. Admin RPCs likewise require the http key (no user context).
+- **No secrets in the repo.** Keys come from environment variables or the host's secret store. `.env` is gitignored.
+- **No client-trusted state.** See the forbidden-keys guard above.
+- **Rate limits.** Per-user token bucket in a module-level map keyed by user id, in the TS runtime. Limits (placeholders):
+
+| RPC group | Capacity | Refill |
+|---|---|---|
+| reads (`profile_get`, `job_status`, `defense_log_*`, `leaderboard_top`) | 20 | 5 / s |
+| `find_opponent` | 5 | 1 per 2 s |
+| writes (`base_commit`, `collect`, `upgrade_buy`, `mutation_unlock`, `profile_import`) | 5 | 1 / s |
+| raids (`raid_start`, `raid_submit`, `raid_cancel`) | 5 | 1 per 5 s |
+
+Exceeding a bucket returns `rate_limited`.
+
+## Error codes
+
+Lowercase snake_case strings. Common: `rate_limited`, `update_required`, `forbidden_field`, `bad_request`, `worker_only`, `busy`, `conflict`, `unknown_job`.
+Profile: `invalid_layout`, `insufficient_funds`, `maxed`, `layout_too_expensive`.
+Raid: `raid_in_progress`, `self_raid`, `shielded`, `under_attack`, `unknown_player`, `unknown_raid`, `not_open`, `expired`, `invalid_army`.
+Strains: `already_unlocked`, `unknown_strain`.
+Worker: `unknown_job_type`, `config_mismatch`.
