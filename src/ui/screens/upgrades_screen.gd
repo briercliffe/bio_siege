@@ -161,9 +161,11 @@ func refresh() -> void:
 func _on_buy_pressed(id: String) -> void:
 	if session == null or session.living_flow == null:
 		return
-	if session.living_flow.buy_upgrade(id):
+	var bought: bool = await session.living_flow.buy_upgrade_async(id) if session.living_flow.is_online() \
+			else session.living_flow.buy_upgrade(id)
+	if bought:
 		upgrade_bought.emit(id)
-		refresh()
+	refresh()
 
 
 ## What the upgrade does right now, for the current level.

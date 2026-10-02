@@ -7,11 +7,17 @@ extends BackendClient
 ## One {"name": String, "payload": Dictionary} per rpc() call, in order.
 var calls: Array[Dictionary] = []
 var _responses: Dictionary = {}
+var _sequences: Dictionary = {}
 
 
 ## Registers the response rpc(name, ...) returns. connect_and_auth() uses the name "connect_and_auth".
 func respond(name: String, response: Dictionary) -> void:
 	_responses[name] = response
+
+
+## Registers several responses for one name, returned in order; the last one repeats.
+func respond_sequence(name: String, responses: Array) -> void:
+	_sequences[name] = responses.duplicate(true)
 
 
 func set_status_for_tests(new_status: String) -> void:
@@ -33,6 +39,12 @@ func connect_and_auth() -> Dictionary:
 
 func rpc(name: String, payload: Dictionary) -> Dictionary:
 	calls.append({"name": name, "payload": payload.duplicate(true)})
+	if _sequences.has(name):
+		var queue: Array = _sequences[name] as Array
+		var next: Dictionary = (queue[0] as Dictionary).duplicate(true)
+		if queue.size() > 1:
+			queue.pop_front()
+		return next
 	if _responses.has(name):
 		return (_responses[name] as Dictionary).duplicate(true)
 	return {"ok": false, "error": "offline"}

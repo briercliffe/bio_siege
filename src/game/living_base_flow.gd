@@ -5,8 +5,30 @@ extends RefCounted
 ## writing the player's base, wallet, memory and pools back after every change, collecting
 ## Mitochondria ATP, and the "Test in Lab" copy. Game layer, so it may read the real-time clock.
 
+## Online mode (the `online` flag, docs/SERVER_PLAN.md): the profile lives on the server. This flow keeps a cached
+## copy for display (a separate file, so the offline base stays intact for the one-time import), works on it
+## optimistically, and reconciles with the server result of each worker job.
+const ONLINE_CACHE_PATH: String = "user://living_base_online.json"
+const IMPORT_ANSWERED_PATH: String = "user://living_base_import_answered.txt"
+const BUSY_RETRIES: int = 6
+
+## A toast-worthy message that arrived outside a button press (a rejected commit, for example).
+signal message(text: String)
+signal saving_changed(saving: bool)
+
 var store: LivingBaseStore = null
 var session: Session = null
+var online: bool = false
+## Files the online mode reads and writes; tests point them at a temp folder.
+var online_cache_path: String = ONLINE_CACHE_PATH
+var local_base_path: String = LivingBaseStore.DEFAULT_PATH
+var import_answered_path: String = IMPORT_ANSWERED_PATH
+var api: ProfileApi = null
+var saving: bool = false
+## True right after the server created a brand-new profile while an offline base exists and was not answered yet.
+var import_offer_pending: bool = false
+## The layout the server last confirmed, normalised; a different grid layout means unsaved edits.
+var server_layout_key: String = ""
 ## Messages from loading the profile (reset or trimmed saves). The Synthesis phase shows them once.
 var notices: Array[String] = []
 ## AI raids that came due while the player was away and are not resolved yet.
@@ -42,7 +64,11 @@ func enter(p_session: Session, defer_raids: bool = false) -> void:
 	notices = []
 	for n: Variant in res.get("notices", []):
 		notices.append(str(n))
-	var profile: LivingBaseProfile = res["profile"]
+	_begin_session(res["profile"] as LivingBaseProfile, defer_raids)
+
+
+func _begin_session(profile: LivingBaseProfile, defer_raids: bool) -> void:
+	var cfg: GameConfig = session.config
 	var now: int = LivingBaseStore.now_unix()
 	_offline_s = maxi(0, now - profile.last_clock_unix)
 	_atp_generated = profile.advance_clock(cfg, now)
@@ -56,11 +82,252 @@ func enter(p_session: Session, defer_raids: bool = false) -> void:
 	session.replay_mode = false
 	session.clear_attack_target()
 	_apply_profile_to_session()
-	_plan_away_raids(now)
-	if not defer_raids:
-		resolve_all_pending()
+	if online:
+		# AI away-raids are a local feature: online, only players change the server profile.
+		pending_raids = 0
+		away_summary = {}
+	else:
+		_plan_away_raids(now)
+		if not defer_raids:
+			resolve_all_pending()
 	store.save_profile(profile)
 	_log_session_start_if_ready()
+
+
+## Online entry: connects, loads the server profile (creating it on first use) and loads it into the session.
+## Returns {"ok": bool, "error": String}. A stored copy is used at once; a new profile waits for its worker job.
+func enter_online(p_session: Session, p_api: ProfileApi = null) -> Dictionary:
+	session = p_session
+	if session == null or session.config == null:
+		return {"ok": false, "error": "no_session"}
+	var cfg: GameConfig = session.config
+	var backend: BackendClient = p_api.backend if p_api != null else Net.backend(cfg)
+	api = p_api if p_api != null else ProfileApi.new(backend)
+	if backend.status() != BackendClient.STATUS_ONLINE:
+		var conn: Dictionary = await backend.connect_and_auth()
+		if not bool(conn.get("ok", false)):
+			return {"ok": false, "error": str(conn.get("error", "offline"))}
+	var got: Dictionary = await api.profile_get(_client_version(), cfg.content_hash)
+	if not bool(got.get("ok", false)):
+		return {"ok": false, "error": str(got.get("error", "network_error"))}
+	var server_dict: Dictionary = got["profile"] as Dictionary
+	var created: bool = server_dict.is_empty()
+	if created:
+		var made: Dictionary = await api.wait_job(str(got.get("job_id", "")))
+		if not bool(made.get("ok", false)):
+			return {"ok": false, "error": str(made.get("error", "network_error"))}
+		server_dict = (made["result"] as Dictionary).get("profile", {}) as Dictionary
+	var loaded: Dictionary = LivingBaseProfile.from_dict(server_dict, cfg)
+	if not bool(loaded.get("ok", false)):
+		return {"ok": false, "error": "invalid_profile"}
+	online = true
+	store.path = online_cache_path
+	notices = []
+	for n: Variant in loaded.get("notices", []):
+		notices.append(str(n))
+	var profile: LivingBaseProfile = loaded["profile"]
+	server_layout_key = _layout_key(profile.layout)
+	import_offer_pending = created and FileAccess.file_exists(local_base_path) \
+			and not FileAccess.file_exists(import_answered_path)
+	_begin_session(profile, true)
+	return {"ok": true, "error": ""}
+
+
+func is_online() -> bool:
+	return online and is_active()
+
+
+## True while the grid differs from the layout the server last confirmed.
+func layout_dirty() -> bool:
+	return is_online() and _layout_key(session.grid.to_layout()) != server_layout_key
+
+
+## Saves the edited base: one base_commit job. On a rejection the server copy is reloaded and a message emitted.
+func commit_base() -> Dictionary:
+	if not is_online():
+		return {"ok": true, "error": ""}
+	if saving:
+		return {"ok": false, "error": "busy"}
+	_set_saving(true)
+	sync_profile_from_session()
+	var layout: Array = _layout_payload(session.grid.to_layout())
+	var res: Dictionary = await _with_busy_retry(func() -> Dictionary: return await api.base_commit(layout))
+	_set_saving(false)
+	if is_active() and bool(res.get("ok", false)):
+		_adopt_server_profile((res["result"] as Dictionary).get("profile", {}) as Dictionary, false)
+		return res
+	await _reject(res)
+	return res
+
+
+## Commits only when there are unsaved edits (leaving Synthesis, before collecting or buying).
+func commit_if_dirty() -> Dictionary:
+	if layout_dirty():
+		return await commit_base()
+	return {"ok": true, "error": ""}
+
+
+## Online collect: saves pending edits first, then asks the server. Returns the ATP collected.
+func collect_async() -> int:
+	if not is_online():
+		return collect()
+	var committed: Dictionary = await commit_if_dirty()
+	if not bool(committed.get("ok", false)):
+		return 0
+	var res: Dictionary = await _with_busy_retry(func() -> Dictionary: return await api.collect())
+	if not bool(res.get("ok", false)):
+		await _reject(res)
+		return 0
+	var result: Dictionary = res["result"] as Dictionary
+	_adopt_server_profile(result.get("profile", {}) as Dictionary, false)
+	var amount: int = int(result.get("collected", 0))
+	if amount > 0:
+		_log("lb_collect", {"amount": amount})
+	return amount
+
+
+## Online upgrade purchase. Returns whether it was bought.
+func buy_upgrade_async(upgrade_id: String) -> bool:
+	if not is_online():
+		return buy_upgrade(upgrade_id)
+	var committed: Dictionary = await commit_if_dirty()
+	if not bool(committed.get("ok", false)):
+		return false
+	var res: Dictionary = await _with_busy_retry(func() -> Dictionary: return await api.upgrade_buy(upgrade_id))
+	if not bool(res.get("ok", false)):
+		await _reject(res)
+		return false
+	var result: Dictionary = res["result"] as Dictionary
+	_adopt_server_profile(result.get("profile", {}) as Dictionary, false)
+	_log("lb_upgrade", {"id": upgrade_id, "level": BaseUpgrades.level(session.profile.upgrades, upgrade_id),
+			"cost": int(((result.get("cost", {}) as Dictionary).get("amino_acids", 0)))})
+	return true
+
+
+## "Bring your offline base online?" Yes: sends the local base's layout and memory (one profile_import job).
+func import_local_base() -> Dictionary:
+	import_offer_pending = false
+	_mark_import_answered()
+	if not is_online():
+		return {"ok": false, "error": "offline"}
+	var local_store := LivingBaseStore.new()
+	local_store.path = local_base_path
+	if not local_store.exists():
+		return {"ok": false, "error": "invalid_profile"}
+	var local: Dictionary = local_store.load_profile(session.config)
+	if not bool(local.get("ok", false)):
+		return {"ok": false, "error": "invalid_profile"}
+	var local_dict: Dictionary = (local["profile"] as LivingBaseProfile).to_dict()
+	var res: Dictionary = await _with_busy_retry(func() -> Dictionary: return await api.profile_import(local_dict))
+	if bool(res.get("ok", false)):
+		_adopt_server_profile((res["result"] as Dictionary).get("profile", {}) as Dictionary, true)
+		return res
+	await _reject(res)
+	return res
+
+
+## "Start fresh": keeps the new online base and never asks again.
+func decline_import() -> void:
+	import_offer_pending = false
+	_mark_import_answered()
+
+
+## Replaces the session with the server's copy (after a rejection or a conflict).
+func reload_from_server() -> bool:
+	if not is_online():
+		return false
+	var got: Dictionary = await api.profile_get(_client_version(), session.config.content_hash)
+	if not bool(got.get("ok", false)) or (got["profile"] as Dictionary).is_empty():
+		return false
+	_adopt_server_profile(got["profile"] as Dictionary, true)
+	return true
+
+
+func _reject(res: Dictionary) -> void:
+	var code: String = str(res.get("error", "network_error"))
+	message.emit(NetCopy.error_text(code))
+	if is_active():
+		await reload_from_server()
+
+
+func _with_busy_retry(call: Callable) -> Dictionary:
+	var res: Dictionary = {}
+	for i: int in range(BUSY_RETRIES):
+		res = await call.call()
+		if str(res.get("error", "")) != "busy":
+			return res
+		await api._sleep()
+	return res
+
+
+func _set_saving(value: bool) -> void:
+	saving = value
+	saving_changed.emit(value)
+
+
+## Copies the server-owned fields into the session's profile and brings the live session up to date. Local-only
+## fields (AI opponents, the AI defense log) stay as they are.
+func _adopt_server_profile(server_dict: Dictionary, reload_layout: bool) -> void:
+	if server_dict.is_empty() or not is_active():
+		return
+	var cfg: GameConfig = session.config
+	var loaded: Dictionary = LivingBaseProfile.from_dict(server_dict, cfg)
+	if not bool(loaded.get("ok", false)):
+		return
+	var fresh: LivingBaseProfile = loaded["profile"]
+	var profile: LivingBaseProfile = session.profile
+	profile.layout = fresh.layout
+	profile.wallet = fresh.wallet
+	profile.stored_atp = fresh.stored_atp
+	profile.atp_carry = fresh.atp_carry
+	profile.last_clock_unix = fresh.last_clock_unix
+	profile.memory = fresh.memory
+	profile.populations = fresh.populations
+	profile.upgrades = fresh.upgrades
+	profile.raid_counter = fresh.raid_counter
+	profile.ai_raid_counter = fresh.ai_raid_counter
+	server_layout_key = _layout_key(fresh.layout)
+	if reload_layout:
+		_apply_profile_to_session(true, true)
+	elif _layout_key(session.grid.to_layout()) == server_layout_key:
+		# Saved: the grid already shows it. A raid army being built (it holds the wallet) is left alone.
+		var army_in_progress: bool = session.army != null and (not session.army.deployments.is_empty() or not session.army.reserve.is_empty())
+		_apply_profile_to_session(not army_in_progress, false)
+	else:
+		_apply_profile_to_session(false, false)
+	store.save_profile(profile)
+
+
+func _mark_import_answered() -> void:
+	var f: FileAccess = FileAccess.open(import_answered_path, FileAccess.WRITE)
+	if f != null:
+		f.store_string("1")
+
+
+static func _client_version() -> String:
+	return str(ProjectSettings.get_setting("application/config/version", "0.0.0"))
+
+
+## Layout entries as JSON-safe {"type", "origin": [x, y]} dictionaries.
+static func _layout_payload(layout: Array) -> Array:
+	var out: Array = []
+	for entry: Variant in layout:
+		var e: Dictionary = entry as Dictionary
+		var o: Variant = e.get("origin", Vector2i.ZERO)
+		var v: Vector2i = o as Vector2i if o is Vector2i else Vector2i(int((o as Array)[0]), int((o as Array)[1]))
+		out.append({"type": str(e.get("type", "")), "origin": [v.x, v.y]})
+	return out
+
+
+## An order-independent string for comparing layouts.
+static func _layout_key(layout: Array) -> String:
+	var parts: Array[String] = []
+	for entry: Variant in _layout_payload(layout):
+		var e: Dictionary = entry as Dictionary
+		var o: Array = e["origin"] as Array
+		parts.append("%s@%d,%d" % [str(e["type"]), int(o[0]), int(o[1])])
+	parts.sort()
+	return ";".join(parts)
 
 
 ## True while away-raids are waiting to be resolved.
@@ -505,18 +772,21 @@ static func _stash_lab(p_session: Session) -> void:
 	p_session.populations = {}
 
 
-func _apply_profile_to_session() -> void:
+func _apply_profile_to_session(reset_army: bool = true, reload_layout: bool = true) -> void:
 	var cfg: GameConfig = session.config
 	var profile: LivingBaseProfile = session.profile
-	session.grid.load_layout(profile.layout, LivingBaseProfile.unlimited_wallet())
-	session.army = Army.new(cfg)
-	session.wallet.reset(profile.wallet)
+	if reload_layout:
+		session.grid.load_layout(profile.layout, LivingBaseProfile.unlimited_wallet())
+	if reset_army:
+		session.army = Army.new(cfg)
+		session.wallet.reset(profile.wallet)
 	session.memory = ImmuneMemory.from_dict(profile.memory, cfg, BaseUpgrades.memory_slots(cfg, profile.upgrades))
 	session.reset_populations()
 	for type_id: Variant in profile.populations.keys():
 		var tid: String = str(type_id)
 		if cfg.is_breeding_type(tid) and profile.populations[type_id] is Dictionary:
 			session.populations[tid] = BreedPool.from_dict(profile.populations[type_id], tid, cfg)
-	session.prediction_structure_id = 0
-	session.last_result = {}
-	session.last_launch = {}
+	if reset_army:
+		session.prediction_structure_id = 0
+		session.last_result = {}
+		session.last_launch = {}

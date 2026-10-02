@@ -34,6 +34,8 @@ Nakama storage objects. Permissions use Nakama numbers: read 0 = none, 1 = owner
 | `jobs` / `<job_id>` | system | read 0, write 0 | Job record ([Job protocol](#job-protocol)) |
 | `defense_log` / `<entry_id>` | user | read 1, write 0 | Defense-log entry (key = `raid_id`, see [defense log](#defense-log-entry)) |
 | `telemetry_daily` / `<yyyy-mm-dd>` | system | read 0, write 0 | Aggregates (see [telemetry](#telemetry-daily)) |
+| `profile_lock` / `main` | user | read 0, write 0 | `{job_id, unix}`: the one in-flight profile job per user (see [profile jobs](#profile-jobs)) |
+| `ratelimit` / `<group>` | user | read 0, write 0 | Token bucket `{tokens, ms}` per limit group (see [Security](#security)) |
 
 Leaderboard: `trophies` (descending, `set` operator), created in `InitModule`.
 
@@ -72,8 +74,8 @@ Every response also has `ok` and `error`. "Common" errors that any client RPC ca
 | `worker_complete` | worker | `{job_id, ok, result, error}` | `{}` | `worker_only`, `unknown_job` | #178 |
 | `job_status` | client | `{job_id}` | `{status, result}` | `unknown_job` (also for other users' jobs) | #178 |
 | `debug_enqueue_echo` | admin | `{payload}` | `{job_id}` | | #178 |
-| `profile_get` | client | `{client_version, config_hash}` | `{profile?, job_id}` | `update_required` | #179 |
-| `base_commit` | client | `{layout}` | `{job_id}` | `busy` | #179 |
+| `profile_get` | client | `{client_version, config_hash}` | `{profile (null when new), job_id, busy}` | `update_required`, `rate_limited` | #179 |
+| `base_commit` | client | `{layout}` | `{job_id}` | `busy`, `no_profile`, `bad_request` | #179 |
 | `collect` | client | `{}` | `{job_id}` | `busy` | #179 |
 | `upgrade_buy` | client | `{id}` | `{job_id}` | `busy` | #179 |
 | `profile_import` | client | `{local_profile}` (only `layout`, `memory` are read) | `{job_id}` | `busy` | #179 |
@@ -89,7 +91,7 @@ Every response also has `ok` and `error`. "Common" errors that any client RPC ca
 | `admin_flagged_list` | admin | `{}` | `{players}` | | #185 |
 | `admin_report` | admin | `{from, to}` | `{days, retention}` | | #186 |
 
-Job results can carry job-level errors (see [Error codes](#error-codes)): `invalid_layout`, `insufficient_funds`, `maxed`, `layout_too_expensive`, `invalid_army`, `already_unlocked`, `unknown_strain`, `conflict`.
+Job results can carry job-level errors (see [Error codes](#error-codes)): `invalid_layout`, `insufficient_funds`, `maxed`, `unknown_upgrade`, `profile_not_fresh`, `invalid_profile`, `layout_too_expensive`, `invalid_army`, `already_unlocked`, `unknown_strain`, `conflict`.
 
 Client RPCs must be wrapped by `rejectForbiddenKeys(payload, ["populations", "memory", "wallet", "trophies", "unlocked_strains"])` (#185), except that `profile_import` reads only `layout` and `memory` from `local_profile` and drops everything else.
 
@@ -110,6 +112,14 @@ Job record in collection `jobs`, key `job_id` (`nk.uuidv4()`):
 - Job types: `echo`, `profile_new`, `profile_tick`, `base_commit`, `collect`, `upgrade_buy`, `profile_import`, `raid_validate`, `army_spend`, `mutation_unlock`.
 - The worker never trusts itself with state: every job payload includes the data it needs (profile copies, raid record) and the result is applied by the server.
 
+### Profile jobs
+
+Every change to the profile is a worker job (`profile_new`, `profile_tick`, `base_commit`, `collect`, `upgrade_buy`, `profile_import`; rules in `src/core/online/profile_jobs.gd`). The payload carries `profile` (the stored copy), `profile_version` (its storage version) and `now_unix` (server time). The worker returns `result.profile` and `result.snapshot`.
+
+- **Serialisation:** one in-flight profile job per user, held in `profile_lock/main` (a lock older than 120 s is ignored). A second mutating RPC returns `busy`; `profile_get` instead returns the stored copy with `busy: true` and the pending `job_id`.
+- **onComplete** writes `profile/main` (read 1) and `base/snapshot` (read 2) with OCC on `profile_version`. On a version conflict the job is re-enqueued once with the newer profile; the original job's result becomes `{requeued_as}` and `job_status` follows it. A second conflict fails the job with `conflict`. A late `profile_new` never replaces an existing profile.
+- **Client:** works optimistically on a cached copy, sends one `base_commit` when leaving Synthesis or tapping Save, and reloads the server copy on any rejection.
+
 ## Versioning
 
 - **`config_hash` parity.** `GameConfig.content_hash` is computed from `data/*.json`. The server bundles the same data (#176). A client, job or worker whose hash differs from the server's is rejected with `update_required`.
@@ -123,7 +133,7 @@ Job record in collection `jobs`, key `job_id` (`nk.uuidv4()`):
 - **Worker access.** The worker uses the server's `http_key` through `/v2/rpc/<id>?http_key=&unwrap` (server-to-server), never a user session. Worker RPCs reject calls that have a user context (`ctx.userId` set) with `worker_only`. Admin RPCs likewise require the http key (no user context).
 - **No secrets in the repo.** Keys come from environment variables or the host's secret store. `.env` is gitignored.
 - **No client-trusted state.** See the forbidden-keys guard above.
-- **Rate limits.** Per-user token bucket in a module-level map keyed by user id, in the TS runtime. Limits (placeholders):
+- **Rate limits.** Per-user token buckets, stored in the `ratelimit` collection (Nakama's JS runtime freezes module-level objects, so an in-memory map cannot be updated at request time). Limits (placeholders):
 
 | RPC group | Capacity | Refill |
 |---|---|---|
@@ -134,10 +144,16 @@ Job record in collection `jobs`, key `job_id` (`nk.uuidv4()`):
 
 Exceeding a bucket returns `rate_limited`.
 
+## Runtime notes (Nakama JS)
+
+- Nakama runs `InitModule` in one VM only but evaluates the script in every VM of its pool. Module state (the job handler registry) must be set up at top level in `main.ts`, never inside `InitModule`.
+- Module-level objects are frozen after load: never mutate globals at request time. Keep state in storage.
+- Nakama parses the script statically: `InitModule` and the functions passed to `registerRpc` must be top-level declarations (see `server/README.md`).
+
 ## Error codes
 
 Lowercase snake_case strings. Common: `rate_limited`, `update_required`, `forbidden_field`, `bad_request`, `worker_only`, `busy`, `conflict`, `unknown_job`.
-Profile: `invalid_layout`, `insufficient_funds`, `maxed`, `layout_too_expensive`.
+Profile: `invalid_layout`, `insufficient_funds`, `maxed`, `unknown_upgrade`, `profile_not_fresh`, `invalid_profile`, `layout_too_expensive`, `no_profile`, `unauthorized`.
 Raid: `raid_in_progress`, `self_raid`, `shielded`, `under_attack`, `unknown_player`, `unknown_raid`, `not_open`, `expired`, `invalid_army`.
 Strains: `already_unlocked`, `unknown_strain`.
 Worker: `unknown_job_type`, `config_mismatch`.

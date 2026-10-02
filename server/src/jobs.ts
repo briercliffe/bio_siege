@@ -78,9 +78,9 @@ function readJob(nk: nkruntime.Nakama, jobId: string): Entry | null {
 }
 
 /** Creates a queued job and returns its id. `payload.user_id` marks the owner for job_status. */
-export function enqueueJob(nk: nkruntime.Nakama, type: string, payload: { [key: string]: unknown }, configHash: string): string {
+export function enqueueJob(nk: nkruntime.Nakama, type: string, payload: { [key: string]: unknown }, configHash: string, jobId?: string): string {
   const job: Job = {
-    job_id: nk.uuidv4(),
+    job_id: jobId ? jobId : nk.uuidv4(),
     type,
     status: "queued",
     created_unix: nowUnix(),
@@ -94,6 +94,27 @@ export function enqueueJob(nk: nkruntime.Nakama, type: string, payload: { [key: 
   };
   writeJob(nk, job, "*");
   return job.job_id;
+}
+
+export function getJob(nk: nkruntime.Nakama, jobId: string): Job | null {
+  const e = readJob(nk, jobId);
+  return e === null ? null : e.job;
+}
+
+/** Read-modify-write one job with OCC, retrying a few times. Returns false when the job is missing or stays contended. */
+export function amendJob(nk: nkruntime.Nakama, jobId: string, mutate: (job: Job) => void): boolean {
+  for (let i = 0; i < 3; i++) {
+    const e = readJob(nk, jobId);
+    if (e === null) return false;
+    mutate(e.job);
+    try {
+      writeJob(nk, e.job, e.version);
+      return true;
+    } catch (_err) {
+      // contended: re-read and retry
+    }
+  }
+  return false;
 }
 
 /** Scans the jobs collection. Alpha scale: a bounded scan, no secondary index. */
@@ -217,7 +238,11 @@ export function rpcJobStatus(ctx: nkruntime.Context, _logger: nkruntime.Logger, 
   if (!ctx.userId) return errResult("unauthorized");
   const req = parsePayload(payload);
   if (req === null || typeof req.job_id !== "string") return errResult("bad_request");
-  const entry = readJob(nk, req.job_id);
+  let entry = readJob(nk, req.job_id);
+  // A job re-enqueued after a storage conflict points at its successor (same owner); follow it.
+  for (let hop = 0; hop < 3 && entry !== null && entry.job.result && typeof entry.job.result.requeued_as === "string"; hop++) {
+    entry = readJob(nk, entry.job.result.requeued_as as string);
+  }
   if (entry === null || entry.job.payload.user_id !== ctx.userId) return errResult("unknown_job");
   return okResult({ status: entry.job.status, result: entry.job.result, job_error: entry.job.error });
 }
