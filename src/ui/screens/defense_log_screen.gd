@@ -14,6 +14,9 @@ const WATCH_SIZE: Vector2 = Vector2(140.0, 52.0)
 const EMPTY_TEXT: String = "No raids yet. Your base is safe for now."
 const HELD_COLOR: Color = Color("#2ecc71")
 const INFECTED_COLOR: Color = Color("#e74c3c")
+const REVENGE_WINDOW_S: int = 24 * 3600
+const LOADING_TEXT: String = "Loading..."
+const ACTION_SIZE: Vector2 = Vector2(140.0, 52.0)
 
 var session: Session = null
 var fsm: GameStateMachine = null
@@ -26,6 +29,12 @@ var scroll: ScrollContainer = null
 var rows_box: VBoxContainer = null
 ## One per log entry, newest first: {"row", "watch", "index"}.
 var rows: Array[Dictionary] = []
+## Online mode: the next page cursor ("" = no more), the "Load more" button and a one-line message.
+var next_cursor: String = ""
+var btn_more: PillButton = null
+var message_label: Label = null
+## Tests set this to fake the clock; -1 reads the system clock.
+var now_unix_override: int = -1
 
 
 func _init() -> void:
@@ -98,6 +107,10 @@ func _populate() -> void:
 		rows_box.remove_child(c)
 		c.queue_free()
 	rows.clear()
+	btn_more = null
+	if session != null and session.living_flow != null and session.living_flow.is_online():
+		_load_online_page("")
+		return
 	var log: Array[Dictionary] = session.profile.defense_log if (session != null and session.profile != null) else []
 	empty_label.visible = log.is_empty()
 	scroll.visible = not log.is_empty()
@@ -161,6 +174,151 @@ func _add_line(parent: Control, node_name: String, text: String, px: int, weight
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UiFonts.style_label(l, px, weight, UiPalette.color(false, "ink" if weight >= 700 else "muted"))
 	parent.add_child(l)
+
+
+## Online: one page of defense_log_list. The first page replaces the rows, later pages add to them.
+func _load_online_page(cursor: String) -> void:
+	if message_label == null:
+		message_label = Label.new()
+		message_label.name = "MessageLabel"
+		message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		UiFonts.style_label(message_label, 16, 700, UiPalette.color(false, "danger"))
+		(empty_label.get_parent() as Control).add_child(message_label)
+		(empty_label.get_parent() as Control).move_child(message_label, 2)
+	message_label.text = ""
+	if cursor.is_empty():
+		empty_label.text = LOADING_TEXT
+		empty_label.visible = true
+	var res: Dictionary = await session.living_flow.backend().defense_log_list(cursor)
+	if not bool(res.get("ok", false)):
+		empty_label.visible = false
+		message_label.text = NetCopy.error_text(str(res.get("error", "network_error")))
+		return
+	var entries: Array = res.get("entries", []) as Array
+	if cursor.is_empty():
+		rows.clear()
+	next_cursor = str(res.get("cursor", ""))
+	empty_label.text = EMPTY_TEXT
+	empty_label.visible = entries.is_empty() and rows.is_empty()
+	scroll.visible = not (entries.is_empty() and rows.is_empty())
+	if btn_more != null:
+		rows_box.remove_child(btn_more)
+	for e: Variant in entries:
+		_add_online_row(e as Dictionary)
+	if not next_cursor.is_empty():
+		if btn_more == null:
+			btn_more = PillButton.new("Load more", PillButton.Variant.SECONDARY)
+			btn_more.name = "BtnMore"
+			btn_more.custom_minimum_size = Vector2(PillButton.MIN_WIDTH, 52.0)
+			btn_more.pressed.connect(func() -> void: _load_online_page(next_cursor))
+		rows_box.add_child(btn_more)
+	elif btn_more != null:
+		btn_more.queue_free()
+		btn_more = null
+
+
+func _now_unix() -> int:
+	return now_unix_override if now_unix_override >= 0 else LivingBaseStore.now_unix()
+
+
+## True while a Revenge raid on the attacker is still allowed (24 hours after the raid).
+func revenge_allowed(entry: Dictionary) -> bool:
+	return _now_unix() - int(entry.get("created_unix", 0)) < REVENGE_WINDOW_S and not str(entry.get("attacker_id", "")).is_empty()
+
+
+func _add_online_row(entry: Dictionary) -> void:
+	var cfg: GameConfig = session.config
+	var card := FloatingCard.new()
+	card.name = "Row_%s" % str(entry.get("raid_id", ""))
+	card.custom_minimum_size = Vector2(COLUMN_WIDTH, 0.0)
+	card.mouse_filter = Control.MOUSE_FILTER_PASS
+	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_theme_constant_override("separation", 4)
+	card.add_child(box)
+	var head := HBoxContainer.new()
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_theme_constant_override("separation", 12)
+	box.add_child(head)
+	var held: bool = str(entry.get("outcome", "")) == "defender"
+	var chip := Label.new()
+	chip.name = "OutcomeChip"
+	chip.text = outcome_text(entry)
+	UiFonts.style_label(chip, 16, 800, HELD_COLOR if held else INFECTED_COLOR)
+	head.add_child(chip)
+	var who := Label.new()
+	who.name = "RaidLabel"
+	who.text = online_raid_text(entry)
+	who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UiFonts.style_label(who, 20, 800, UiPalette.color(false, "ink"))
+	head.add_child(who)
+	var raid_id: String = str(entry.get("raid_id", ""))
+	var watch := PillButton.new("Watch", PillButton.Variant.SECONDARY)
+	watch.name = "BtnWatch_%s" % raid_id
+	watch.custom_minimum_size = WATCH_SIZE
+	watch.disabled = not bool(entry.get("has_battle", entry.get("battle", null) is Dictionary))
+	watch.pressed.connect(watch_online.bind(raid_id))
+	head.add_child(watch)
+	var revenge: PillButton = null
+	if revenge_allowed(entry):
+		revenge = PillButton.new("Revenge", PillButton.Variant.PRIMARY)
+		revenge.name = "BtnRevenge_%s" % raid_id
+		revenge.custom_minimum_size = ACTION_SIZE
+		revenge.pressed.connect(take_revenge.bind(str(entry.get("attacker_id", ""))))
+		head.add_child(revenge)
+	_add_line(box, "ArmyLabel", army_text(entry.get("army", {}), cfg), 15, 700)
+	_add_line(box, "ResultLabel", online_result_text(entry), 15, 400)
+	var learning: String = learning_text(entry.get("memory_changes", []), cfg)
+	if not learning.is_empty():
+		_add_line(box, "LearningLabel", learning, 14, 400)
+	var evolution: String = evolution_text(entry.get("evolution", []), cfg)
+	if not evolution.is_empty():
+		_add_line(box, "EvolutionLabel", evolution, 14, 400)
+	rows_box.add_child(card)
+	rows.append({"row": card, "watch": watch, "revenge": revenge, "index": rows.size(), "raid_id": raid_id})
+
+
+## Fetches the full entry (with its battle) and replays it exactly as the offline log does.
+func watch_online(raid_id: String) -> void:
+	if session == null or session.living_flow == null:
+		return
+	var res: Dictionary = await session.living_flow.backend().defense_log_get(raid_id)
+	if not bool(res.get("ok", false)):
+		message_label.text = NetCopy.error_text(str(res.get("error", "network_error")))
+		return
+	if not session.living_flow.begin_replay_entry(res.get("entry", {}) as Dictionary):
+		message_label.text = "That raid has no replay."
+		return
+	replay_requested.emit(-1)
+	if fsm != null:
+		fsm.force_transition(GameStateMachine.Phase.INFECTION)
+
+
+## Revenge: a raid on the attacker. It skips trophy matching but the server still honours shields.
+func take_revenge(attacker_id: String) -> void:
+	if session == null or session.living_flow == null:
+		return
+	var res: Dictionary = await session.living_flow.begin_pvp_raid(attacker_id)
+	if not bool(res.get("ok", false)):
+		message_label.text = NetCopy.error_text(str(res.get("error", "network_error")))
+		return
+	if fsm != null:
+		fsm.request_transition(GameStateMachine.Phase.INCUBATION)
+
+
+## "vs Ada · live" style title for an online entry.
+static func online_raid_text(entry: Dictionary) -> String:
+	var name_text: String = str(entry.get("attacker_name", ""))
+	return "vs %s" % (name_text if not name_text.is_empty() else "Player")
+
+
+## "-80 ATP · +12 Amino Acids · -20 trophies".
+static func online_result_text(entry: Dictionary) -> String:
+	var text: String = result_text(entry)
+	var trophies: int = int(entry.get("trophies_delta", 0))
+	if trophies != 0:
+		text += " · %s" % ResultsPhase.trophies_text(trophies)
+	return text
 
 
 ## Replays log entry `index` in Infection. Nothing about the profile changes.

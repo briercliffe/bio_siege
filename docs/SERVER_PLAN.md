@@ -84,9 +84,9 @@ Every response also has `ok` and `error`. "Common" errors that any client RPC ca
 | `raid_cancel` | client | `{raid_id, army?}` | `{job_id?}` | `unknown_raid`, `not_open` | #180 |
 | `find_opponent` | client | `{}` | `{defender_id, preview, trophies}` or `{ai: true}` | `no_profile`, `rate_limited` | #181 |
 | `leaderboard_top` | client | `{}` | `{records: [{rank, user_id, name, trophies}], me: {rank, trophies}}` | | #181 |
-| `defense_log_list` | client | `{cursor?}` | `{entries, cursor}` (no `battle`, newest first, 20 per page) | | #183 |
+| `defense_log_list` | client | `{cursor?}` | `{entries, cursor}` (no `battle` but `has_battle`, newest first, 20 per page; `cursor` is `""` on the last page) | `rate_limited` | #183 |
 | `defense_log_get` | client | `{raid_id}` | `{entry}` | `unknown_entry` | #183 |
-| `defense_log_mark_seen` | client | `{raid_ids}` | `{}` | | #183 |
+| `defense_log_mark_seen` | client | `{raid_ids}` | `{marked}` | `bad_request`, `conflict` | #183 |
 | `mutation_unlock` | client | `{type, variant}` | `{job_id}` | `busy` | #184 |
 | `admin_flagged_list` | admin | `{}` | `{players}` | | #185 |
 | `admin_report` | admin | `{from, to}` | `{days, retention}` | | #186 |
@@ -131,6 +131,10 @@ The worker (`src/core/online/raid_jobs.gd`) checks the army (pathogen types, kno
 - A rejected validation marks the raid `rejected`, clears the locks and enqueues `army_spend` with the submitted army, so a retry is never free.
 - `raid_cancel` (before submit only) ends the raid. The server never sees an army before `raid_submit`, so the army is charged only when the client reports it in `army`; an expired raid costs nothing.
 - Expiry is lazy: `raid_start` / `raid_submit` expire the caller's and the target's stale raid, and `worker_claim` sweeps at most 50 open raids.
+
+### Defense log
+
+`raid_validate`'s onComplete writes `defense_log/<raid_id>` for the defender (`defense_log.ts`): `raid_id, attacker_id, attacker_name, created_unix, outcome, trophies_delta, atp_lost, amino_gained, memory_changes, evolution (the defender's structure pools only, from the worker's defense_info), army (counts by type), ticks, battle, seen`. At most 50 per user; the oldest are deleted on write. `defense_log_list` returns newest first with an offset cursor; `defense_log_get` returns the full entry to its owner only; `defense_log_mark_seen` flips `seen`. On entering Living Base online the client folds the unseen entries into one "While you were away" summary and marks them seen. Revenge is a normal `raid_start` on `attacker_id` (shields still apply).
 
 ### Trophies, matchmaking and shield
 

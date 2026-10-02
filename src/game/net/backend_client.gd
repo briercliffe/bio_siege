@@ -62,6 +62,19 @@ func leaderboard_top() -> Dictionary:
 	return await rpc("leaderboard_top", {})
 
 
+## Online defense log: entries without battles (newest first, 20 per page), one full entry, and "seen" marks.
+func defense_log_list(cursor: String = "") -> Dictionary:
+	return await rpc("defense_log_list", {"cursor": cursor})
+
+
+func defense_log_get(raid_id: String) -> Dictionary:
+	return await rpc("defense_log_get", {"raid_id": raid_id})
+
+
+func defense_log_mark_seen(raid_ids: Array) -> Dictionary:
+	return await rpc("defense_log_mark_seen", {"raid_ids": raid_ids})
+
+
 ## Calls the server's `ping` and compares its content hash with ours (docs/SERVER_PLAN.md, Versioning).
 ## A mismatch sets "update_required"; a good ping sets "online".
 func verify_server(local_content_hash: String) -> Dictionary:

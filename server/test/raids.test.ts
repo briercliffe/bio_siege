@@ -178,6 +178,8 @@ describe("raid results", () => {
     expect(rec.result.battle).toBeUndefined();
     const log = nk.storageRead([{ collection: "defense_log", key: raidId, userId: D }])[0];
     expect(log.value.battle).toEqual({ big: "log" });
+    expect(log.value.attacker_id).toBe(A);
+    expect(log.value.seen).toBe(false);
     expect(log.permissionRead).toBe(1);
   });
 

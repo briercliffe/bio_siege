@@ -135,7 +135,46 @@ func enter_online(p_session: Session, p_api: ProfileApi = null) -> Dictionary:
 	import_offer_pending = created and FileAccess.file_exists(local_base_path) \
 			and not FileAccess.file_exists(import_answered_path)
 	_begin_session(profile, true)
+	await _load_unseen_defenses()
 	return {"ok": true, "error": ""}
+
+
+## Online "While you were away": the unseen defense-log entries become one summary (raids, held, losses, trophies
+## and the newest pool generation per type). They are marked seen at once, so the card appears once.
+func _load_unseen_defenses() -> void:
+	var unseen: Array[Dictionary] = []
+	var cursor: String = ""
+	for page: int in range(3):
+		var res: Dictionary = await backend().defense_log_list(cursor)
+		if not bool(res.get("ok", false)):
+			return
+		for e: Variant in res.get("entries", []) as Array:
+			if e is Dictionary and not bool((e as Dictionary).get("seen", false)):
+				unseen.append(e as Dictionary)
+		cursor = str(res.get("cursor", ""))
+		if cursor.is_empty():
+			break
+	if unseen.is_empty():
+		return
+	var summary: Dictionary = {"raids": unseen.size(), "held": 0, "atp_lost": 0, "amino_gained": 0, "trophies": 0, "generations": {}}
+	var ids: Array = []
+	var newest: Dictionary = {}
+	for e: Dictionary in unseen:
+		ids.append(str(e.get("raid_id", "")))
+		summary["held"] = int(summary["held"]) + (1 if str(e.get("outcome", "")) == "defender" else 0)
+		summary["atp_lost"] = int(summary["atp_lost"]) + int(e.get("atp_lost", 0))
+		summary["amino_gained"] = int(summary["amino_gained"]) + int(e.get("amino_gained", 0))
+		summary["trophies"] = int(summary["trophies"]) + int(e.get("trophies_delta", 0))
+		var created: int = int(e.get("created_unix", 0))
+		for ev: Variant in e.get("evolution", []) as Array:
+			if ev is Dictionary and bool((ev as Dictionary).get("bred", false)):
+				var type_id: String = str((ev as Dictionary).get("type_id", ""))
+				if created >= int(newest.get(type_id, -1)):
+					newest[type_id] = created
+					(summary["generations"] as Dictionary)[type_id] = int((ev as Dictionary).get("generation", 0))
+	session.unseen_away_summary = summary
+	away_summary = summary.duplicate(true)
+	await backend().defense_log_mark_seen(ids)
 
 
 func is_online() -> bool:
@@ -490,7 +529,15 @@ func away_summary_text() -> String:
 		parts.append("-%d ATP" % int(away_summary["atp_lost"]))
 	if int(away_summary.get("amino_gained", 0)) > 0:
 		parts.append("+%d Amino Acids" % int(away_summary["amino_gained"]))
-	return "While you were away: " + " · ".join(parts)
+	if int(away_summary.get("trophies", 0)) != 0:
+		parts.append(ResultsPhase.trophies_text(int(away_summary["trophies"])))
+	var text: String = "While you were away: " + " · ".join(parts)
+	var generations: Dictionary = away_summary.get("generations", {}) as Dictionary
+	var types: Array = generations.keys()
+	types.sort()
+	for type_id: Variant in types:
+		text += "\nYour %ss are now generation %d" % [CoevolutionPanel.type_name(str(type_id), session.config), int(generations[type_id])]
+	return text
 
 
 ## Plays an AI raid on the player's base live ("Incoming infection"). Sets the battle up and aims the session
@@ -544,7 +591,14 @@ func finish_live_defense(sim: BattleSim) -> Dictionary:
 func begin_replay(index: int) -> bool:
 	if not is_active() or index < 0 or index >= session.profile.defense_log.size():
 		return false
-	var battle: Variant = session.profile.defense_log[index].get("battle", null)
+	return begin_replay_entry(session.profile.defense_log[index])
+
+
+## Replays a defense-log entry that carries its `battle` (a local one, or an online one fetched in full).
+func begin_replay_entry(log_entry: Dictionary) -> bool:
+	if not is_active():
+		return false
+	var battle: Variant = log_entry.get("battle", null)
 	if not (battle is Dictionary):
 		return false
 	var setup: BattleSetup = SnapshotIO.setup_from_battle(battle as Dictionary)
@@ -562,7 +616,7 @@ func begin_replay(index: int) -> bool:
 	session.last_launch = {}
 	session.live_defense = false
 	session.replay_mode = true
-	_log("lb_replay_watched", {"raid_index": int(session.profile.defense_log[index].get("raid_index", 0)), "live": bool(session.profile.defense_log[index].get("live", false))})
+	_log("lb_replay_watched", {"raid_index": int(log_entry.get("raid_index", 0)), "live": bool(log_entry.get("live", false))})
 	session.replay_expected_hash = str(((battle as Dictionary).get("result", {}) as Dictionary).get("final_state_hash", ""))
 	return true
 
