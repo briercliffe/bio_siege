@@ -21,6 +21,8 @@ const GAP: int = 12
 const TITLE_GAP: int = 8
 const RESUME_HEIGHT: float = 60.0
 const BUTTON_HEIGHT: float = 56.0
+const QUIT_TEXT: String = "Quit to menu"
+const QUIT_REPLAY_TEXT: String = "Back to base"
 const KICKER_SPACING: int = 2
 const NOTE_TEXT: String = "Restarting returns you to Incubation with the same base and army budget."
 
@@ -40,6 +42,12 @@ func _init() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_build()
+
+
+## A replay has nothing to restart or quit: both just return to the base, so there is one "Back to base".
+func set_replay(on: bool) -> void:
+	restart_button.visible = not on
+	quit_button.text = QUIT_REPLAY_TEXT if on else QUIT_TEXT
 
 
 func buttons() -> Array[PillButton]:
@@ -93,7 +101,7 @@ func _build() -> void:
 	resume_button = _button("BtnResume", "Resume", PillButton.Variant.PRIMARY, RESUME_HEIGHT, 19, 800)
 	restart_button = _button("BtnRestart", "Restart raid", PillButton.Variant.SECONDARY, BUTTON_HEIGHT, 17, 600)
 	settings_button = _button("BtnSettings", "Settings", PillButton.Variant.SECONDARY, BUTTON_HEIGHT, 17, 600)
-	quit_button = _button("BtnQuit", "Quit to menu", PillButton.Variant.DANGER_OUTLINE, BUTTON_HEIGHT, 17, 700)
+	quit_button = _button("BtnQuit", QUIT_TEXT, PillButton.Variant.DANGER_OUTLINE, BUTTON_HEIGHT, 17, 700)
 	resume_button.pressed.connect(func() -> void: resume_requested.emit())
 	restart_button.pressed.connect(func() -> void: restart_requested.emit())
 	settings_button.pressed.connect(func() -> void: settings_requested.emit())
