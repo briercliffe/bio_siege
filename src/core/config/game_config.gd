@@ -608,6 +608,7 @@ static func load_from_strings(rules_str: String, structures_str: String, pathoge
 				sd.damage_pct = roundi(float(mods.get("damage", 1.0)) * 100.0)
 				sd.cost_pct = roundi(float(mods.get("cost", 1.0)) * 100.0)
 				sd.analysis_rate_pct = roundi(float(mods.get("analysis_rate", 1.0)) * 100.0)
+				sd.unlock_dna = int(st_d.get("unlock_dna", 0))
 				p.strains.append(sd)
 
 		config.pathogens[id] = p
@@ -1661,6 +1662,7 @@ static func _validate_strains(id: String, st_val: Variant, errors: PackedStringA
 	var arr: Array = st_val
 	var seen: Dictionary = {}
 	var st_keys: Array[String] = ["id", "display_name", "modifiers"]
+	var st_optional: Array[String] = ["unlock_dna"]
 	var mod_keys: Array[String] = ["hp", "speed", "damage", "cost", "analysis_rate"]
 	var id_re := RegEx.new()
 	id_re.compile("^[a-z][a-z0-9_]*$")
@@ -1672,8 +1674,14 @@ static func _validate_strains(id: String, st_val: Variant, errors: PackedStringA
 		var st: Dictionary = arr[idx]
 		for k_var: Variant in st.keys():
 			var k: String = str(k_var)
-			if not st_keys.has(k):
+			if not st_keys.has(k) and not st_optional.has(k):
 				errors.append("%s.%s: unknown key (got %s)" % [pre, k, k])
+		if st.has("unlock_dna"):
+			var udna: Variant = st["unlock_dna"]
+			if not _is_whole_number(udna):
+				errors.append("%s.unlock_dna: must be an integer (got %s)" % [pre, _format_val(udna)])
+			elif int(udna) < 0:
+				errors.append("%s.unlock_dna: must be >= 0 (got %s)" % [pre, _format_val(udna)])
 		for req: String in st_keys:
 			if not st.has(req):
 				errors.append("%s.%s: missing required field (got null)" % [pre, req])

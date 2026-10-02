@@ -97,6 +97,8 @@ func setup(p_session: Session, p_fsm: GameStateMachine) -> void:
 			hud_build.incoming_infection_requested.connect(_on_incoming_infection_requested)
 		if not hud_build.upgrades_requested.is_connected(_on_upgrades_requested):
 			hud_build.upgrades_requested.connect(_on_upgrades_requested)
+		if not hud_build.mutation_lab_requested.is_connected(_on_mutation_lab_requested):
+			hud_build.mutation_lab_requested.connect(_on_mutation_lab_requested)
 		if not hud_build.leaderboard_requested.is_connected(_on_leaderboard_requested):
 			hud_build.leaderboard_requested.connect(_on_leaderboard_requested)
 		if not hud_build.defense_log_requested.is_connected(_on_defense_log_requested):
@@ -235,6 +237,11 @@ func _on_defense_log_requested() -> void:
 
 
 ## Living Base: the Upgrades button opens the Amino Acid upgrades screen over Synthesis.
+func _on_mutation_lab_requested() -> void:
+	if fsm != null and fsm.screen_stack != null:
+		fsm.screen_stack.push("mutation_lab")
+
+
 func _on_leaderboard_requested() -> void:
 	if fsm != null and fsm.screen_stack != null:
 		fsm.screen_stack.push("leaderboard")

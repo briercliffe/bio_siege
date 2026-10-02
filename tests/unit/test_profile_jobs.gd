@@ -194,6 +194,36 @@ func test_receptor_upgrade_widens_the_pools() -> void:
 		assert_true(cfg.structures.has(str(type_id)))
 
 
+func test_a_new_profile_unlocks_the_free_variants() -> void:
+	var cfg: GameConfig = _load({"living_base": true, "strains": true})
+	var p: Dictionary = _new_profile(cfg)
+	assert_eq(p["unlocked_strains"], StrainUnlocks.defaults(cfg))
+
+
+func test_mutation_unlock_spends_dna_and_unlocks() -> void:
+	var cfg: GameConfig = _load({"living_base": true, "strains": true})
+	var p: Dictionary = _new_profile(cfg)
+	(p["wallet"] as Dictionary)["dna"] = 25
+	var res: Dictionary = _run(cfg, "mutation_unlock", p, {"type": "rhinovirus", "variant": "rapid_replication"})
+	assert_true(res["ok"], str(res))
+	var out: Dictionary = _profile_of(res)
+	assert_eq(int((out["wallet"] as Dictionary)["dna"]), 5)
+	assert_true((out["unlocked_strains"] as Array).has("rhinovirus/rapid_replication"))
+	assert_eq(int((res["result"] as Dictionary)["cost"]), 20)
+	var again: Dictionary = _run(cfg, "mutation_unlock", out, {"type": "rhinovirus", "variant": "rapid_replication"})
+	assert_eq(again["error"], "already_unlocked")
+
+
+func test_mutation_unlock_refusals() -> void:
+	var cfg: GameConfig = _load({"living_base": true, "strains": true})
+	var p: Dictionary = _new_profile(cfg)
+	assert_eq(_run(cfg, "mutation_unlock", p, {"type": "rhinovirus", "variant": "rapid_replication"})["error"], "insufficient_funds")
+	assert_eq(_run(cfg, "mutation_unlock", p, {"type": "rhinovirus", "variant": "nope"})["error"], "unknown_strain")
+	assert_eq(_run(cfg, "mutation_unlock", p, {"type": "rhinovirus", "variant": "capsid_hardening"})["error"], "already_unlocked")
+	var off: Dictionary = _run(_cfg, "mutation_unlock", _new_profile(), {"type": "rhinovirus", "variant": "rapid_replication"})
+	assert_eq(off["error"], "unknown_strain", "no strains, no Mutation Lab")
+
+
 func _local_profile(layout: Array, extras: Dictionary = {}) -> Dictionary:
 	var local: LivingBaseProfile = LivingBaseProfile.create_new(_cfg, 7, T0)
 	var grid := GridModel.new(_cfg)

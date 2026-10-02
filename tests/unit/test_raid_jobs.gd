@@ -123,13 +123,59 @@ func test_strain_cost_modifiers_are_charged() -> void:
 	var cfg: GameConfig = _load({"strains": true})
 	var ring: Array[Vector2i] = _ring(cfg)
 	var army: Array = [_unit("rhinovirus", ring[0], "rapid_replication"), _unit("rhinovirus", ring[5], "rapid_replication")]
-	var res: Dictionary = _validate(cfg, _payload(cfg, army))
+	var unlocked: Dictionary = _profile(cfg, 1)
+	unlocked["unlocked_strains"] = ["rhinovirus/rapid_replication"]
+	var res: Dictionary = _validate(cfg, _payload(cfg, army, unlocked))
 	assert_true(res["ok"], str(res))
 	var cost: int = int(((res["result"] as Dictionary)["army_cost"] as Dictionary)["atp"])
 	var a := Army.new(cfg)
 	a.set_strain("rhinovirus", "rapid_replication")
 	assert_eq(cost, 2 * int(a.unit_cost("rhinovirus")["atp"]))
 	assert_lt(cost, 20)
+
+
+func test_a_locked_strain_is_rejected_and_an_unlocked_one_is_not() -> void:
+	var cfg: GameConfig = _load({"strains": true})
+	var ring: Array[Vector2i] = _ring(cfg)
+	var locked: Array = [_unit("rhinovirus", ring[0], "rapid_replication")]
+	assert_eq(_validate(cfg, _payload(cfg, locked))["error"], "invalid_army", "the second variant costs DNA")
+	var free: Array = [_unit("rhinovirus", ring[0], "capsid_hardening")]
+	assert_true(_validate(cfg, _payload(cfg, free))["ok"], "the first variant is unlocked by default")
+	var bought: Dictionary = _profile(cfg, 1)
+	bought["unlocked_strains"] = ["rhinovirus/rapid_replication"]
+	assert_true(_validate(cfg, _payload(cfg, locked, bought))["ok"])
+	var wrong_type: Dictionary = _profile(cfg, 1)
+	wrong_type["unlocked_strains"] = ["bacteriophage/rapid_replication"]
+	assert_eq(_validate(cfg, _payload(cfg, locked, wrong_type))["error"], "invalid_army")
+
+
+func test_strains_are_wild_only_while_the_strains_flag_is_off() -> void:
+	var ring: Array[Vector2i] = _ring(_cfg)
+	assert_eq(_validate(_cfg, _payload(_cfg, [_unit("rhinovirus", ring[0], "capsid_hardening")]))["error"], "invalid_army")
+	assert_true(_validate(_cfg, _payload(_cfg, [_unit("rhinovirus", ring[0], "wild")]))["ok"])
+
+
+func test_a_pvp_win_awards_dna_and_a_loss_does_not() -> void:
+	var cfg: GameConfig = _load({"online": true})
+	var weak: Dictionary = _profile(cfg, 2)
+	var win: Dictionary = _validate(cfg, _payload(cfg, _army(12), {}, weak))["result"] as Dictionary
+	assert_eq((win["res"] as Dictionary)["outcome"], "attacker")
+	assert_eq(int(((win["attacker_patch"] as Dictionary)["wallet_delta"] as Dictionary).get("dna", 0)), cfg.loot_dna_per_win)
+	assert_eq(int(((win["attacker_profile"] as Dictionary)["wallet"] as Dictionary)["dna"]), cfg.loot_dna_per_win)
+	var strong: Dictionary = _profile(cfg, 3, [{"type": "macrophage", "origin": [14, 10]}, {"type": "macrophage", "origin": [14, 14]},
+			{"type": "macrophage", "origin": [22, 10]}, {"type": "macrophage", "origin": [22, 14]}])
+	var loss: Dictionary = _validate(cfg, _payload(cfg, _army(1), {}, strong))["result"] as Dictionary
+	assert_eq((loss["res"] as Dictionary)["outcome"], "defender")
+	assert_eq(int(((loss["attacker_patch"] as Dictionary)["wallet_delta"] as Dictionary).get("dna", 0)), 0)
+
+
+func test_debug_dna_does_not_award_dna_online() -> void:
+	var cfg: GameConfig = _load({"online": true, "debug_dna": true})
+	var weak: Dictionary = _profile(cfg, 2)
+	var result: Dictionary = _validate(cfg, _payload(cfg, _army(12), {}, weak))["result"] as Dictionary
+	assert_eq((result["res"] as Dictionary)["outcome"], "attacker")
+	var dna: int = int(((result["attacker_patch"] as Dictionary)["wallet_delta"] as Dictionary).get("dna", 0))
+	assert_eq(dna, cfg.loot_dna_per_win, "once, from the PvP rule, never doubled by debug_dna")
 
 
 func test_the_attacker_pays_the_army_and_gets_the_loot() -> void:

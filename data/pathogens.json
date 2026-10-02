@@ -24,9 +24,9 @@
     },
     "levels": [],
     "strains": [
-      { "id": "capsid_hardening", "display_name": "Capsid Hardening", "modifiers": { "hp": 1.15, "speed": 0.9 } },
-      { "id": "rapid_replication", "display_name": "Rapid Replication", "modifiers": { "cost": 0.8, "hp": 0.85 } },
-      { "id": "antigenic_masking", "display_name": "Antigenic Masking", "modifiers": { "analysis_rate": 0.5, "damage": 0.9 } }
+      { "id": "capsid_hardening", "unlock_dna": 0, "display_name": "Capsid Hardening", "modifiers": { "hp": 1.15, "speed": 0.9 } },
+      { "id": "rapid_replication", "unlock_dna": 20, "display_name": "Rapid Replication", "modifiers": { "cost": 0.8, "hp": 0.85 } },
+      { "id": "antigenic_masking", "unlock_dna": 40, "display_name": "Antigenic Masking", "modifiers": { "analysis_rate": 0.5, "damage": 0.9 } }
     ]
   },
   "bacteriophage": {
@@ -59,9 +59,9 @@
     "levels": [],
     "hijack": { "channel_s": 2.0, "disable_s": 8.0, "target_tags": ["defense"], "turncoat_damage_pct": 50, "turncoat_max_damage": 300 },
     "strains": [
-      { "id": "capsid_hardening", "display_name": "Capsid Hardening", "modifiers": { "hp": 1.15, "speed": 0.9 } },
-      { "id": "rapid_replication", "display_name": "Rapid Replication", "modifiers": { "cost": 0.8, "hp": 0.85 } },
-      { "id": "antigenic_masking", "display_name": "Antigenic Masking", "modifiers": { "analysis_rate": 0.5, "damage": 0.9 } }
+      { "id": "capsid_hardening", "unlock_dna": 0, "display_name": "Capsid Hardening", "modifiers": { "hp": 1.15, "speed": 0.9 } },
+      { "id": "rapid_replication", "unlock_dna": 20, "display_name": "Rapid Replication", "modifiers": { "cost": 0.8, "hp": 0.85 } },
+      { "id": "antigenic_masking", "unlock_dna": 40, "display_name": "Antigenic Masking", "modifiers": { "analysis_rate": 0.5, "damage": 0.9 } }
     ]
   },
   "staphylococcus": {
@@ -90,9 +90,9 @@
     "levels": [],
     "biofilm": { "link_radius_tiles": 1.5, "break_radius_tiles": 2.0, "damage_taken_multiplier": 0.75, "regroup_interval_s": 0.5 },
     "strains": [
-      { "id": "thick_cell_wall", "display_name": "Thickened Cell Wall", "modifiers": { "hp": 1.15, "speed": 0.9 } },
-      { "id": "rapid_replication", "display_name": "Rapid Replication", "modifiers": { "cost": 0.8, "hp": 0.85 } },
-      { "id": "antigenic_masking", "display_name": "Antigenic Masking", "modifiers": { "analysis_rate": 0.5, "damage": 0.9 } }
+      { "id": "thick_cell_wall", "unlock_dna": 0, "display_name": "Thickened Cell Wall", "modifiers": { "hp": 1.15, "speed": 0.9 } },
+      { "id": "rapid_replication", "unlock_dna": 20, "display_name": "Rapid Replication", "modifiers": { "cost": 0.8, "hp": 0.85 } },
+      { "id": "antigenic_masking", "unlock_dna": 40, "display_name": "Antigenic Masking", "modifiers": { "analysis_rate": 0.5, "damage": 0.9 } }
     ]
   }
 }

@@ -49,6 +49,13 @@ Leaderboard: `trophies` (descending, `set` operator), created in `InitModule`.
  "defender_snapshot": {}, "attacker_pools": {}, "config_hash": "", "submission": null, "result": null}
 ```
 
+### DNA and strain unlocks
+
+- DNA is earned only from PvP wins: `raid_validate` adds `loot.dna_per_win` to the attacker's wallet delta on an attacker win. `debug_dna` stays for Phase 2 AI raids and is ignored while `online` is on.
+- `profile.unlocked_strains` holds `"type/variant"` keys. A new profile (and any old profile on load) includes every variant with `unlock_dna == 0` (`StrainUnlocks.normalize`); the list is empty while the `strains` flag is off.
+- `mutation_unlock {type, variant}` is a profile job: it refuses an unknown variant (`unknown_strain`), one already unlocked or free (`already_unlocked`) and a wallet below `unlock_dna` (`insufficient_funds`), otherwise it spends DNA and adds the key.
+- `raid_validate` army legality: a non-wild strain needs the `strains` flag and an unlock; a locked strain makes the army `invalid_army`.
+
 ### Defense log entry
 
 ```json
@@ -87,7 +94,7 @@ Every response also has `ok` and `error`. "Common" errors that any client RPC ca
 | `defense_log_list` | client | `{cursor?}` | `{entries, cursor}` (no `battle` but `has_battle`, newest first, 20 per page; `cursor` is `""` on the last page) | `rate_limited` | #183 |
 | `defense_log_get` | client | `{raid_id}` | `{entry}` | `unknown_entry` | #183 |
 | `defense_log_mark_seen` | client | `{raid_ids}` | `{marked}` | `bad_request`, `conflict` | #183 |
-| `mutation_unlock` | client | `{type, variant}` | `{job_id}` | `busy` | #184 |
+| `mutation_unlock` | client | `{type, variant}` | `{job_id}` | `busy`, `no_profile`, `bad_request` (job: `unknown_strain`, `already_unlocked`, `insufficient_funds`) | #184 |
 | `admin_flagged_list` | admin | `{}` | `{players}` | | #185 |
 | `admin_report` | admin | `{from, to}` | `{days, retention}` | | #186 |
 

@@ -17,7 +17,7 @@ export const BASE_COLLECTION: string = "base";
 export const SNAPSHOT_KEY: string = "snapshot";
 export const LOCK_COLLECTION: string = "profile_lock";
 export const LOCK_TTL_SECONDS: number = 120;
-export const PROFILE_JOB_TYPES: string[] = ["profile_new", "profile_tick", "base_commit", "collect", "upgrade_buy", "profile_import"];
+export const PROFILE_JOB_TYPES: string[] = ["profile_new", "profile_tick", "base_commit", "collect", "upgrade_buy", "profile_import", "mutation_unlock"];
 
 type Dict = { [key: string]: unknown };
 
@@ -249,4 +249,11 @@ export function rpcProfileImport(ctx: nkruntime.Context, _logger: nkruntime.Logg
       },
     };
   });
+}
+
+/** The Mutation Lab: spend DNA to unlock a strain variant. The worker checks the cost and the strain. */
+export function rpcMutationUnlock(ctx: nkruntime.Context, _logger: nkruntime.Logger, nk: nkruntime.Nakama, payload: string): string {
+  const req = parsePayload(payload);
+  return mutate(ctx, nk, req, "mutation_unlock", () =>
+    typeof req!.type === "string" && typeof req!.variant === "string" ? { type: req!.type, variant: req!.variant } : "bad_request");
 }

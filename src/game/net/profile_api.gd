@@ -38,6 +38,10 @@ func upgrade_buy(id: String) -> Dictionary:
 	return await _run("upgrade_buy", {"id": id})
 
 
+func mutation_unlock(type_id: String, variant_id: String) -> Dictionary:
+	return await _run("mutation_unlock", {"type": type_id, "variant": variant_id})
+
+
 func profile_import(local_profile: Dictionary) -> Dictionary:
 	return await _run("profile_import", {"local_profile": local_profile})
 
