@@ -174,29 +174,7 @@ func _make_card(opp: Dictionary) -> OpponentCard:
 
 
 func _fill_memory(into: VBoxContainer, memory: ImmuneMemory, cfg: GameConfig) -> void:
-	var keys: Array[String] = []
-	for k: Variant in memory.entries.keys():
-		keys.append(str(k))
-	keys.sort()
-	if keys.is_empty():
-		var empty := Label.new()
-		empty.text = MEMORY_EMPTY_TEXT
-		empty.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		UiFonts.style_label(empty, 14, 400, UiPalette.color(false, "muted"))
-		into.add_child(empty)
-		return
-	for key: String in keys:
-		var row := HBoxContainer.new()
-		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_theme_constant_override("separation", 8)
-		var name_label := Label.new()
-		name_label.text = MemoryPanel.strain_label(key, cfg)
-		name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		UiFonts.style_label(name_label, 14, 400, UiPalette.color(false, "ink"))
-		row.add_child(name_label)
-		row.add_child(MemoryPanel.PipRow.new(int(memory.entries[key]["level"]), cfg.memory_max_level))
-		into.add_child(row)
+	MemoryPanel.fill_compact(into, memory, cfg, MEMORY_EMPTY_TEXT, UiPalette.color(false, "ink"), UiPalette.color(false, "muted"))
 
 
 ## Aims the session at the opponent and goes to Incubation.

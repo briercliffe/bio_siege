@@ -262,3 +262,14 @@ func test_a_finished_battle_cannot_be_paused() -> void:
 	assert_false(phase.runner.paused)
 	assert_false(phase.pause_menu.visible)
 	assert_true(phase.hud_combat.pause_button.disabled)
+
+
+func test_replay_mode_offers_only_back_to_base() -> void:
+	var menu := PauseMenu.new()
+	add_child_autofree(menu)
+	menu.set_replay(true)
+	assert_false(menu.restart_button.visible)
+	assert_eq(menu.quit_button.text, "Back to base")
+	menu.set_replay(false)
+	assert_true(menu.restart_button.visible)
+	assert_eq(menu.quit_button.text, "Quit to menu")

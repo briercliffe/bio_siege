@@ -23,6 +23,9 @@ var profile: LivingBaseProfile = null     # set in LIVING_BASE
 ## The away-raid summary until the player has seen it on the Synthesis card, so quitting mid-resolve
 ## does not lose it. Empty once seen.
 var unseen_away_summary: Dictionary = {}
+## The in-progress Lab base, set aside while Living Base is open and restored when Lab is picked again.
+## Keys: grid, army, wallet, memory, populations. Empty = no Lab base to restore.
+var lab_stash: Dictionary = {}
 var living_flow: LivingBaseFlow = null    # set in LIVING_BASE: loads, saves and collects the profile
 ## True while an AI raid on the player's base is played live ("Incoming infection"); the player defends.
 var live_defense: bool = false
@@ -64,13 +67,21 @@ func attack_grid() -> GridModel:
 		return grid
 	if _attack_grid == null:
 		_attack_grid = GridModel.new(config)
-		_attack_grid.load_layout(attack_layout, LivingBaseProfile.unlimited_wallet())
+		var err: GridModel.PlaceError = _attack_grid.load_layout(attack_layout, LivingBaseProfile.unlimited_wallet())
+		if err != GridModel.PlaceError.OK:
+			push_warning("attack_layout did not load cleanly (error %d); the target grid is partial" % int(err))
 	return _attack_grid
 
 
 ## The memory of the base being attacked (seeds the defence against the raiding strains).
+## With an attack target and no memory set, the target gets a fresh empty one (kept, so records stick);
+## the player's own memory is only the defender's in a self-raid.
 func defender_memory() -> ImmuneMemory:
-	return attack_memory if attack_memory != null else memory
+	if attack_memory == null:
+		if not has_attack_target():
+			return memory
+		attack_memory = ImmuneMemory.new()
+	return attack_memory
 
 
 func clear_attack_target() -> void:
@@ -155,6 +166,12 @@ func apply_new_config(new_config: GameConfig) -> Dictionary:
 			if new_config.is_breeding_type(tid):
 				rebuilt[tid] = BreedPool.from_dict((populations[type_id] as BreedPool).to_dict(), tid, new_config)
 		populations = rebuilt
+		var rebuilt_attack: Dictionary = {}
+		for type_id: Variant in attack_populations.keys():
+			var tid: String = str(type_id)
+			if new_config.is_breeding_type(tid) and attack_populations[type_id] is BreedPool:
+				rebuilt_attack[tid] = BreedPool.from_dict((attack_populations[type_id] as BreedPool).to_dict(), tid, new_config)
+		attack_populations = rebuilt_attack
 	if grid == null or wallet == null or army == null:
 		summary["message"] = _reload_message(int(summary["changed_values"]), notices)
 		return summary

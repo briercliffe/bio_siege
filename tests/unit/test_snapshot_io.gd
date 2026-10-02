@@ -375,3 +375,22 @@ func test_a_widened_pool_survives_base_and_battle_round_trips() -> void:
 	var parsed: Dictionary = SnapshotIO.parse_battle(SnapshotIO.to_json(SnapshotIO.battle_to_dict(cfg, setup, sim)), cfg)
 	assert_true(parsed["ok"])
 	assert_eq((parsed["setup"] as BattleSetup).populations["macrophage"]["receptor_slots"], 3)
+
+func test_parse_base_rejects_structure_with_flag_off() -> void:
+	(config.structures["mucous_wall"] as StructureDef).requires_flag = "living_base"
+	var d := {
+		"format": "bio_siege.base",
+		"version": 1,
+		"grid": {"width": config.grid_width, "height": config.grid_height},
+		"structures": [
+			{"type": "nucleus", "origin": [18, 18]},
+			{"type": "mucous_wall", "origin": [2, 2]},
+		],
+	}
+	var res: Dictionary = SnapshotIO.parse_base(JSON.stringify(d), config)
+	assert_false(res["ok"])
+	assert_true("Unknown structure type" in res["error"])
+	config.feature_flags["living_base"] = true
+	assert_true(SnapshotIO.parse_base(JSON.stringify(d), config)["ok"])
+	(config.structures["mucous_wall"] as StructureDef).requires_flag = ""
+	config.feature_flags.erase("living_base")

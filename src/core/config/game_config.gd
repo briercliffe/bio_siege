@@ -1,6 +1,8 @@
 class_name GameConfig
 extends RefCounted
 
+static var _flag_name_re: RegEx = RegEx.create_from_string("^[a-z_]+$")
+
 const KNOWN_TAGS: Array[String] = [
 	"core", "wall", "defense", "resource", "virus", "bacteria", "small", "hidden", "support"
 ]
@@ -1429,8 +1431,7 @@ static func _validate_structures(data: Dictionary, errors: PackedStringArray) ->
 			var rf: Variant = s_data["requires_flag"]
 			var rf_ok: bool = typeof(rf) == TYPE_STRING and not str(rf).is_empty()
 			if rf_ok:
-				var rf_re: RegEx = RegEx.create_from_string("^[a-z_]+$")
-				rf_ok = rf_re.search(str(rf)) != null
+				rf_ok = _flag_name_re.search(str(rf)) != null
 			if not rf_ok:
 				errors.append("structures.json: %s.requires_flag: must be a non-empty flag name (got %s)" % [id, _format_val(rf)])
 

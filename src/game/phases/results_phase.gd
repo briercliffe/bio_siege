@@ -825,10 +825,15 @@ static func apply_choice(choice: String, session: Session, fsm: GameStateMachine
 
 	match choice:
 		"raid_again":
-			# Living Base: the army was spent. Same opponent if it still exists, else back to the base.
+			# Living Base: the army was spent. Same opponent if it still exists, else the opponent picker.
 			var aimed: bool = session.living_flow != null and session.living_flow.raid_again()
 			if fsm != null:
-				fsm.request_transition(GameStateMachine.Phase.INCUBATION if aimed else GameStateMachine.Phase.SYNTHESIS)
+				if aimed:
+					fsm.request_transition(GameStateMachine.Phase.INCUBATION)
+				elif session.living_flow != null and fsm.screen_stack != null:
+					fsm.screen_stack.push("opponents")
+				else:
+					fsm.request_transition(GameStateMachine.Phase.SYNTHESIS)
 		"back_to_base":
 			if session.living_flow != null:
 				if session.live_defense:

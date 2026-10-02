@@ -784,3 +784,27 @@ func test_living_base_timer_runs_and_banks_atp() -> void:
 	hud._on_lb_timer()
 	assert_between(session.profile.stored_atp, 60, 61)
 	_clean_lb_dir()
+
+func test_wallet_pills_wrap_on_a_narrow_viewport_and_the_left_card_follows() -> void:
+	var session: Session = _living_base_session()
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	hud.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	hud.size = Vector2(1600, 800)
+	hud._layout_wallet_pills()
+	assert_false(hud.wallet_pills_wrapped())
+	assert_eq(hud.aa_pill.position.y, HudBuild.ATP_POS.y)
+	hud.size = Vector2(500, 800)
+	hud._layout_wallet_pills()
+	assert_true(hud.wallet_pills_wrapped())
+	assert_gt(hud.aa_pill.position.y, HudBuild.ATP_POS.y)
+	assert_eq(hud.aa_pill.position.x, HudBuild.ATP_POS.x)
+	assert_gt(hud.left_card.position.y, HudBuild.CARD_TOP)
+	_clean_lb_dir()
+
+func test_getting_started_copy_matches_the_mode() -> void:
+	var lab: HudBuild = _setup_hud(_create_session())["hud"]
+	assert_eq(lab.start_intro_label.text, HudBuild.START_INTRO_LAB)
+	var session: Session = _living_base_session()
+	var hud: HudBuild = _setup_hud(session)["hud"]
+	assert_eq(hud.start_intro_label.text, HudBuild.START_INTRO_LIVING_BASE)
+	_clean_lb_dir()

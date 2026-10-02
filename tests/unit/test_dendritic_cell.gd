@@ -9,6 +9,10 @@ func _cfg(dendritic: bool = true) -> GameConfig:
 	var cfg: GameConfig = GameConfig.load_from_dir("res://data").config
 	cfg.feature_flags["bcell_analysis"] = true
 	cfg.feature_flags["dendritic_cell"] = dendritic
+	if not dendritic:
+		# A flag-gated structure is rejected from a layout while its flag is off; drop the gate so the
+		# flag-off tests can still place one and prove the sim ignores it.
+		(cfg.structures["dendritic_cell"] as StructureDef).requires_flag = ""
 	return cfg
 
 

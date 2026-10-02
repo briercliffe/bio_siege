@@ -132,3 +132,18 @@ func test_notices_from_a_reset_save_are_kept() -> void:
 	var flow := LivingBaseFlow.new(_store)
 	flow.enter(session)
 	assert_eq(flow.notices, [LivingBaseStore.BAD_NOTICE])
+
+
+func test_lab_base_survives_a_trip_to_living_base() -> void:
+	var session := Session.new(_cfg)
+	session.grid.place("macrophage", Vector2i(10, 10), session.wallet)
+	var atp: int = session.wallet.get_amount("atp")
+	LivingBaseFlow.new(_store).enter(session)
+	assert_eq(session.grid.structures().size(), 1, "Living Base starts from its own profile")
+	LivingBaseFlow.reset_to_lab(session)
+	assert_eq(session.mode, Session.Mode.LAB)
+	assert_eq(session.grid.structures().size(), 2)
+	assert_eq(session.wallet.get_amount("atp"), atp)
+	assert_true(session.lab_stash.is_empty())
+	LivingBaseFlow.reset_to_lab(session)
+	assert_eq(session.grid.structures().size(), 2, "a second pick of Lab leaves it alone")

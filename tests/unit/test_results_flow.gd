@@ -915,12 +915,22 @@ func test_living_base_results_choices() -> void:
 	ResultsPhase.apply_choice("back_to_base", session, fsm)
 	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
 	assert_false(session.has_attack_target())
-	# A replaced base cannot be raided again: the choice returns to the base.
+	# A replaced base cannot be raided again: without a screen stack the choice returns to the base...
 	session.living_flow.begin_raid(opp_id)
 	session.profile.replace_opponent(opp_id, cfg)
 	fsm.phase = GameStateMachine.Phase.RESULTS
 	ResultsPhase.apply_choice("raid_again", session, fsm)
 	assert_eq(fsm.phase, GameStateMachine.Phase.SYNTHESIS)
+	# ...and with one it opens the opponent picker straight from Results.
+	session.living_flow.begin_raid(str(session.profile.opponents[0]["id"]))
+	session.profile.replace_opponent(str(session.profile.opponents[0]["id"]), cfg)
+	var stack := ScreenStack.new()
+	add_child_autoqfree(stack)
+	fsm.screen_stack = stack
+	fsm.phase = GameStateMachine.Phase.RESULTS
+	ResultsPhase.apply_choice("raid_again", session, fsm)
+	assert_eq(fsm.phase, GameStateMachine.Phase.RESULTS)
+	assert_eq(stack.top_id(), "opponents")
 	DirAccess.remove_absolute(store.path)
 
 

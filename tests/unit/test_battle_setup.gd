@@ -232,3 +232,18 @@ func test_populations_round_trip_and_validation() -> void:
 	assert_gt(bad_val.validate(cfg).size(), 0)
 	cfg.feature_flags["coevolution"] = false
 	assert_eq(bad_key.validate(cfg).size(), 0, "flag off ignores the block")
+
+func test_validate_rejects_structure_with_flag_off() -> void:
+	var cfg := _load_config()
+	(cfg.structures["mucous_wall"] as StructureDef).requires_flag = "living_base"
+	var setup := BattleSetup.create(
+		[
+			{"type": "nucleus", "origin": Vector2i(18, 18)},
+			{"type": "mucous_wall", "origin": Vector2i(5, 5)}
+		],
+		[{"type": "rhinovirus", "cell": Vector2i(0, 0)}],
+		42
+	)
+	assert_true(setup.validate(cfg).has("Unknown structure type: 'mucous_wall'"))
+	cfg.feature_flags["living_base"] = true
+	assert_eq(setup.validate(cfg).size(), 0)

@@ -174,3 +174,13 @@ func test_opponents_survive_a_json_round_trip() -> void:
 	assert_eq(JSON.stringify(q.to_dict()), JSON.stringify(p.to_dict()))
 	var grid := GridModel.new(_cfg)
 	assert_eq(grid.load_layout(q.opponents[1]["layout"], LivingBaseProfile.unlimited_wallet()), GridModel.PlaceError.OK)
+
+func test_overlapping_structures_drop_only_the_offender() -> void:
+	var d: Dictionary = LivingBaseProfile.create_new(_cfg, 1, 0).to_dict()
+	(d["layout"] as Array).append({"type": "mucous_wall", "origin": [3, 3]})
+	(d["layout"] as Array).append({"type": "mucous_wall", "origin": [3, 3]})
+	(d["layout"] as Array).append({"type": "mucous_wall", "origin": [8, 8]})
+	var res: Dictionary = LivingBaseProfile.from_dict(d, _cfg)
+	assert_true(res["ok"])
+	assert_eq((res["profile"] as LivingBaseProfile).layout.size(), 3)
+	assert_true((res["notices"] as Array).has("1 structures removed (no longer fit the base)"))
