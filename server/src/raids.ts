@@ -7,9 +7,8 @@ import { writeDefenseLogEntry } from "./defense_log";
 import { writeTrophies } from "./leaderboard";
 import { amendJob, enqueueJob, Job, JobOutcome, registerClaimHook, registerJobHandler } from "./jobs";
 import { BASE_COLLECTION, readProfile, SNAPSHOT_KEY, updateProfile } from "./profile";
-import { takeToken } from "./ratelimit";
+import { clientGuard } from "./guards";
 import { errResult, okResult, parsePayload, randomInt31 } from "./rpc";
-import { clientCompat } from "./version";
 
 export const RAIDS_COLLECTION: string = "raids";
 export const SYSTEM_USER: string = "00000000-0000-0000-0000-000000000000";
@@ -115,16 +114,9 @@ function pathogenPools(profile: Dict): Dict {
   return out;
 }
 
-function guard(ctx: nkruntime.Context, nk: nkruntime.Nakama, req: Dict | null): string {
-  if (!ctx.userId) return "unauthorized";
-  if (req === null) return "bad_request";
-  if (!takeToken(nk, ctx.userId, "raid")) return "rate_limited";
-  return clientCompat(req);
-}
-
 export function rpcRaidStart(ctx: nkruntime.Context, _logger: nkruntime.Logger, nk: nkruntime.Nakama, payload: string): string {
   const req = parsePayload(payload);
-  const bad = guard(ctx, nk, req);
+  const bad = clientGuard(ctx, nk, req, "raid");
   if (bad !== "") return errResult(bad);
   const attackerId = ctx.userId as string;
   if (typeof req!.defender_id !== "string" || req!.defender_id === "") return errResult("bad_request");
@@ -189,7 +181,7 @@ export function rpcRaidStart(ctx: nkruntime.Context, _logger: nkruntime.Logger, 
 
 export function rpcRaidSubmit(ctx: nkruntime.Context, _logger: nkruntime.Logger, nk: nkruntime.Nakama, payload: string): string {
   const req = parsePayload(payload);
-  const bad = guard(ctx, nk, req);
+  const bad = clientGuard(ctx, nk, req, "raid");
   if (bad !== "") return errResult(bad);
   const attackerId = ctx.userId as string;
   if (typeof req!.raid_id !== "string" || !Array.isArray(req!.army) || (req!.army as unknown[]).length > MAX_ARMY_UNITS) return errResult("bad_request");
@@ -230,7 +222,7 @@ export function rpcRaidSubmit(ctx: nkruntime.Context, _logger: nkruntime.Logger,
 /** Before submit only. The raid ends; the army is spent when the client reports it (`army`), since the server never saw it. */
 export function rpcRaidCancel(ctx: nkruntime.Context, _logger: nkruntime.Logger, nk: nkruntime.Nakama, payload: string): string {
   const req = parsePayload(payload);
-  const bad = guard(ctx, nk, req);
+  const bad = clientGuard(ctx, nk, req, "raid");
   if (bad !== "") return errResult(bad);
   const attackerId = ctx.userId as string;
   if (typeof req!.raid_id !== "string") return errResult("bad_request");
@@ -275,6 +267,7 @@ function applyAttackerPatch(p: Dict, patch: Dict): boolean {
   p.populations = pops;
   p.raid_counter = num(p.raid_counter) + num(patch.raid_counter_inc);
   if (patch.trophies_delta !== undefined) p.trophies = Math.max(0, num(p.trophies) + num(patch.trophies_delta));
+  if (patch.stats !== undefined) p.stats = patch.stats;
   return true;
 }
 
@@ -291,6 +284,8 @@ function applyDefenderPatch(p: Dict, patch: Dict): boolean {
   p.populations = pops;
   if (patch.trophies_delta !== undefined) p.trophies = Math.max(0, num(p.trophies) + num(patch.trophies_delta));
   if (patch.shield_until_unix !== undefined) p.shield_until_unix = num(patch.shield_until_unix);
+  p.defense_counter = num(p.defense_counter) + num(patch.defense_counter_inc);
+  if (patch.stats !== undefined) p.stats = patch.stats;
   return true;
 }
 
@@ -332,6 +327,8 @@ export function onRaidValidateComplete(nk: nkruntime.Nakama, logger: nkruntime.L
     return;
   }
   const result = outcome.result;
+  const resets = (result.pool_resets || []) as unknown[];
+  if (resets.length > 0) logger.warn("raid %s: server reset %d invalid pool(s): %s", raidId, resets.length, JSON.stringify(resets));
   if (result.hash_match === false) logger.warn("raid %s: client hash differs from the server re-simulation", raidId);
   const attackerPatch = (result.attacker_patch || {}) as Dict;
   const defenderPatch = (result.defender_patch || {}) as Dict;

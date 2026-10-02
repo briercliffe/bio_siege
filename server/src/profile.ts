@@ -7,9 +7,8 @@ import { nowUnix } from "./clock";
 import { CONTENT_HASH } from "./generated/data";
 import { writeTrophies } from "./leaderboard";
 import { amendJob, enqueueJob, getJob, Job, JobOutcome, registerJobHandler } from "./jobs";
-import { takeToken } from "./ratelimit";
+import { clientGuard } from "./guards";
 import { errResult, okResult, parsePayload, randomInt31 } from "./rpc";
-import { clientCompat } from "./version";
 
 export const PROFILE_COLLECTION: string = "profile";
 export const PROFILE_KEY: string = "main";
@@ -184,16 +183,9 @@ export function registerProfileHandlers(): void {
 
 // --- RPCs ---------------------------------------------------------------------------------------------------
 
-function guard(ctx: nkruntime.Context, nk: nkruntime.Nakama, group: "read" | "write", req: Dict | null): string {
-  if (!ctx.userId) return "unauthorized";
-  if (req === null) return "bad_request";
-  if (!takeToken(nk, ctx.userId, group)) return "rate_limited";
-  return clientCompat(req);
-}
-
 export function rpcProfileGet(ctx: nkruntime.Context, _logger: nkruntime.Logger, nk: nkruntime.Nakama, payload: string): string {
   const req = parsePayload(payload);
-  const bad = guard(ctx, nk, "read", req);
+  const bad = clientGuard(ctx, nk, req, "read");
   if (bad !== "") return errResult(bad);
   const userId = ctx.userId as string;
   const prof = readProfile(nk, userId);
@@ -209,7 +201,7 @@ export function rpcProfileGet(ctx: nkruntime.Context, _logger: nkruntime.Logger,
 
 /** Shared body of the four mutating RPCs: needs a profile, takes the lock, returns the job id. */
 function mutate(ctx: nkruntime.Context, nk: nkruntime.Nakama, req: Dict | null, type: string, extra: () => Dict | string): string {
-  const bad = guard(ctx, nk, "write", req);
+  const bad = clientGuard(ctx, nk, req, "write");
   if (bad !== "") return errResult(bad);
   const userId = ctx.userId as string;
   if (readProfile(nk, userId) === null) return errResult("no_profile");

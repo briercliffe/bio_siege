@@ -37,12 +37,12 @@ func widen_receptors(extra: int) -> void:
 			g.receptors.append("")
 	receptor_slots = target
 
-## Damage percent (100 = x1) for attacker receptors against defender antigens.
-func match_pct(attacker: Genome, defender: Genome, cfg: GameConfig) -> int:
-	if attacker == null or attacker.receptor_count() == 0:
-		return 100
+## How many of the attacker's filled receptors bind an antigen of the defender: x = matched, y = unmatched.
+func match_counts(attacker: Genome, defender: Genome, cfg: GameConfig) -> Vector2i:
 	var matched: int = 0
 	var unmatched: int = 0
+	if attacker == null:
+		return Vector2i.ZERO
 	for r: String in attacker.receptors:
 		if r == "":
 			continue
@@ -51,7 +51,14 @@ func match_pct(attacker: Genome, defender: Genome, cfg: GameConfig) -> int:
 			matched += 1
 		else:
 			unmatched += 1
-	return maxi(1, 100 + matched * cfg.coevo_hit_bonus_pct - unmatched * cfg.coevo_miss_penalty_pct)
+	return Vector2i(matched, unmatched)
+
+## Damage percent (100 = x1) for attacker receptors against defender antigens.
+func match_pct(attacker: Genome, defender: Genome, cfg: GameConfig) -> int:
+	if attacker == null or attacker.receptor_count() == 0:
+		return 100
+	var counts: Vector2i = match_counts(attacker, defender, cfg)
+	return maxi(1, 100 + counts.x * cfg.coevo_hit_bonus_pct - counts.y * cfg.coevo_miss_penalty_pct)
 
 func add_fitness(index: int, amount: int) -> void:
 	if index < 0 or index >= fitness.size():
