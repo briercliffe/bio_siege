@@ -49,6 +49,13 @@ Leaderboard: `trophies` (descending, `set` operator), created in `InitModule`.
  "defender_snapshot": {}, "attacker_pools": {}, "config_hash": "", "submission": null, "result": null}
 ```
 
+### Telemetry and retention
+
+- **Daily aggregate.** `raid_validate`'s onComplete adds the raid to `telemetry_daily/<yyyy-mm-dd>` (UTC; OCC, three tries): `raids`, `attacker_wins`, per strain key (`type/strain`) `{used_raids, used_atp, wins}` (a raid counts once per strain it fielded; `used_atp` is the worker's cost of those units), per type `{max_generation_seen}` (both sides' pools after the raid), and `active_users`, a list of `nk.sha256Hash(user_id)` capped at 10 000. The worker returns all numbers in `result.telemetry`; the server only adds them.
+- **Retention.** `profile_get` sets `first_seen_unix` (once) and appends today's UTC day index to `last_seen_days` (at most 400 kept); a new profile gets both when it is first stored.
+- **`admin_report {from, to}`** returns the aggregates (active users as a count, never the hashes), D1 and D7 retention (`eligible` = players whose first day is at least 1 / 7 days ago, `retained` = those seen on that exact later day), the player count and the flagged count. Retention scans every profile (alpha scale).
+- **`tools/server_report.py`** calls `admin_report` and `admin_flagged_list` (`BIO_SIEGE_SERVER_URL`, `BIO_SIEGE_HTTP_KEY` from the environment) and prints the strain usage share vs win rate table, the usage trend of the top 3 strains, D1/D7 retention, raids per active user per day and the flagged count. `--fixture` reads a saved report offline.
+
 ### Breeding integrity and anti-cheat
 
 - **No client genomes.** Every client RPC starts with `clientGuard` (`server/src/guards.ts`): a session, a JSON object, then `rejectForbiddenKeys` (`populations`, `memory`, `wallet`, `trophies`, `unlocked_strains` at the top level answer `forbidden_field`), the rate limit and the version check. The one place a client value reaches the worker is `profile_import`'s `local_profile.layout` and `.memory` (a one-time import into a fresh profile, normalised by `ImmuneMemory.from_dict`); the server forwards nothing else of it.
@@ -103,7 +110,7 @@ Every response also has `ok` and `error`. "Common" errors that any client RPC ca
 | `defense_log_mark_seen` | client | `{raid_ids}` | `{marked}` | `bad_request`, `conflict` | #183 |
 | `mutation_unlock` | client | `{type, variant}` | `{job_id}` | `busy`, `no_profile`, `bad_request` (job: `unknown_strain`, `already_unlocked`, `insufficient_funds`) | #184 |
 | `admin_flagged_list` | admin | `{}` | `{players: [{user_id, trophies, stats}]}` | `admin_only` | #185 |
-| `admin_report` | admin | `{from, to}` | `{days, retention}` | | #186 |
+| `admin_report` | admin | `{from: yyyy-mm-dd, to: yyyy-mm-dd}` (at most 120 days) | `{days, retention: {d1, d7}, players, flagged}` | `admin_only`, `bad_request` | #186 |
 
 Job results can carry job-level errors (see [Error codes](#error-codes)): `invalid_layout`, `insufficient_funds`, `maxed`, `unknown_upgrade`, `profile_not_fresh`, `invalid_profile`, `layout_too_expensive`, `invalid_army`, `already_unlocked`, `unknown_strain`, `conflict`.
 

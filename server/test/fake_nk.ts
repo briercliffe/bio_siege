@@ -1,4 +1,6 @@
 // Hand-written fake of the nkruntime pieces the server uses. Later issues extend it.
+import { createHash } from "node:crypto";
+
 export type StoredObject = {
   collection: string;
   key: string;
@@ -53,6 +55,10 @@ export class FakeNk {
 
   accountGetId(userId: string): { user: { username: string } } {
     return { user: { username: "name-" + userId } };
+  }
+
+  sha256Hash(input: string): string {
+    return createHash("sha256").update(input).digest("hex");
   }
 
   uuidv4(): string {

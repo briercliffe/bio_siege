@@ -1,0 +1,50 @@
+{
+  "report": {
+    "ok": true,
+    "error": "",
+    "players": 12,
+    "flagged": 1,
+    "retention": {
+      "d1": { "eligible": 10, "retained": 6 },
+      "d7": { "eligible": 4, "retained": 1 }
+    },
+    "days": [
+      {
+        "date": "2026-10-01",
+        "raids": 10,
+        "attacker_wins": 6,
+        "active_users": 5,
+        "strains": {
+          "rhinovirus/wild": { "used_raids": 8, "used_atp": 320, "wins": 4 },
+          "rhinovirus/capsid_hardening": { "used_raids": 2, "used_atp": 80, "wins": 2 },
+          "staphylococcus/wild": { "used_raids": 5, "used_atp": 500, "wins": 3 }
+        },
+        "types": { "macrophage": { "max_generation_seen": 2 } }
+      },
+      {
+        "date": "2026-10-02",
+        "raids": 20,
+        "attacker_wins": 11,
+        "active_users": 8,
+        "strains": {
+          "rhinovirus/wild": { "used_raids": 10, "used_atp": 400, "wins": 4 },
+          "rhinovirus/capsid_hardening": { "used_raids": 10, "used_atp": 400, "wins": 8 },
+          "staphylococcus/wild": { "used_raids": 4, "used_atp": 400, "wins": 2 },
+          "bacteriophage/rapid_replication": { "used_raids": 1, "used_atp": 32, "wins": 1 }
+        },
+        "types": { "macrophage": { "max_generation_seen": 5 } }
+      },
+      {
+        "date": "2026-10-03",
+        "raids": 0,
+        "attacker_wins": 0,
+        "active_users": 0,
+        "strains": {},
+        "types": {}
+      }
+    ]
+  },
+  "flagged_list": [
+    { "user_id": "u-1", "trophies": 140, "stats": { "raids": 7, "flagged": true } }
+  ]
+}

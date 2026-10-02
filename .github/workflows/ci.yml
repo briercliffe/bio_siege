@@ -25,6 +25,9 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - name: Server report tests
+        working-directory: .
+        run: python tools/test_server_report.py
 
   test:
     runs-on: ubuntu-latest

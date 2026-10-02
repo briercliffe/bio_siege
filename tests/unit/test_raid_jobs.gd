@@ -274,3 +274,17 @@ func test_trophies_and_shield_come_from_the_worker() -> void:
 	assert_eq(int(d_patch["trophies_delta"]), int(t["defender_delta"]))
 	assert_eq(int(d_patch["shield_until_unix"]), T0 + 12 * 3600)
 	assert_eq(int((result["attacker_profile"] as Dictionary)["trophies"]), int(t["attacker_after"]))
+
+
+func test_the_job_returns_telemetry_for_the_daily_aggregate() -> void:
+	var cfg: GameConfig = _load({"strains": true})
+	var ring: Array[Vector2i] = _ring(cfg)
+	var attacker: Dictionary = _profile(cfg, 1)
+	attacker["unlocked_strains"] = ["rhinovirus/rapid_replication"]
+	var army: Array = [_unit("rhinovirus", ring[0]), _unit("rhinovirus", ring[4], "rapid_replication"), _unit("rhinovirus", ring[9], "rapid_replication")]
+	var result: Dictionary = _validate(cfg, _payload(cfg, army, attacker))["result"] as Dictionary
+	var tele: Dictionary = result["telemetry"] as Dictionary
+	var strains: Dictionary = tele["strains"] as Dictionary
+	assert_eq(int(strains["rhinovirus/wild"]), 10)
+	assert_eq(int(strains["rhinovirus/rapid_replication"]), 16, "two units at 8 ATP")
+	assert_true(tele.has("generations"))
