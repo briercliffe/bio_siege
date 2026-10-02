@@ -6,11 +6,13 @@ extends RefCounted
 ## Pure: the caller passes the profile, the config and (for scheduling) timestamps.
 
 const SEED_STEP: int = 104729
+const SALT_STEP: int = 7919
 
 
-## The BattleSetup for AI raid number `raid_index` against the profile's base.
-static func build_setup(cfg: GameConfig, profile: LivingBaseProfile, raid_index: int) -> BattleSetup:
-	var raid_seed: int = profile.seed + SEED_STEP * raid_index
+## The BattleSetup for AI raid number `raid_index` against the profile's base. `salt` varies the seed of a
+## live raid that was started again before the previous one finished.
+static func build_setup(cfg: GameConfig, profile: LivingBaseProfile, raid_index: int, salt: int = 0) -> BattleSetup:
+	var raid_seed: int = profile.seed + SEED_STEP * raid_index + SALT_STEP * salt
 	var army: Dictionary = AiArmyGenerator.generate(cfg, profile.layout, raid_seed)
 	var units: Array = army["units"]
 	var memory_seed: Dictionary = {}

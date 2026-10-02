@@ -20,6 +20,9 @@ var pending_config: GameConfig = null     # hot-reloaded config queued during IN
 enum Mode { LAB, LIVING_BASE }
 var mode: Mode = Mode.LAB
 var profile: LivingBaseProfile = null     # set in LIVING_BASE
+## The away-raid summary until the player has seen it on the Synthesis card, so quitting mid-resolve
+## does not lose it. Empty once seen.
+var unseen_away_summary: Dictionary = {}
 ## The in-progress Lab base, set aside while Living Base is open and restored when Lab is picked again.
 ## Keys: grid, army, wallet, memory, populations. Empty = no Lab base to restore.
 var lab_stash: Dictionary = {}

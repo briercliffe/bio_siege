@@ -932,3 +932,10 @@ func test_living_base_results_choices() -> void:
 	assert_eq(fsm.phase, GameStateMachine.Phase.RESULTS)
 	assert_eq(stack.top_id(), "opponents")
 	DirAccess.remove_absolute(store.path)
+
+
+func test_kicker_colour_flips_for_a_live_defense() -> void:
+	assert_eq(ResultsPhase.kicker_color(true, false), ResultsPhase.KICKER_ATTACKER)
+	assert_eq(ResultsPhase.kicker_color(false, false), ResultsPhase.KICKER_DEFENDER)
+	assert_eq(ResultsPhase.kicker_color(true, true), ResultsPhase.KICKER_BASE_INFECTED)
+	assert_eq(ResultsPhase.kicker_color(false, true), ResultsPhase.KICKER_ATTACKER)

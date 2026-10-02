@@ -229,7 +229,9 @@ func _on_incoming_infection_requested() -> void:
 ## AI raids that came due while the player was away resolve one per frame behind a card, so the app does not
 ## freeze (one raid takes about 100 ms).
 func _begin_away_raids() -> void:
-	if session == null or session.living_flow == null or not session.living_flow.has_pending_raids():
+	if session == null or session.living_flow == null:
+		return
+	if not session.living_flow.has_pending_raids() and session.unseen_away_summary.is_empty():
 		return
 	away_overlay = DimOverlay.new()
 	away_overlay.name = "AwayOverlay"
@@ -302,6 +304,8 @@ func _on_away_log_pressed() -> void:
 
 
 func _close_away_card() -> void:
+	if session != null and session.living_flow != null and not session.living_flow.has_pending_raids():
+		session.unseen_away_summary = {}
 	if away_overlay != null:
 		away_overlay.queue_free()
 		away_overlay = null
