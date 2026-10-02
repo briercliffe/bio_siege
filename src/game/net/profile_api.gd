@@ -44,8 +44,8 @@ func profile_import(local_profile: Dictionary) -> Dictionary:
 
 ## Polls a job until it finishes. {"ok": true, "result"} when done; {"ok": false, "error": <job error>} when the
 ## worker rejected it; error "timeout" when it is still running after max_polls polls.
-func wait_job(job_id: String) -> Dictionary:
-	for i: int in range(max_polls):
+func wait_job(job_id: String, polls: int = -1) -> Dictionary:
+	for i: int in range(polls if polls > 0 else max_polls):
 		var st: Dictionary = await backend.rpc("job_status", {"job_id": job_id})
 		if not bool(st.get("ok", false)):
 			return {"ok": false, "error": str(st.get("error", "network_error")), "result": {}}

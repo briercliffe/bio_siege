@@ -23,6 +23,16 @@ const TEXT: Dictionary = {
 	"unauthorized": "Could not sign in to the server.",
 	"no_profile": "Your online base is not ready yet.",
 	"too_many_attempts": "The server could not process that change. Try again.",
+	"raid_in_progress": "You already have a raid in progress.",
+	"self_raid": "You can't raid your own base.",
+	"shielded": "That base is shielded. Try another one.",
+	"under_attack": "Someone is raiding that base right now. Try another one.",
+	"unknown_player": "That player is no longer available.",
+	"unknown_raid": "That raid is no longer available.",
+	"not_open": "That raid is already over.",
+	"expired": "Raid expired. Your army was spent.",
+	"invalid_army": "The server rejected that army.",
+	"no_raid": "There is no raid in progress.",
 }
 
 
