@@ -38,3 +38,23 @@ Ports: API 7350, gRPC 7349, console 7351 (admin / password). Dev keys live in `s
 - The content hash must equal `GameConfig.content_hash`. After any change to `data/*.json`, refresh `test/fixtures/content_hash.txt`:
   `godot --headless --path . -s tools/print_content_hash.gd` (the GUT test `test_server_content_hash.gd` and `npm test` both check it).
 - Extend `test/fake_nk.ts` as new `nkruntime.Nakama` methods are used.
+
+## Worker
+
+Rules run in a headless Godot worker (`tools/worker/worker.gd`). There is no official Godot image, so it runs from the local Godot install (`tools/install_godot.sh`):
+
+```bash
+bash tools/run_server.sh          # terminal 1: Nakama
+bash tools/run_worker.sh          # terminal 2: loops, claiming jobs (add --once to process one batch)
+```
+
+Env overrides: `BIO_SIEGE_SERVER_URL` (default `http://127.0.0.1:7350`), `BIO_SIEGE_HTTP_KEY` (default `bio_siege_dev_http_key`, the local dev key).
+
+Manual end-to-end check of the echo job:
+
+```bash
+curl -s -X POST "http://127.0.0.1:7350/v2/rpc/debug_enqueue_echo?http_key=bio_siege_dev_http_key&unwrap" -d '{"payload":{"hello":"world"}}'
+bash tools/run_worker.sh --once   # prints: <job_id> echo <ms> true
+```
+
+Job semantics: `attempts` counts claims. A claim older than 60 s is re-queued; a job that has been claimed 3 times and goes stale fails with `too_many_attempts`. Finished jobs are pruned an hour after they finish (during `worker_claim`), so clients must poll `job_status` within that window.

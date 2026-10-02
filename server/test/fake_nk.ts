@@ -20,6 +20,26 @@ export class FakeLogger {
 export class FakeNk {
   storage: Map<string, StoredObject> = new Map();
   private versionCounter: number = 0;
+  private uuidCounter: number = 0;
+
+  uuidv4(): string {
+    this.uuidCounter += 1;
+    return "00000000-0000-4000-8000-" + String(this.uuidCounter).padStart(12, "0");
+  }
+
+  storageList(userId: string | null, collection: string, limit: number = 100, cursor?: string): { objects: StoredObject[]; cursor?: string } {
+    const all = Array.from(this.storage.values())
+      .filter((o) => o.collection === collection && (userId === null || o.userId === userId))
+      .sort((a, b) => (a.key < b.key ? -1 : 1));
+    const start = cursor ? parseInt(cursor, 10) : 0;
+    const page = all.slice(start, start + limit);
+    const next = start + limit < all.length ? String(start + limit) : undefined;
+    return { objects: JSON.parse(JSON.stringify(page)), cursor: next };
+  }
+
+  storageDelete(keys: { collection: string; key: string; userId: string }[]): void {
+    for (const k of keys) this.storage.delete(this.id(k.collection, k.key, k.userId));
+  }
 
   private id(collection: string, key: string, userId: string): string {
     return collection + "|" + key + "|" + userId;
