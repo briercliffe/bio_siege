@@ -342,3 +342,33 @@ func test_infection_phase_refreshes_reduce_flashes_on_change() -> void:
 	assert_false(phase.unit_layer.driver.reduce_flashes)
 	assert_false(phase.effect_layer.reduce_flashes)
 	assert_false(phase.effect_model.reduce_flashes)
+
+
+func test_the_raid_player_debug_row_is_hidden_unless_online_in_a_debug_build() -> void:
+	var screen: SettingsScreen = _make_screen(true)
+	screen.refresh_raid_debug()
+	assert_false(screen.raid_debug_box.visible, "no fsm, no online flow")
+	var cfg: GameConfig = GameConfig.load_from_dir("res://data", {"living_base": true, "online": true}).config
+	var session := Session.new(cfg)
+	var store := LivingBaseStore.new()
+	store.path = "user://test_settings_raid_debug.json"
+	var flow := LivingBaseFlow.new(store)
+	flow.session = session
+	flow.online = true
+	session.mode = Session.Mode.LIVING_BASE
+	session.profile = LivingBaseProfile.create_new(cfg, 1, 1800000000)
+	session.living_flow = flow
+	var fsm := GameStateMachine.new()
+	fsm.session = session
+	add_child_autoqfree(fsm)
+	screen.fsm = fsm
+	screen.refresh_raid_debug()
+	assert_true(screen.raid_debug_box.visible)
+	assert_gte(screen.raid_player_button.custom_minimum_size.y, 48.0)
+	assert_gte(screen.raid_id_edit.custom_minimum_size.y, 48.0)
+	var release: SettingsScreen = _make_screen(false)
+	release.fsm = fsm
+	release.refresh_raid_debug()
+	assert_false(release.raid_debug_box.visible, "release builds never show it")
+	if FileAccess.file_exists(store.path):
+		DirAccess.remove_absolute(store.path)

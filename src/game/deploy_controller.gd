@@ -244,6 +244,8 @@ func _on_hud_launch_requested() -> void:
 
 	# 2. session.seed = session.config.default_seed + session.battle_count
 	session.seed = session.config.default_seed + session.battle_count
+	if session.battle_seed_override >= 0:
+		session.seed = session.battle_seed_override
 
 	# 3. Auto-place leftovers:
 	#    var rng := Rng.new(session.seed)

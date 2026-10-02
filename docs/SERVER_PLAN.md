@@ -79,9 +79,9 @@ Every response also has `ok` and `error`. "Common" errors that any client RPC ca
 | `collect` | client | `{}` | `{job_id}` | `busy` | #179 |
 | `upgrade_buy` | client | `{id}` | `{job_id}` | `busy` | #179 |
 | `profile_import` | client | `{local_profile}` (only `layout`, `memory` are read) | `{job_id}` | `busy` | #179 |
-| `raid_start` | client | `{defender_id}` | `{raid_id, seed, defender_snapshot, expires_unix}` | `raid_in_progress`, `self_raid`, `shielded`, `under_attack`, `unknown_player` | #180 |
+| `raid_start` | client | `{defender_id}` | `{raid_id, seed, defender_snapshot, expires_unix}` | `raid_in_progress`, `self_raid`, `shielded`, `under_attack`, `unknown_player`, `no_profile` | #180 |
 | `raid_submit` | client | `{raid_id, army: [{type, cell, strain}], client_final_hash}` | `{job_id}` | `unknown_raid`, `not_open`, `expired` | #180 |
-| `raid_cancel` | client | `{raid_id}` | `{}` | `unknown_raid`, `not_open` | #180 |
+| `raid_cancel` | client | `{raid_id, army?}` | `{job_id?}` | `unknown_raid`, `not_open` | #180 |
 | `find_opponent` | client | `{}` | `{defender_id, preview}` or `{ai: true}` | | #181 |
 | `leaderboard_top` | client | `{}` | `{records: [{rank, user_id, name, trophies}], me: {rank, trophies}}` | | #181 |
 | `defense_log_list` | client | `{cursor?}` | `{entries, cursor}` (no `battle`, newest first, 20 per page) | | #183 |
@@ -119,6 +119,18 @@ Every change to the profile is a worker job (`profile_new`, `profile_tick`, `bas
 - **Serialisation:** one in-flight profile job per user, held in `profile_lock/main` (a lock older than 120 s is ignored). A second mutating RPC returns `busy`; `profile_get` instead returns the stored copy with `busy: true` and the pending `job_id`.
 - **onComplete** writes `profile/main` (read 1) and `base/snapshot` (read 2) with OCC on `profile_version`. On a version conflict the job is re-enqueued once with the newer profile; the original job's result becomes `{requeued_as}` and `job_status` follows it. A second conflict fails the job with `conflict`. A late `profile_new` never replaces an existing profile.
 - **Client:** works optimistically on a cached copy, sends one `base_commit` when leaving Synthesis or tapping Save, and reloads the server copy on any rejection.
+
+### Raid jobs
+
+`raid_start` freezes the defender's `base/snapshot` into `raids/<raid_id>`, sets the defender's `under_attack_until_unix = now + 600` (and `under_attack_raid_id`), records the attacker's pathogen pools and sets the attacker's `open_raid_id`. `raid_submit` stores the army and the client's final hash and enqueues `raid_validate` with `{raid, attacker_profile, defender_profile, now_unix}`.
+
+The worker (`src/core/online/raid_jobs.gd`) checks the army (pathogen types, known strains, deploy-ring cells, affordable), re-simulates with the server seed and returns:
+
+- `attacker_patch`: `{wallet_delta, pathogen_pools, raid_counter_inc}`; `attacker_profile` (the whole result, for tests); `defender_patch`: `{atp_lost, amino_gained, memory, structure_pools}`; `res` (the `RaidResolver` result); `army_cost`; `server_final_hash`, `hash_match`; `battle` (for the defense log).
+- onComplete applies the patches to the **current** profiles (OCC, three tries, additive and floored at 0), refreshes the defender's snapshot, marks the raid `done` (its record keeps everything except `battle`), clears both locks and writes the raw result to `defense_log/<raid_id>` until AM-09 (#183) defines the entry.
+- A rejected validation marks the raid `rejected`, clears the locks and enqueues `army_spend` with the submitted army, so a retry is never free.
+- `raid_cancel` (before submit only) ends the raid. The server never sees an army before `raid_submit`, so the army is charged only when the client reports it in `army`; an expired raid costs nothing.
+- Expiry is lazy: `raid_start` / `raid_submit` expire the caller's and the target's stale raid, and `worker_claim` sweeps at most 50 open raids.
 
 ## Versioning
 

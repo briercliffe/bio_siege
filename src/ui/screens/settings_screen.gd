@@ -75,6 +75,12 @@ var telemetry_switch: ToggleSwitch = null
 var debug_switch: ToggleSwitch = null
 var reset_button: PillButton = null
 var footer_label: Label = null
+## Debug builds with the `online` flag: raid a player by their id (docs/SERVER_PLAN.md, raid_start) before the
+## opponent screen exists. Set by main.gd; hidden otherwise.
+var fsm: GameStateMachine = null
+var raid_debug_box: HBoxContainer = null
+var raid_id_edit: LineEdit = null
+var raid_player_button: PillButton = null
 var toast: Toast = null
 
 var _row_titles: Array[Label] = []
@@ -91,6 +97,53 @@ func _init() -> void:
 	_build()
 	_apply_theme()
 	resized.connect(_layout)
+
+
+func _build_raid_debug() -> void:
+	raid_debug_box = HBoxContainer.new()
+	raid_debug_box.name = "RaidDebug"
+	raid_debug_box.visible = false
+	raid_debug_box.add_theme_constant_override("separation", 12)
+	raid_debug_box.anchor_left = 0.5
+	raid_debug_box.anchor_right = 0.5
+	raid_debug_box.anchor_top = 1.0
+	raid_debug_box.anchor_bottom = 1.0
+	raid_debug_box.offset_left = -300.0
+	raid_debug_box.offset_right = 300.0
+	raid_debug_box.offset_top = -72.0
+	raid_debug_box.offset_bottom = -12.0
+	raid_id_edit = LineEdit.new()
+	raid_id_edit.name = "RaidIdEdit"
+	raid_id_edit.placeholder_text = "Player id"
+	raid_id_edit.custom_minimum_size = Vector2(300.0, 48.0)
+	raid_id_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	raid_debug_box.add_child(raid_id_edit)
+	raid_player_button = PillButton.new("Raid player", PillButton.Variant.SECONDARY)
+	raid_player_button.name = "BtnRaidPlayer"
+	raid_player_button.custom_minimum_size = Vector2(PillButton.MIN_WIDTH, 52.0)
+	raid_player_button.pressed.connect(_on_raid_player_pressed)
+	raid_debug_box.add_child(raid_player_button)
+	add_child(raid_debug_box)
+
+
+## Shown only in debug builds, online, in Living Base.
+func refresh_raid_debug() -> void:
+	if raid_debug_box == null:
+		return
+	var flow: LivingBaseFlow = fsm.session.living_flow if (fsm != null and fsm.session != null) else null
+	raid_debug_box.visible = is_debug and flow != null and flow.is_online()
+
+
+func _on_raid_player_pressed() -> void:
+	var flow: LivingBaseFlow = fsm.session.living_flow if (fsm != null and fsm.session != null) else null
+	var id: String = raid_id_edit.text.strip_edges()
+	if flow == null or id.is_empty():
+		return
+	var res: Dictionary = await flow.begin_pvp_raid(id)
+	if bool(res.get("ok", false)):
+		fsm.request_transition(GameStateMachine.Phase.INCUBATION)
+	elif toast != null:
+		toast.show_message(NetCopy.error_text(str(res.get("error", ""))))
 
 
 func _ready() -> void:
@@ -259,6 +312,7 @@ func _build() -> void:
 	footer_label = _make_label("Footer", FOOTER_TEXT)
 	footer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(footer_label)
+	_build_raid_debug()
 
 	toast = Toast.new()
 	toast.name = "Toast"

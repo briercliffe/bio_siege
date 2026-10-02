@@ -49,6 +49,14 @@ export function registerJobHandler(type: string, handler: JobHandler): void {
   handlers[type] = handler;
 }
 
+/** Runs on every worker_claim (bounded lazy maintenance, for example expiring stale raids). Register at module top level. */
+export type ClaimHook = (nk: nkruntime.Nakama, logger: nkruntime.Logger) => void;
+const claimHooks: ClaimHook[] = [];
+
+export function registerClaimHook(hook: ClaimHook): void {
+  claimHooks.push(hook);
+}
+
 interface Entry {
   job: Job;
   version: string;
@@ -194,6 +202,13 @@ export function rpcWorkerClaim(ctx: nkruntime.Context, logger: nkruntime.Logger,
   }
 
   pruneFinished(nk, entries, now);
+  for (const hook of claimHooks) {
+    try {
+      hook(nk, logger);
+    } catch (e) {
+      logger.error("claim hook failed: %s", String(e));
+    }
+  }
   return okResult({ jobs: claimed });
 }
 
