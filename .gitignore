@@ -7,3 +7,14 @@ __pycache__/
 *.pyc
 
 build_info.txt
+
+# Terraform (infra/terraform). The lock file is committed; state lives in GCS.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+
+# Android signing keys (release keystore lives outside git; CI gets it from a secret)
+*.keystore
+*.jks

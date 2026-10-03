@@ -1,0 +1,17 @@
+# Production (closed alpha) config, baked into the server image. No secrets here: keys, console credentials
+# and the database address are passed as flags by infra/vm/docker-compose.yml from Secret Manager.
+# Keep the non-secret settings in step with local.yml.
+name: bio_siege_alpha
+data_dir: "/nakama/data/"
+logger:
+  level: "INFO"
+runtime:
+  js_entrypoint: "index.js"
+socket:
+  max_message_size_bytes: 4096
+session:
+  token_expiry_sec: 7200
+database:
+  # Cloud SQL db-f1-micro allows 25 connections; leave room for migrations and admin sessions.
+  max_open_conns: 15
+  max_idle_conns: 10

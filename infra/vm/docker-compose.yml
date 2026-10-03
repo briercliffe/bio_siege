@@ -1,0 +1,111 @@
+# Production stack on the alpha VM: Caddy (TLS) -> Nakama 3.41.0 -> Postgres 16 (the postgres service below, or
+# Cloud SQL), plus the headless Godot worker. deploy.sh renders .env (image tags, secrets) next to this file;
+# nothing here is secret.
+# Local development uses server/docker-compose.yml instead.
+x-logging: &logging
+  driver: gcplogs
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      nakama:
+        condition: service_healthy
+    logging: *logging
+
+  # database = "vm" only (deploy.sh sets COMPOSE_PROFILES=vm-db). Data lives on the dedicated persistent disk;
+  # create_host_path: false makes the container fail rather than start empty if that disk is not mounted.
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["vm-db"]
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      POSTGRES_DB: nakama
+      POSTGRES_USER: nakama
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - type: bind
+        source: ${PGDATA_HOST_DIR:-/mnt/pgdata/postgres}
+        target: /var/lib/postgresql/data
+        bind:
+          create_host_path: false
+    expose:
+      - "5432"
+    healthcheck:
+      # Over TCP: on first start the image's temporary init server listens on the socket only.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "nakama", "-d", "nakama"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    logging: *logging
+
+  nakama:
+    image: ${NAKAMA_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    environment:
+      DB_ADDRESS: ${DB_ADDRESS}
+      SERVER_KEY: ${SERVER_KEY}
+      HTTP_KEY: ${HTTP_KEY}
+      SESSION_ENCRYPTION_KEY: ${SESSION_ENCRYPTION_KEY}
+      SESSION_REFRESH_KEY: ${SESSION_REFRESH_KEY}
+      CONSOLE_USERNAME: ${CONSOLE_USERNAME}
+      CONSOLE_PASSWORD: ${CONSOLE_PASSWORD}
+      CONSOLE_SIGNING_KEY: ${CONSOLE_SIGNING_KEY}
+    # Secrets go in as flags (they override server/prod.yml); $$ defers expansion to the container shell.
+    entrypoint:
+      - "/bin/sh"
+      - "-ec"
+      - >
+        /nakama/nakama migrate up --database.address "$$DB_ADDRESS" &&
+        exec /nakama/nakama --config /nakama/data/prod.yml
+        --database.address "$$DB_ADDRESS"
+        --socket.server_key "$$SERVER_KEY"
+        --runtime.http_key "$$HTTP_KEY"
+        --session.encryption_key "$$SESSION_ENCRYPTION_KEY"
+        --session.refresh_encryption_key "$$SESSION_REFRESH_KEY"
+        --console.username "$$CONSOLE_USERNAME"
+        --console.password "$$CONSOLE_PASSWORD"
+        --console.signing_key "$$CONSOLE_SIGNING_KEY"
+    expose:
+      - "7350"
+    ports:
+      # Console only on the VM's loopback: reach it with an IAP tunnel (infra/README.md).
+      - "127.0.0.1:7351:7351"
+    healthcheck:
+      test: ["CMD", "/nakama/nakama", "healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    logging: *logging
+
+  worker:
+    image: ${WORKER_IMAGE}
+    restart: unless-stopped
+    environment:
+      BIO_SIEGE_SERVER_URL: http://nakama:7350
+      BIO_SIEGE_HTTP_KEY: ${HTTP_KEY}
+    depends_on:
+      nakama:
+        condition: service_healthy
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:

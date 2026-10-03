@@ -32,6 +32,13 @@ curl -s -X POST "http://127.0.0.1:7350/v2/rpc/ping?http_key=bio_siege_dev_http_k
 
 Ports: API 7350, gRPC 7349, console 7351 (admin / password). Dev keys live in `server/local.yml`; they are public defaults for local use only.
 
+## Production
+
+The closed alpha runs on GCP (Terraform, one VM with Caddy, Nakama, the worker and Postgres; Cloud SQL optional). See
+[infra/README.md](../infra/README.md). `Dockerfile` bakes `build/index.js` and `prod.yml` into the Nakama image;
+`prod.yml` has no secrets (they arrive as flags from Secret Manager). Keep its non-secret settings in step with
+`local.yml`.
+
 ## Conventions
 
 - `build/index.js` is one flat script. Nakama parses it statically: `InitModule` and every function passed to `registerRpc` must be top-level declarations, and the `registerRpc` calls must sit directly in `InitModule` with literal ids and function identifiers.
@@ -41,7 +48,7 @@ Ports: API 7350, gRPC 7349, console 7351 (admin / password). Dev keys live in `s
 
 ## Worker
 
-Rules run in a headless Godot worker (`tools/worker/worker.gd`). There is no official Godot image, so it runs from the local Godot install (`tools/install_godot.sh`):
+Rules run in a headless Godot worker (`tools/worker/worker.gd`). Production runs it from `tools/worker/Dockerfile` (Godot 4.7.2 pinned by SHA-512). Locally it runs from the Godot install (`tools/install_godot.sh`):
 
 ```bash
 bash tools/run_server.sh          # terminal 1: Nakama

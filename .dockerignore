@@ -1,0 +1,16 @@
+# Build context for tools/worker/Dockerfile (repo root). The worker needs project.godot, src/, data/ and tools/.
+.git
+.github
+.godot
+.idea
+build
+docs
+infra
+scratch
+server
+tests
+addons/gut
+**/__pycache__
+export_credentials.cfg
+*.keystore
+*.jks

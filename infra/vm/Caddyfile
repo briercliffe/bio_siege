@@ -1,0 +1,10 @@
+# TLS termination for the Nakama API (HTTPS and WSS). Caddy gets and renews the certificate itself.
+# No access log: worker and admin calls carry the http_key in the query string.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy nakama:7350
+}
