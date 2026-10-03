@@ -1,0 +1,218 @@
+name: Alpha
+
+# Closed alpha release (#187): builds the server and worker images and the release APK from one patched copy
+# of data/*.json (tools/alpha_config.sh), checks that all three share one content hash, then deploys to the VM.
+# GCP access is keyless (Workload Identity Federation); see infra/README.md for the variables and secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the server to the alpha VM
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: alpha
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.sha }}
+  REGISTRY: ${{ vars.GCP_REGISTRY }}
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    outputs:
+      content_hash: ${{ steps.hash.outputs.content_hash }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Apply alpha flags
+        run: bash tools/alpha_config.sh
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      # No npm test here: the fixture hash in server/test is for the shipped data, not the alpha flags.
+      - name: Build server bundle
+        working-directory: server
+        run: |
+          npm ci
+          npm run build
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Build images
+        run: |
+          docker build -t "$REGISTRY/nakama:$TAG" server
+          docker build -f tools/worker/Dockerfile -t "$REGISTRY/worker:$TAG" .
+
+      - name: Check content hash parity
+        id: hash
+        run: |
+          server_hash=$(grep -o 'CONTENT_HASH: string = "[0-9a-f]*"' server/src/generated/data.ts | grep -o '[0-9a-f]\{64\}')
+          worker_hash=$(docker run --rm --entrypoint godot "$REGISTRY/worker:$TAG" \
+            --headless --path /app -s tools/print_content_hash.gd | grep -o '^[0-9a-f]\{64\}$')
+          echo "server=$server_hash worker=$worker_hash"
+          if [ -z "$server_hash" ] || [ "$server_hash" != "$worker_hash" ]; then
+            echo "Server bundle and worker image disagree on the content hash" >&2
+            exit 1
+          fi
+          echo "content_hash=$server_hash" >> "$GITHUB_OUTPUT"
+
+      - name: Push images
+        run: |
+          docker push "$REGISTRY/nakama:$TAG"
+          docker push "$REGISTRY/worker:$TAG"
+
+  deploy:
+    needs: images
+    if: inputs.deploy
+    runs-on: ubuntu-latest
+    environment: alpha
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to the VM over IAP
+        env:
+          VM: ${{ vars.GCP_VM_NAME }}
+          ZONE: ${{ vars.GCP_ZONE }}
+        run: |
+          ssh_opts=(--zone "$ZONE" --tunnel-through-iap --quiet --strict-host-key-checking=no)
+          gcloud compute scp "${ssh_opts[@]}" infra/vm/docker-compose.yml infra/vm/Caddyfile infra/vm/deploy.sh "$VM:~/"
+          gcloud compute ssh "$VM" "${ssh_opts[@]}" --command \
+            "sudo install -m 0644 ~/docker-compose.yml ~/Caddyfile /opt/bio_siege/ && sudo install -m 0755 ~/deploy.sh /opt/bio_siege/ && sudo /opt/bio_siege/deploy.sh $TAG"
+
+      - name: Smoke test
+        run: curl -fsS --retry 10 --retry-delay 6 --retry-all-errors "${{ vars.ALPHA_SERVER_URL }}/healthcheck"
+
+  android:
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Godot binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/godot
+          key: godot-4.7.2-linux
+
+      - name: Cache Godot export templates
+        id: templates-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/godot/export_templates/4.7.2.stable
+          key: godot-templates-4.7.2
+
+      - name: Download and install export templates
+        if: steps.templates-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates/4.7.2.stable
+          TMP_DIR=$(mktemp -d)
+          curl -fsSL -o "$TMP_DIR/templates.tpz" \
+            https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz
+          unzip -q "$TMP_DIR/templates.tpz" -d "$TMP_DIR"
+          mv "$TMP_DIR/templates"/* ~/.local/share/godot/export_templates/4.7.2.stable/
+          rm -rf "$TMP_DIR"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses
+
+      - name: Install Android build tools
+        run: sdkmanager "build-tools;35.0.0" "platforms;android-35"
+
+      - name: Install Godot
+        run: |
+          tools/install_godot.sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Apply alpha flags and server settings
+        run: |
+          key=$(gcloud secrets versions access latest --secret=nakama-server-key --project="${{ vars.GCP_PROJECT_ID }}")
+          echo "::add-mask::$key"
+          BIO_SIEGE_SERVER_URL="${{ vars.ALPHA_SERVER_URL }}" BIO_SIEGE_SERVER_KEY="$key" bash tools/alpha_config.sh
+          echo "alpha-${GITHUB_SHA::7}" > build_info.txt
+
+      - name: Restore release keystore
+        run: echo "${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+      - name: Import project assets
+        run: godot --headless --path . --import
+
+      - name: Check content hash matches the server
+        run: |
+          apk_hash=$(godot --headless --path . -s tools/print_content_hash.gd | grep -o '^[0-9a-f]\{64\}$')
+          if [ "$apk_hash" != "${{ needs.images.outputs.content_hash }}" ]; then
+            echo "APK hash $apk_hash differs from the server's ${{ needs.images.outputs.content_hash }}" >&2
+            exit 1
+          fi
+
+      - name: Export release APK
+        env:
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ runner.temp }}/release.keystore
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: ${{ secrets.ANDROID_RELEASE_KEYSTORE_USER }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+        run: |
+          mkdir -p build/android
+          godot --headless --path . --export-release "Android" build/android/bio_siege_alpha.apk
+          if [ ! -f build/android/bio_siege_alpha.apk ]; then
+            echo "Android APK missing after export!" >&2
+            exit 1
+          fi
+
+      - name: Upload alpha APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bio-siege-alpha-apk
+          path: build/android/bio_siege_alpha.apk
+          retention-days: 30

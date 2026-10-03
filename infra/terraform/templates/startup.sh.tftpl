@@ -1,0 +1,63 @@
+#!/bin/bash
+# VM bootstrap (runs on every boot). Installs Docker, writes the non-secret instance config and, once a release
+# has been deployed, brings the stack back up. Secrets are never written here: deploy.sh reads Secret Manager.
+set -euo pipefail
+
+APP_DIR=/opt/bio_siege
+%{ if pgdata_disk ~}
+
+# Postgres data disk: format only if it has no filesystem yet, mount through fstab so it is up at boot, and make
+# Docker require the mount so the postgres container can never start against an empty boot-disk directory.
+PGDATA_DEV=/dev/disk/by-id/google-pgdata
+if ! blkid "$PGDATA_DEV" >/dev/null 2>&1; then
+  mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard "$PGDATA_DEV"
+fi
+mkdir -p /mnt/pgdata
+if ! grep -q " /mnt/pgdata " /etc/fstab; then
+  echo "UUID=$(blkid -s UUID -o value "$PGDATA_DEV") /mnt/pgdata ext4 discard,defaults,nofail 0 2" >> /etc/fstab
+fi
+mountpoint -q /mnt/pgdata || mount /mnt/pgdata
+mkdir -p /mnt/pgdata/postgres
+mkdir -p /etc/systemd/system/docker.service.d
+printf '[Unit]\nRequiresMountsFor=/mnt/pgdata\n' > /etc/systemd/system/docker.service.d/pgdata.conf
+systemctl daemon-reload
+%{ endif ~}
+
+if ! command -v docker >/dev/null 2>&1; then
+  apt-get update
+  apt-get install -y ca-certificates curl
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+    > /etc/apt/sources.list.d/docker.list
+  apt-get update
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  systemctl enable --now docker
+fi
+
+# 1 GB swap as a cushion on the 2 GB e2-small.
+if [ ! -f /swapfile ]; then
+  fallocate -l 1G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  echo "/swapfile none swap sw 0 0" >> /etc/fstab
+fi
+swapon -a
+
+# Root pulls images from Artifact Registry as the VM service account.
+gcloud auth configure-docker "${registry_host}" --quiet
+
+mkdir -p "$APP_DIR"
+cat > "$APP_DIR/instance.env" <<'EOF'
+PROJECT_ID=${project_id}
+REGISTRY=${registry}
+DOMAIN=${domain}
+ACME_EMAIL=${acme_email}
+DB_HOST=${db_host}
+CONSOLE_USERNAME=${console_user}
+EOF
+
+if [ -f "$APP_DIR/release" ] && [ -x "$APP_DIR/deploy.sh" ]; then
+  "$APP_DIR/deploy.sh" "$(cat "$APP_DIR/release")"
+fi

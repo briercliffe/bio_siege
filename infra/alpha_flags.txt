@@ -1,0 +1,10 @@
+# Feature flags turned on for closed-alpha builds by tools/alpha_config.sh (CI only; data/game_rules.json in the
+# repo keeps them off). The APK, the server bundle and the worker image are all built from the patched file, so
+# their content hashes match. To be confirmed on #187.
+living_base
+online
+strains
+immune_memory
+bcell_analysis
+coevolution
+amino_upgrades

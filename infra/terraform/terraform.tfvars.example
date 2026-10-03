@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+project_id = "bio-siege"
+domain     = "api.example.com"
+# dns_zone = "example-com"  # Cloud DNS zone in this project: Terraform creates the A record
+acme_email = "you@example.com"
+
+# false between test sessions: stops the VM (and Cloud SQL if used). Data, IP and snapshots are kept.
+running = true
+
+# "vm" (Postgres on the VM, daily disk snapshots) or "cloudsql" (managed, point-in-time recovery).
+database = "vm"
+
+# Defaults, override if needed:
+# region                  = "us-central1"
+# zone                    = "us-central1-a"
+# machine_type            = "e2-small"
+# db_disk_size_gb         = 10
+# snapshot_retention_days = 14
+# db_tier                 = "db-f1-micro"
